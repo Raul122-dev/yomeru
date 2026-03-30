@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg: 0 0% 98%;
+    --bg-surface: 0 0% 100%;
+    --bg-subtle: 0 0% 95%;
+    --border: 0 0% 88%;
+    --border-strong: 0 0% 78%;
+    --text: 0 0% 9%;
+    --text-muted: 0 0% 45%;
+    --accent: 38 92% 50%;
+    --accent-fg: 38 92% 15%;
+    --accent2: 221 83% 58%;
+    --success: 142 71% 38%;
+    --danger: 0 72% 51%;
+  }
+
+  .dark {
+    --bg: 240 10% 5%;
+    --bg-surface: 240 8% 8%;
+    --bg-subtle: 240 8% 12%;
+    --border: 240 6% 18%;
+    --border-strong: 240 5% 28%;
+    --text: 0 0% 92%;
+    --text-muted: 240 5% 55%;
+    --accent: 38 85% 58%;
+    --accent-fg: 38 85% 12%;
+    --accent2: 221 80% 65%;
+    --success: 142 60% 48%;
+    --danger: 0 65% 60%;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    /* Base size: scales all Tailwind rem units proportionally.
+       text-xs  = 12px → 13.5px  (0.75rem * 18px)
+       text-sm  = 14px → 15.75px (0.875rem * 18px)
+       text-base = 16px → 18px   (1rem * 18px)
+       Keeps the minimal aesthetic while making everything readable. */
+    font-size: 20px;
+  }
+
+  body {
+    background-color: hsl(var(--bg));
+    color: hsl(var(--text));
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
+    font-size: 0.9375rem; /* 14px at 18px base — comfortable body text */
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input,
+  select,
+  textarea {
+    background-color: hsl(var(--bg-subtle));
+    border: 1px solid hsl(var(--border));
+    border-radius: 6px;
+    color: hsl(var(--text));
+    font-family: inherit;
+    font-size: 0.875rem; /* 13px at 15px base */
+    padding: 8px 12px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: hsl(var(--accent2));
+  }
+}

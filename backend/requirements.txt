@@ -1,0 +1,20 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+httpx>=0.27.0
+litellm>=1.48.0
+Pillow>=10.0.0
+json-repair>=0.30.0
+pydantic>=2.0.0
+opencv-python-headless>=4.8.0
+ 
+# typesetting pipeline dependencies
+# install with: python backend/setup_typesetting.py
+# torch and torchvision: install separately (CUDA/CPU variant)
+iopaint
+easyocr
+manga-ocr
+transformers>=4.40
+timm
+accelerate
+ 
