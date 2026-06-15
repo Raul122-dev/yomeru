@@ -1,17 +1,17 @@
 # python
-backend/.venv/
+.venv/
 **/__pycache__/
 **/*.pyc
 *.egg-info/
 dist/
 build/
 
-# frontend (pre-built static IS committed — see backend/static/)
-frontend/node_modules/
+# ui (pre-built static IS committed — see src/yomeru/static/)
+ui/node_modules/
 
 # data — never commit user data
 .env
 ~/.yomeru/
 
 # model weights
-backend/models/
+src/yomeru/models/

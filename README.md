@@ -12,7 +12,7 @@ git clone https://github.com/your-user/yomeru
 cd yomeru
 bash setup.sh
 bash start.sh
-# → http://localhost:7788
+# → http://localhost:7788/ui
 ```
 
 **Option B — pip install**
@@ -21,13 +21,13 @@ pip install git+https://github.com/your-user/yomeru
 yomeru
 ```
 
-Both options require only **Python 3.11+**. Node/npm is never needed by end users.
+Both options require only **Python 3.12+**. Node/npm is never needed by end users.
 
 ---
 
 ## Usage
 
-1. Open `http://localhost:7788`
+1. Open `http://localhost:7788/ui`
 2. Go to **Settings** → configure your model provider
 3. Click **New Run** → upload images → pick model and format → start
 
@@ -86,15 +86,15 @@ Model is a free text field — any [LiteLLM-compatible](https://docs.litellm.ai/
 Requires Node 18+:
 ```bash
 bash dev.sh
-# frontend → http://localhost:3000
-# backend  → http://localhost:7788
+# ui      → http://localhost:3000/ui  (vite HMR)
+# backend → http://localhost:7788     (uvicorn --reload)
 ```
 
-After changing frontend code:
+After changing UI code:
 ```bash
-cd frontend && npm run build
+cd ui && npm run build
 ```
-This writes the build to `backend/static/` — commit it so end users get the update without needing npm.
+This writes the build to `src/yomeru/static/` — commit it so end users get the update without needing npm.
 
 ---
 
@@ -103,26 +103,39 @@ This writes the build to `backend/static/` — commit it so end users get the up
 ```
 yomeru/
 ├── setup.sh / start.sh / dev.sh
-├── pyproject.toml          ← makes pip install . work
-├── backend/
-│   ├── main.py             ← FastAPI + serves React SPA
-│   ├── requirements.txt
-│   ├── static/             ← pre-built React (committed)
+├── pyproject.toml              ← pip install . / pip install -e .
+├── src/yomeru/                 ← Python package
+│   ├── __main__.py             ← entry point (python -m yomeru)
+│   ├── app.py                  ← FastAPI app, serves UI at /ui
+│   ├── phases/                 ← 🆕 Unified phase orchestration
+│   │   ├── __init__.py         ← PhaseResult, registry, types
+│   │   ├── runner.py           ← RunExecutor (locks, deps, run-all)
+│   │   ├── detection.py        ← Phase 1: text region detection
+│   │   ├── analysis.py         ← Phase 2: VLM analysis
+│   │   ├── matching.py         ← Phase 3: region↔dialogue matching
+│   │   ├── inpainting.py       ← Phase 4: text removal
+│   │   └── rendering.py        ← Phase 5: text rendering
+│   ├── lib/                    ← Reusable backends/algorithms
+│   │   ├── detection/          ← CTD, Ogkalu detectors
+│   │   ├── matching/           ← Hungarian matcher + OCR
+│   │   ├── inpainting/         ← LaMa, OpenCV inpainters
+│   │   └── rendering/          ← PIL text renderer
 │   ├── core/
-│   │   ├── config.py       ← JSON config store (~/.yomeru/config.json)
-│   │   ├── runs.py         ← run state as JSON files (~/.yomeru/runs/)
-│   │   ├── analyzer.py     ← VLM analysis via litellm
-│   │   ├── pipeline.py     ← sequential page processing
-│   │   └── models.py       ← narrative context data models
-│   └── api/routes/
-│       ├── runs.py         ← REST + WebSocket
-│       └── config.py       ← provider/model config
-└── frontend/
+│   │   ├── config.py           ← JSON config store
+│   │   ├── runs.py             ← Run model + phase status
+│   │   ├── models.py           ← data models (dialogues, scenes, etc.)
+│   │   └── analyzer.py         ← VLM prompt building + LLM calls
+│   ├── api/
+│   │   ├── routes/phases.py    ← 🆕 unified phase API
+│   │   ├── routes/runs.py      ← run CRUD + legacy phase triggers
+│   │   ├── routes/config.py    ← provider config
+│   │   └── ws.py               ← WebSocket progress handler
+│   ├── prompts/                ← system/format prompt templates
+│   └── static/                 ← pre-built React UI (committed)
+└── ui/                          ← React/Vite/TS source (dev only)
     └── src/
-        ├── pages/
-        │   ├── Dashboard.tsx
-        │   ├── NewRun.tsx   ← free model text input + Ollama quick-select
-        │   ├── RunDetail.tsx
-        │   └── Settings.tsx ← one api_key per cloud provider + Ollama URL
-        └── lib/api.ts
+        ├── pages/              ← Dashboard, NewRun, RunDetail, Settings
+        ├── hooks/              ← usePhaseRunner, useRunData
+        ├── components/         ← PhaseBar, phase views, editors
+        └── lib/api.ts          ← API client (phases + legacy)
 ```

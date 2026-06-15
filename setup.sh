@@ -19,15 +19,15 @@ PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
 
 echo -e "${CYAN}python${RESET} $PY_VERSION"
 
-if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 11 ]; }; then
-  echo -e "${RED}error${RESET}: python 3.11+ required (found $PY_VERSION)"
+if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 12 ]; }; then
+  echo -e "${RED}error${RESET}: python 3.12+ required (found $PY_VERSION)"
   echo "  with pyenv: pyenv install 3.12.x && pyenv local 3.12.x"
   exit 1
 fi
 
 echo -e "${CYAN}installing dependencies${RESET}"
-pip install --quiet -r backend/requirements.txt
+pip install --quiet -e .
 
 [ ! -f .env ] && cp .env.example .env && echo -e "${CYAN}created${RESET} .env"
 
-echo -e "\n${GREEN}done!${RESET} run ${BOLD}start.sh${RESET}\n"
+echo -e "\n${GREEN}done!${RESET} run ${BOLD}bash start.sh${RESET}\n"

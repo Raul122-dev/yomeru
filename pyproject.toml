@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "yomeru"
 version = "0.1.0"
 description = "Manga/manhwa context builder"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -19,10 +19,15 @@ dependencies = [
 ]
 
 [project.scripts]
-yomeru = "yomeru.main:main"
+yomeru = "yomeru.__main__:main"
 
 [tool.setuptools.packages.find]
-where = ["backend"]
+where = ["src"]
 
-[tool.setuptools.package-dir]
-"" = "backend"
+[tool.setuptools.package-data]
+yomeru = [
+    "static/**/*",
+    "prompts/**/*",
+    "assets/**/*",
+    "models/**/*",
+]
