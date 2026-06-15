@@ -75,11 +75,16 @@ def get_debug_image(run_id: str, filename: str):
 @router.get("/{run_id}/typeset/render-log/{page_num}")
 def get_render_log(run_id: str, page_num: int):
     """Return the render log for a specific page (matching + rendering details)."""
+    from fastapi.responses import JSONResponse
     run = _get_run(run_id)
     log_path = run.output_dir() / "typeset" / "debug" / f"p{page_num:02d}_render_log.json"
     if not log_path.exists():
-        return {"page_number": page_num, "renders": [], "matched": 0, "unmatched": 0}
-    return json.loads(log_path.read_text())
+        return JSONResponse(
+            {"page_number": page_num, "renders": [], "matched": 0, "unmatched": 0},
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+    data = json.loads(log_path.read_text())
+    return JSONResponse(data, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
 # ── Final typeset pages ────────────────────────────────────────────────────────

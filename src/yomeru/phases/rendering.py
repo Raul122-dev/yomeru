@@ -83,6 +83,14 @@ def run(
         t0 = time.time()
 
         try:
+            # Invalidate cached scanline previews so they regenerate on next view
+            for scan_file in (
+                debug_dir / f"p{page_num:02d}_scanline_preview.jpg",
+                debug_dir / f"p{page_num:02d}_scanline_production.jpg",
+            ):
+                if scan_file.exists():
+                    scan_file.unlink()
+
             # Load inpainted image
             inpainted_path = debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"
             if not inpainted_path.exists():
@@ -100,7 +108,19 @@ def run(
                 continue
 
             log = json.loads(log_path.read_text())
-            matches_data = log.get("s3_matching", {}).get("matches", [])
+
+            # Prefer manually refined matches over auto-generated ones
+            refined_matches_path = debug_dir / f"p{page_num:02d}_matches_refined.json"
+            if refined_matches_path.exists():
+                try:
+                    refined = json.loads(refined_matches_path.read_text())
+                    matches_data = _build_matches_from_refined(
+                        refined, log.get("s3_matching", {})
+                    )
+                except (json.JSONDecodeError, KeyError):
+                    matches_data = log.get("s3_matching", {}).get("matches", [])
+            else:
+                matches_data = log.get("s3_matching", {}).get("matches", [])
             dialogues = analysis.get("dialogues", [])
             source_lang = analysis.get("source_language", source_language)
 
@@ -138,6 +158,12 @@ def run(
 
                 dlg = dialogues[dlg_i] if 0 <= dlg_i < len(dialogues) else {}
 
+                # Check for VLM-suggested skip (titles, credits, decorative text)
+                if dlg.get("skip"):
+                    render_events.append({"dialogue_index": dlg_i, "status": "skip", "skip_reason": dlg.get("skip_reason", "analysis")})
+                    skip_count += 1
+                    continue
+
                 # Filter by bubble type (SFX uses subtitle mode, not skipped)
                 if skip_narration and dlg.get("bubble_type") == "narration":
                     skip_count += 1
@@ -165,6 +191,7 @@ def run(
                     tone=ovr.get("tone") or dlg.get("tone", "neutral"),
                     bubble_type=dlg.get("bubble_type", "speech"),
                     font_style=ovr.get("font_style") or dlg.get("font_style"),
+                    line_break_hint=dlg.get("line_break_hint"),
                     source_language=source_lang,
                     padding=padding, min_font_size=min_font_size,
                     max_font_size=ovr.get("font_size_override") or max_font_size,
@@ -221,12 +248,80 @@ def run(
 
 
 def _load_analyses(run: Run) -> list[dict]:
+    """Load analyses from the active file, merged with user edits (same as matching)."""
     f = run.active_analyses_file()
     if not f.exists():
         return []
-    return json.loads(f.read_text())
+    original = json.loads(f.read_text())
+    from yomeru.core.annotations import AnnotationStore
+    store = AnnotationStore(run.output_dir())
+    return store.merged_analyses(original)
 
 
 def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
     pages = sorted(p for p in folder.iterdir() if p.suffix.lower() in SUPPORTED)
     return [(i, p) for i, p in enumerate(pages, 1)]
+
+
+def _build_matches_from_refined(refined: list[dict], s3_data: dict) -> list[dict]:
+    """
+    Build a matches list from manually refined match overrides.
+
+    The refined file contains user-corrected dialogue→region assignments.
+    We merge them with the original auto-generated matches, preferring manual ones.
+    """
+    # Index original matches by dialogue_index for fallback
+    original_matches = {m["dialogue_index"]: m for m in s3_data.get("matches", [])}
+
+    # Index all detected regions by id for bbox lookup
+    regions_by_id = {}
+    for region in s3_data.get("regions", []):
+        regions_by_id[region.get("id") or region.get("region_id")] = region
+
+    # Also extract regions from original matches
+    for m in s3_data.get("matches", []):
+        rid = m.get("region_id")
+        if rid is not None and rid not in regions_by_id:
+            regions_by_id[rid] = m.get("region", {})
+
+    result = []
+    refined_indices = set()
+
+    for override in refined:
+        dlg_i = override.get("dialogue_index")
+        if dlg_i is None:
+            continue
+        refined_indices.add(dlg_i)
+
+        region_id = override.get("region_id")
+        # Try to find region geometry from detection data or original matches
+        region = None
+        if region_id is not None:
+            region = regions_by_id.get(region_id)
+            if region and "bbox" in region and "x1" not in region:
+                bbox = region["bbox"]
+                region = {"x1": bbox[0], "y1": bbox[1], "x2": bbox[2], "y2": bbox[3],
+                          "label": region.get("label", "text_bubble"), "score": 1.0}
+
+        if not region:
+            # Fall back to original match's region
+            orig = original_matches.get(dlg_i)
+            if orig:
+                region = orig.get("region", {})
+
+        if region and "x1" in region:
+            result.append({
+                "dialogue_index": dlg_i,
+                "region_id": region_id,
+                "match_type": override.get("match_type", "manual"),
+                "region": region,
+                "scores": {"spatial": 1.0, "text": 1.0, "position": 1.0, "total": 1.0},
+                "dialogue_text": override.get("dialogue_text", ""),
+            })
+
+    # Keep original matches that weren't overridden
+    for dlg_i, m in original_matches.items():
+        if dlg_i not in refined_indices:
+            result.append(m)
+
+    return result

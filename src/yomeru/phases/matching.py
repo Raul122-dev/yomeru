@@ -93,13 +93,20 @@ def run(
             # ── Step 1: Direct matching by region_id from VLM ────────────────
             matches: dict[int, MatchResult] = {}
             unresolved: list[int] = []
+            used_region_ids: set[int] = set()
 
             for i, dlg in enumerate(dialogues):
                 if dlg.get("skip"):
                     continue
                 rid = dlg.get("region_id")
                 if rid is not None and int(rid) in page_dets:
-                    det = page_dets[int(rid)]
+                    rid_int = int(rid)
+                    # Prevent duplicate: same region assigned to multiple dialogues
+                    if rid_int in used_region_ids:
+                        unresolved.append(i)
+                        continue
+                    used_region_ids.add(rid_int)
+                    det = page_dets[rid_int]
                     region = _region_from_det(det, img_w, img_h)
                     matches[i] = MatchResult(
                         dialogue_index=i, region=region,
@@ -110,6 +117,9 @@ def run(
                     unresolved.append(i)
 
             # ── Step 2: Validate VLM assignments (Capa 2) ────────────────────
+            print(f"    [matching] after Step 1: {len(matches)} matches, {len(unresolved)} unresolved", file=sys.stderr)
+            if unresolved:
+                print(f"    [matching] unresolved dialogues: {unresolved}", file=sys.stderr)
             validation_issues = _validate_vlm_matches(
                 matches, dialogues, page_dets, img, img_w, img_h,
                 analysis_w, analysis_h, source_lang,
@@ -156,6 +166,52 @@ def run(
                     orig_i = unresolved[local_i]
                     fb_match.dialogue_index = orig_i
                     matches[orig_i] = fb_match
+
+            # ── Step 3b: Reading Order fallback for still-unresolved ──────────
+            #    If Hungarian couldn't assign some dialogues (scores too low),
+            #    use reading order as last resort (industry standard approach).
+            still_unresolved = [
+                i for i in range(len(dialogues))
+                if i not in matches and not dialogues[i].get("skip")
+            ]
+            if still_unresolved:
+                from yomeru.lib.matching.reading_order import _sort_reading_order
+
+                # Use ALL text regions and do a full reading-order match for unresolved
+                all_text_regions = [
+                    _region_from_det(det, img_w, img_h)
+                    for det in page_dets.values()
+                    if det.get("label") in ("text_bubble", "text_free")
+                ]
+
+                if all_text_regions:
+                    rtl = source_lang.lower() in ("japanese", "auto", "chinese (traditional)")
+                    sorted_indices = _sort_reading_order(all_text_regions, right_to_left=rtl)
+
+                    # For each unresolved dialogue, find the next unclaimed region in reading order
+                    claimed_bboxes = {(m.region.x1, m.region.y1, m.region.x2, m.region.y2) for m in matches.values()}
+                    available_in_order = [
+                        idx for idx in sorted_indices
+                        if (all_text_regions[idx].x1, all_text_regions[idx].y1,
+                            all_text_regions[idx].x2, all_text_regions[idx].y2) not in claimed_bboxes
+                    ]
+
+                    from yomeru.lib.matching import MatchResult
+                    n_assign = min(len(still_unresolved), len(available_in_order))
+                    for k in range(n_assign):
+                        dlg_idx = still_unresolved[k]
+                        region = all_text_regions[available_in_order[k]]
+                        matches[dlg_idx] = MatchResult(
+                            dialogue_index=dlg_idx,
+                            region=region,
+                            spatial_score=0.0,
+                            text_score=0.0,
+                            position_score=1.0,
+                            total_score=0.5,
+                            ocr_text="",
+                        )
+                    if n_assign > 0:
+                        print(f"    [reading-order fallback] assigned {n_assign} unresolved", file=sys.stderr)
 
             # ── Step 4: Identify orphaned regions ────────────────────────────
             claimed_ids = {
@@ -394,8 +450,18 @@ def _validate_vlm_matches(
         region = match.region
         overlap = region.overlap_score(hint)
         if overlap < 0.01:
-            # bbox is completely outside the assigned region — possible wrong assignment
-            # Check if there's a better region candidate
+            # bbox hint is completely outside the assigned region.
+            # Only reassign if the VLM didn't explicitly provide a region_id
+            # (bbox hints are imprecise — trust region_id over bbox when both exist)
+            vlm_rid = dlg.get("region_id")
+            if vlm_rid is not None and int(vlm_rid) in page_dets:
+                # VLM explicitly assigned this region — trust it over bbox hint
+                result["warnings"].append(
+                    f"D{dlg_idx}: bbox mismatch (overlap={overlap:.2f}) but keeping VLM assignment R{vlm_rid}"
+                )
+                continue
+
+            # No explicit region_id — try to find a better match
             best_overlap = 0.0
             best_rid = None
             for det_id, det in page_dets.items():
@@ -408,7 +474,7 @@ def _validate_vlm_matches(
                 if ov > best_overlap:
                     best_overlap = ov
                     best_rid = det_id
-            if best_rid is not None and best_overlap > 0.2:
+            if best_rid is not None and best_overlap > 0.5:
                 result["reassignments"][dlg_idx] = best_rid
                 result["warnings"].append(
                     f"D{dlg_idx}: bbox suggests R{best_rid} (overlap={best_overlap:.2f}) not R{dialogues[dlg_idx].get('region_id')}"
@@ -572,7 +638,7 @@ def _save_match_log(matches, dialogues, page_dets, orphaned, debug_dir, page_num
     direct = sum(1 for m in matches.values() if m.total_score == 1.0)
     unmatched = [
         {"dialogue_index": i, "text": dialogues[i].get("text", "")[:60]}
-        for i in range(len(dialogues)) if i not in matches
+        for i in range(len(dialogues)) if i not in matches and not dialogues[i].get("skip")
     ]
 
     log = {
@@ -605,6 +671,9 @@ def _save_match_log(matches, dialogues, page_dets, orphaned, debug_dir, page_num
     }
 
     log_path = debug_dir / f"p{page_num:02d}_render_log.json"
+
+    # When re-running matching, CLEAR later phase data to force re-execution
+    # (the old inpainting/rendering data is now stale with new matches)
     log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False))
 
 

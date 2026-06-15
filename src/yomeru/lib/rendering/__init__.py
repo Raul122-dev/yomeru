@@ -37,6 +37,7 @@ class BaseRenderer(Protocol):
         tone: str,
         bubble_type: str,
         font_style: str | None,
+        line_break_hint: str | None,
         source_language: str,
         padding: int,
         min_font_size: int,

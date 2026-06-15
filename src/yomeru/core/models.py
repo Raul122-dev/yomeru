@@ -89,6 +89,11 @@ class Dialogue(BaseModel):
     font_style: str | None = None
     # line_break_hint: VLM-suggested line breaks for translated text
     line_break_hint: str | None = None
+    # skip: VLM or user decision to exclude this dialogue from typesetting.
+    # When true, matching/inpainting/rendering will ignore this region.
+    # The data is preserved for manual override if needed later.
+    skip: bool = False
+    skip_reason: str | None = None
     # bbox: legacy fallback (0.0–1.0 fractions of model-space image).
     # Still parsed if the VLM returns it, used as hint when region_id is absent.
     bbox: list[float] | None = None

@@ -61,7 +61,9 @@ def build_matcher(backend: str = "hungarian") -> Any:
     """
     Return a cached matcher instance.
 
-    backend: "hungarian" (only option currently)
+    backend: "hungarian" | "reading_order"
+      - "hungarian": Score-based optimal assignment (spatial + OCR + position)
+      - "reading_order": Sort-based positional matching (industry standard)
     """
     if backend in _cache:
         return _cache[backend]
@@ -69,6 +71,9 @@ def build_matcher(backend: str = "hungarian") -> Any:
     if backend == "hungarian":
         from .hungarian import HungarianMatcher
         inst: Any = HungarianMatcher()
+    elif backend == "reading_order":
+        from .reading_order import ReadingOrderMatcher
+        inst = ReadingOrderMatcher()
     else:
         raise ValueError(f"unknown matcher backend: {backend!r}")
 

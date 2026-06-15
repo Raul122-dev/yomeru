@@ -107,6 +107,8 @@ Stable identification rules:
       "text_position": <"top-left" | "top-center" | "top-right" | "center-left" | "center" | "center-right" | "bottom-left" | "bottom-center" | "bottom-right">,
       "region_id": <int | null — if numbered regions are shown, set this to the region number containing this bubble; otherwise null>,
       "font_style": <"bold" | "regular" | "thought" | "narration" — visual weight: bold for action/SFX/shouting, regular for normal speech, thought for internal monologue, narration for caption boxes>,
+      "skip": <boolean — true if this text should NOT be typeset automatically; see skip rules below>,
+      "skip_reason": <string | null — reason for skipping; null if skip is false>,
       "bbox": [x1, y1, x2, y2]
     }
   ],
@@ -158,6 +160,71 @@ If you cannot determine the bubble's location, set bbox to null.
 
 Splash pages or action pages with no dialogue: dialogues = []
 Still describe characters_seen, scene, and page_summary.
+
+### Skip rules — auto-disable regions from typesetting
+
+Set `"skip": true` (and provide a `skip_reason`) for text that **cannot or should not** be automatically typeset. The text will still be extracted and translated (useful for manual editing later), but downstream phases will ignore it for automated rendering.
+
+**The core principle:** Skip when (a) replacing the text would damage artwork, (b) the text is metadata/branding not part of the story, or (c) the text is already in the target language. If the text is story-relevant AND sits in a replaceable region, do NOT skip.
+
+**⚠️ IMPORTANT — Cover pages and title pages:**
+Cover pages, title pages, and chapter splash pages typically contain MANY regions that should be skipped: series titles, chapter titles in decorative fonts, author credits, magazine branding. On these pages, only actual dialogue bubbles or clearly story-relevant narration boxes should be typeset. Most `text_free` regions on cover/title pages are metadata.
+
+---
+
+**Mark `skip: true` for:**
+
+| Category | When to skip | `skip_reason` |
+|----------|-------------|---------------|
+| **Stylized/artistic titles** | Title text rendered with custom brush strokes, calligraphy, 3D effects, gradients, or artistic integration with illustration. The key indicator: the text IS part of the artwork/design, not placed ON it. Includes large kanji/kana titles in decorative brush fonts. | `"decorative_title"` |
+| **Logo-style text** | Series logos, brand names, franchise names (e.g., "Bocchi the Rock!", "ONE PIECE") with specific typography/design that is part of the brand identity. Even if the text is readable, it's a logo — not prose. | `"logo"` |
+| **Credits / author attribution** | Author/artist/adapter credit lines: "Original Work: X", "Manga: Y", "原作：X", "作：Y", "画：Z", "Story by:", "Art by:". These are ALWAYS skip regardless of background complexity — they are metadata, not story content. | `"credits"` |
+| **Text already in the target language** | If a title/label is already written in a language the reader can understand (e.g., English text when target is Spanish/English), replacing it may degrade quality. Skip to preserve the original. | `"already_readable"` |
+| **Publisher/magazine metadata** | Magazine names, imprint logos, publishing house text, ISSN, volume numbers, "SIDE STORY" subtitles that are branding. | `"publisher"` |
+| **Copyright notices** | ©, legal text, year of publication, all-rights-reserved lines. | `"copyright"` |
+| **Page numbers** | If detected as a region. | `"page_number"` |
+| **Watermarks/stamps** | Scan group watermarks, "sample" stamps. | `"watermark"` |
+| **Text deeply integrated with art** | Text where letters interweave with drawn elements (hair, objects, effects), making clean inpainting impossible without destroying artwork. | `"integrated_art"` |
+| **Duplicate/redundant title text** | When the same title appears in multiple languages/scripts in the same area (e.g., Japanese title + English title side by side), skip ALL of them — they are decorative branding, not translatable content. | `"decorative_title"` |
+
+**Visual recognition patterns for skip (use these to identify candidates):**
+- Text in the **bottom third** of a cover/splash page that contains names + roles ("作", "画", "Original", "Manga:")
+- Text rendered in a **larger size than dialogue** with artistic/brush font styling
+- Multiple text regions **clustered together** that together form a title/credits block
+- `text_free` regions on pages where the majority of the area is **illustration** (not panels)
+- Text that appears to be a **proper noun / title case** name of the work itself
+
+---
+
+**Do NOT skip (keep `skip: false`) — these CAN and SHOULD be typeset:**
+
+| Category | Why it should be typeset |
+|----------|------------------------|
+| **Normal dialogue** | Speech bubbles, thought bubbles, internal monologue — always typeset. |
+| **Narration/caption boxes** | Story-advancing text in rectangular boxes — always typeset. |
+| **Sound effects (SFX)** | These use subtitle mode — always include (the pipeline handles them specially). |
+| **Chapter titles in plain text** | If the chapter title is rendered in a standard/regular font (not artistic), in a clear area or simple box, it CAN be replaced. E.g., "第3話 新しい朝" in a normal font on panel border. |
+| **Signs, labels, notes** | Shop signs, written notes, letters, phone screens — story context that can be replaced. |
+| **Onomatopoeia in clear space** | Sound words in open areas that can be subtitled. |
+| **Handwritten text in bubbles** | If inside a bubble or clear region, typeset it. |
+| **Text on solid overlays/ribbons** | Text placed on solid-color backgrounds — always typeset. |
+
+---
+
+**Decision flowchart (apply IN ORDER — stop at first match):**
+
+1. Is the text inside a speech/thought/narration **bubble with a visible border**? → **Do NOT skip** (always typeset)
+2. Does the text match a credits pattern (names + roles like "作：", "Art by:", "Original Work:")? → **Skip** (`credits`)
+3. Is the text a known series/franchise name or logo? → **Skip** (`logo`)
+4. Is the text already in a language the reader understands? → **Skip** (`already_readable`)
+5. Is the text rendered with artistic/decorative typography (brush, calligraphy, 3D, gradients)? → **Skip** (`decorative_title`)
+6. Is the text rendered in plain/standard typography on a clear or solid background? → **Do NOT skip**
+7. Is the text on a complex illustrated background where inpainting would destroy art? → **Skip** (`integrated_art`)
+8. When in doubt about whether something is decorative: if it's a `text_free` region on a cover/title page and doesn't advance the plot, **Skip**.
+
+---
+
+**`skip_reason` valid values:** `"decorative_title"`, `"logo"`, `"credits_on_art"`, `"publisher"`, `"copyright"`, `"page_number"`, `"watermark"`, `"integrated_art"`
 
 ### Handling uncertainty
 

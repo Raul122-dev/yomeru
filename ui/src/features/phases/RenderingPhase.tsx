@@ -54,7 +54,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
   const qc = useQueryClient();
   const { progress, start, listen } = usePhaseRunner(runId);
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
-  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [refreshNonce, setRefreshNonce] = useState(() => Date.now());
 
   const { data: run } = useQuery({
     queryKey: ["run", runId],
@@ -96,7 +96,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
     qc.invalidateQueries({ queryKey: ["run", runId] });
     qc.invalidateQueries({ queryKey: ["rendering-logs", runId] });
     qc.invalidateQueries({ queryKey: ["typeset-status", runId] });
-    setRefreshNonce((value) => value + 1);
+    setRefreshNonce(Date.now());
   }, [progress, qc, runId]);
 
   useEffect(() => {
@@ -244,7 +244,8 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                       scanline debug (contour detection)
                     </p>
                     <ImageViewer
-                      src={`/api/phases/${runId}/rendering/scanline-preview/${selectedEntry.page}?v=${refreshNonce}`}
+                      key={`scan-debug-${selectedEntry.page}`}
+                      src={`/api/phases/${runId}/rendering/scanline-preview/${selectedEntry.page}?v=${refreshNonce}&p=${selectedEntry.page}`}
                       alt={`scanline debug p${selectedEntry.page}`}
                       label={`debug · p${selectedEntry.page}`}
                     />
@@ -257,7 +258,8 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                       scanline production
                     </p>
                     <ImageViewer
-                      src={`/api/phases/${runId}/rendering/scanline-production/${selectedEntry.page}?v=${refreshNonce}`}
+                      key={`scan-prod-${selectedEntry.page}`}
+                      src={`/api/phases/${runId}/rendering/scanline-production/${selectedEntry.page}?v=${refreshNonce}&p=${selectedEntry.page}`}
                       alt={`scanline production p${selectedEntry.page}`}
                       label={`production · p${selectedEntry.page}`}
                     />
@@ -274,7 +276,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                   onReRendered={() => {
                     qc.invalidateQueries({ queryKey: ["rendering-logs", runId] });
                     qc.invalidateQueries({ queryKey: ["typeset-status", runId] });
-                    setRefreshNonce((value) => value + 1);
+                    setRefreshNonce(Date.now());
                   }}
                 />
               </Card>

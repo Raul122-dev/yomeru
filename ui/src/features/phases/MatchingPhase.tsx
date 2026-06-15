@@ -103,6 +103,7 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
     queryFn: () => loadStageLogs(runId, pages),
     enabled: isComplete,
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   useEffect(() => {

@@ -208,7 +208,7 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
         ocr_weight=0.4,
         spatial_weight=0.4,
         position_weight=0.2,
-        min_score=0.05,
+        min_score=0.0,  # Show all results, even poor matches
     )
 
     # Build response with full scoring details
@@ -248,7 +248,7 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
 
     # Generate debug image
     from PIL import ImageDraw, ImageFont
-    debug_img = img.copy()
+    debug_img = img.copy().convert("RGBA")
     draw = ImageDraw.Draw(debug_img, "RGBA")
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
@@ -354,15 +354,39 @@ def get_mask_debug(run_id: str, page_num: int):
 
 
 @router.get("/{run_id}/rendering/scanline-preview/{page_num}")
-def get_scanline_preview(run_id: str, page_num: int):
+def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
     """
     Generate a preview of rendering using the scanline approach.
     Renders text using bubble contour detection + scanline layout.
-    Returns the image for comparison with the stable renderer.
+    Returns the debug image (with green contours).
+    Cached: only regenerates if force=1, files don't exist, or inputs are newer.
     """
     import json
     from PIL import Image, ImageDraw
     from fastapi.responses import FileResponse
+
+    _NO_CACHE_HEADERS = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
+    
+    run = _get_run(run_id)
+    debug_dir = run.output_dir() / "typeset" / "debug"
+    out_path = debug_dir / f"p{page_num:02d}_scanline_preview.jpg"
+    prod_path = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
+
+    # Invalidate cache if inputs are newer than cached output
+    if not force and out_path.exists() and prod_path.exists():
+        cache_mtime = out_path.stat().st_mtime
+        # Check if any input file is newer than the cached output
+        inpainted_path = debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"
+        log_path = debug_dir / f"p{page_num:02d}_render_log.json"
+        refined_matches_path = debug_dir / f"p{page_num:02d}_matches_refined.json"
+        overrides_path = debug_dir / f"p{page_num:02d}_render_overrides.json"
+        analyses_file = run.active_analyses_file()
+
+        input_files = [inpainted_path, log_path, refined_matches_path, overrides_path, analyses_file]
+        stale = any(f.exists() and f.stat().st_mtime > cache_mtime for f in input_files)
+        if not stale:
+            return FileResponse(out_path, headers=_NO_CACHE_HEADERS)
+
     from yomeru.core.typesetting.stages.rendering.pil import (
         _get_font, _tone_to_style, _draw_text_with_outline,
     )
@@ -376,8 +400,6 @@ def get_scanline_preview(run_id: str, page_num: int):
         extract_bubble_contour, scanline_layout,
     )
 
-    run = _get_run(run_id)
-    debug_dir = run.output_dir() / "typeset" / "debug"
     output = run.output_dir()
 
     # Load inpainted image (for rendering text onto)
@@ -399,25 +421,62 @@ def get_scanline_preview(run_id: str, page_num: int):
     if not log_path.exists():
         raise HTTPException(404, "No render log for this page")
     log = json.loads(log_path.read_text())
-    matches = log.get("s3_matching", {}).get("matches", [])
 
-    # Load analyses for dialogue text
+    # Prefer refined matches if available
+    refined_matches_path = debug_dir / f"p{page_num:02d}_matches_refined.json"
+    if refined_matches_path.exists():
+        try:
+            from yomeru.phases.rendering import _build_matches_from_refined
+            refined = json.loads(refined_matches_path.read_text())
+            matches = _build_matches_from_refined(refined, log.get("s3_matching", {}))
+        except (json.JSONDecodeError, KeyError):
+            matches = log.get("s3_matching", {}).get("matches", [])
+    else:
+        matches = log.get("s3_matching", {}).get("matches", [])
+
+    # Load analyses for dialogue text (merged with user edits)
     analyses_file = run.active_analyses_file()
-    analyses = json.loads(analyses_file.read_text()) if analyses_file.exists() else []
+    if analyses_file.exists():
+        from yomeru.core.annotations import AnnotationStore
+        original_analyses = json.loads(analyses_file.read_text())
+        store = AnnotationStore(run.output_dir())
+        analyses = store.merged_analyses(original_analyses)
+    else:
+        analyses = []
     page_analysis = next((a for a in analyses if a.get("page_number") == page_num), {})
     dialogues = page_analysis.get("dialogues", [])
 
-    # Load detections for bubble bboxes
-    dets_file = output / "page_detections.json"
+    # Load render overrides if they exist
+    overrides_path = debug_dir / f"p{page_num:02d}_render_overrides.json"
+    overrides: dict[int, dict] = {}
+    if overrides_path.exists():
+        try:
+            raw_overrides = json.loads(overrides_path.read_text())
+            if isinstance(raw_overrides, list):
+                overrides = {
+                    o["dialogue_index"]: o
+                    for o in raw_overrides
+                    if isinstance(o, dict) and "dialogue_index" in o
+                }
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # Load detections for bubble bboxes (use active/refined)
+    dets_file = run.active_detections_file()
     detections = json.loads(dets_file.read_text()) if dets_file.exists() else []
     page_det = next((d for d in detections if d.get("page_number") == page_num), {})
     bubble_regions = [
         (r["x1"], r["y1"], r["x2"], r["y2"])
-        for r in page_det.get("regions", []) if r.get("label") == "bubble"
+        for r in page_det.get("regions", []) if r.get("label") in ("bubble", "text_bubble")
     ]
 
     source_lang = page_analysis.get("source_language", "auto")
     lang_code = LANG_MAP.get(source_lang, "en_US")
+
+    # Pre-compute contours for all bubbles (expensive, cache once)
+    bubble_contours: dict[tuple[int, int, int, int], object] = {}
+    for bb in bubble_regions:
+        bubble_contours[bb] = extract_bubble_contour(original_img, bb)
 
     result_img = img.copy()
     draw = ImageDraw.Draw(result_img)
@@ -431,6 +490,10 @@ def get_scanline_preview(run_id: str, page_num: int):
         seen_bboxes[bbox_key] = idx  # last one wins
     valid_match_indices = set(seen_bboxes.values())
 
+    # ── Pass 1: Compute all layouts ──────────────────────────────────────────
+    # Store: list of (positioned_lines, font, size, is_free, text_color, outline_color, bubble_bbox)
+    all_layouts: list[tuple] = []
+
     for match_idx, m in enumerate(matches):
         if match_idx not in valid_match_indices:
             continue
@@ -440,7 +503,13 @@ def get_scanline_preview(run_id: str, page_num: int):
             continue
 
         dlg = dialogues[dlg_i]
-        text = dlg.get("text_translated") or dlg.get("text", "")
+        ovr = overrides.get(dlg_i, {})
+
+        # Check for skip (override or VLM-suggested)
+        if ovr.get("skip") or dlg.get("skip"):
+            continue
+
+        text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
         if not text.strip():
             continue
 
@@ -463,9 +532,10 @@ def get_scanline_preview(run_id: str, page_num: int):
             continue
 
         # Determine style and font
-        tone = dlg.get("tone", "neutral")
+        tone = ovr.get("tone") or dlg.get("tone", "neutral")
         bubble_type = dlg.get("bubble_type", "speech")
-        style = _tone_to_style(tone, bubble_type)
+        font_style_ovr = ovr.get("font_style") or dlg.get("font_style")
+        style = font_style_ovr if font_style_ovr else _tone_to_style(tone, bubble_type)
 
         # Color detection on inpainted image
         bg_color = detect_background_color(img, text_bbox)
@@ -479,26 +549,25 @@ def get_scanline_preview(run_id: str, page_num: int):
         bubble_h = bubble_bbox[3] - bubble_bbox[1]
         scan_padding = max(5, min(12, int(min(bubble_w, bubble_h) * 0.06)))
 
-        # Max font size proportional to bubble height (bigger bubbles → bigger text)
+        # Max font size proportional to bubble height
         max_size = max(30, min(60, bubble_h // 6))
 
         # Try scanline layout — find best size that fills the bubble well
         best_layout = None
 
-        for try_size in range(max_size, 9, -1):
+        for try_size in range(max_size, 9, -3):
             font = _get_font(style, try_size)
             lh = measure_line_height(font, try_size)
 
-            # Try different width factors to find best vertical fill
             for wf in (0.90, 0.70, 0.55, 0.45):
                 positioned = scanline_layout(
                     original_img, bubble_bbox, clean_text, font, try_size,
                     lang_code, padding=scan_padding, width_factor=wf,
+                    precomputed_contour=bubble_contours.get(bubble_bbox),
                 )
                 if not positioned:
                     continue
 
-                # Check vertical fill
                 text_h = len(positioned) * lh
                 v_fill = text_h / max(1, bubble_h - scan_padding * 2)
                 if v_fill > 0.95:
@@ -527,7 +596,6 @@ def get_scanline_preview(run_id: str, page_num: int):
                 max_lines = max(1, bh // lh)
                 lines = wrap_text(clean_text, bw, max_lines, font, lang_code)
                 if lines:
-                    # Create PositionedLines centered in bbox
                     from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine
                     total_h = len(lines) * lh
                     start_y = bubble_bbox[1] + pad + (bh - total_h) // 2
@@ -539,18 +607,200 @@ def get_scanline_preview(run_id: str, page_num: int):
                     best_layout = (try_size, font, positioned_lines)
                     break
 
-        # Render the text
         if best_layout:
-            size, font, positioned = best_layout
-            outline_w = max(1, size // 12) if is_free else 0
-            for pl in positioned:
-                if is_free and outline_color:
-                    _draw_text_with_outline(draw, (pl.x, pl.y), pl.text, font, text_color, outline_color, outline_w)
+            all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox))
+
+    # ── Pass 2: Resolve line-level collisions between regions ────────────────
+    # For each layout, compute per-line bounding boxes
+    layout_line_rects: list[list[tuple[int, int, int, int]]] = []
+    for (size, font, positioned), *_ in all_layouts:
+        lh = measure_line_height(font, size)
+        rects = []
+        for pl in positioned:
+            lw = measure_width(pl.text, font)
+            rects.append((pl.x, pl.y, pl.x + lw, pl.y + lh))
+        layout_line_rects.append(rects)
+
+    # Check each pair of layouts for line-level collisions and nudge
+    # Minimum readability gap between texts of different regions (in pixels).
+    # Texts closer than this will be pushed apart even without actual overlap.
+    # Scaled by average font size for consistency across resolutions.
+    avg_font_size = sum(layout[0][0] for layout in all_layouts) / max(1, len(all_layouts)) if all_layouts else 20
+    MIN_GAP = max(8, int(avg_font_size * 0.6))
+
+    for i in range(len(all_layouts)):
+        for j in range(i + 1, len(all_layouts)):
+            rects_i = layout_line_rects[i]
+            rects_j = layout_line_rects[j]
+            if not rects_i or not rects_j:
+                continue
+
+            # Quick check: do the overall bounds (expanded by MIN_GAP) overlap?
+            bounds_i = (min(r[0] for r in rects_i) - MIN_GAP, min(r[1] for r in rects_i) - MIN_GAP,
+                        max(r[2] for r in rects_i) + MIN_GAP, max(r[3] for r in rects_i) + MIN_GAP)
+            bounds_j = (min(r[0] for r in rects_j) - MIN_GAP, min(r[1] for r in rects_j) - MIN_GAP,
+                        max(r[2] for r in rects_j) + MIN_GAP, max(r[3] for r in rects_j) + MIN_GAP)
+
+            if bounds_i[2] <= bounds_j[0] or bounds_j[2] <= bounds_i[0]:
+                continue
+            if bounds_i[3] <= bounds_j[1] or bounds_j[3] <= bounds_i[1]:
+                continue
+
+            # Find lines that collide OR are too close (within MIN_GAP)
+            for li_idx, ri in enumerate(rects_i):
+                for lj_idx, rj in enumerate(rects_j):
+                    # Expand rects by MIN_GAP for proximity detection
+                    # Check if they're within MIN_GAP of each other
+                    gap_x = max(0, max(ri[0], rj[0]) - min(ri[2], rj[2]))  # horizontal gap
+                    gap_y = max(0, max(ri[1], rj[1]) - min(ri[3], rj[3]))  # vertical gap
+
+                    # Lines must be vertically adjacent (y ranges overlap or nearly overlap)
+                    if gap_y > MIN_GAP:
+                        continue
+                    # Lines must be horizontally close
+                    if gap_x > MIN_GAP:
+                        continue
+
+                    # Compute how much they overlap or how close they are
+                    overlap_x = min(ri[2], rj[2]) - max(ri[0], rj[0])  # negative = gap
+                    overlap_y = min(ri[3], rj[3]) - max(ri[1], rj[1])  # negative = gap
+
+                    # Needed separation: if overlapping, need to push by overlap + gap
+                    # If just too close, need to push by (MIN_GAP - current_gap)
+                    needed_x = (overlap_x + MIN_GAP) if overlap_x > 0 else (MIN_GAP - gap_x)
+                    needed_y = (overlap_y + MIN_GAP) if overlap_y > 0 else (MIN_GAP - gap_y)
+
+                    if needed_x <= 0 and needed_y <= 0:
+                        continue
+
+                    (_, _, pos_i), *_ = all_layouts[i]
+                    (_, _, pos_j), *_ = all_layouts[j]
+                    bbox_i = all_layouts[i][4]  # bubble_bbox
+                    bbox_j = all_layouts[j][4]
+
+                    # Compute margins in all directions for both layouts
+                    margin_top_i = rects_i[0][1] - bbox_i[1] if rects_i else 0
+                    margin_bot_i = bbox_i[3] - rects_i[-1][3] if rects_i else 0
+                    margin_left_i = min(r[0] for r in rects_i) - bbox_i[0] if rects_i else 0
+                    margin_right_i = bbox_i[2] - max(r[2] for r in rects_i) if rects_i else 0
+
+                    margin_top_j = rects_j[0][1] - bbox_j[1] if rects_j else 0
+                    margin_bot_j = bbox_j[3] - rects_j[-1][3] if rects_j else 0
+                    margin_left_j = min(r[0] for r in rects_j) - bbox_j[0] if rects_j else 0
+                    margin_right_j = bbox_j[2] - max(r[2] for r in rects_j) if rects_j else 0
+
+                    # Decide: horizontal or vertical nudge based on which requires less movement
+                    if needed_x <= needed_y:
+                        # Horizontal nudge is smaller — shift left/right
+                        nudge_amount = needed_x
+
+                        # Determine relative positions
+                        center_x_i = (ri[0] + ri[2]) // 2
+                        center_x_j = (rj[0] + rj[2]) // 2
+
+                        # Decide who moves: check if nudge fits within the bubble.
+                        # The region that can absorb the shift WITHOUT exiting its bubble wins.
+                        if center_x_i < center_x_j:
+                            # i is left, j is right
+                            # Option A: push i left (needs margin_left_i >= nudge)
+                            # Option B: push j right (needs margin_right_j >= nudge)
+                            can_i_left = margin_left_i >= nudge_amount
+                            can_j_right = margin_right_j >= nudge_amount
+
+                            if can_i_left and (not can_j_right or margin_left_i >= margin_right_j):
+                                shift = -nudge_amount
+                                pos_i[li_idx] = type(pos_i[li_idx])(
+                                    text=pos_i[li_idx].text, x=pos_i[li_idx].x + shift,
+                                    y=pos_i[li_idx].y, width=pos_i[li_idx].width)
+                            elif can_j_right:
+                                shift = nudge_amount
+                                pos_j[lj_idx] = type(pos_j[lj_idx])(
+                                    text=pos_j[lj_idx].text, x=pos_j[lj_idx].x + shift,
+                                    y=pos_j[lj_idx].y, width=pos_j[lj_idx].width)
+                            else:
+                                # Neither fully fits — split: move each by half
+                                half = nudge_amount // 2 + 1
+                                pos_i[li_idx] = type(pos_i[li_idx])(
+                                    text=pos_i[li_idx].text, x=pos_i[li_idx].x - half,
+                                    y=pos_i[li_idx].y, width=pos_i[li_idx].width)
+                                pos_j[lj_idx] = type(pos_j[lj_idx])(
+                                    text=pos_j[lj_idx].text, x=pos_j[lj_idx].x + half,
+                                    y=pos_j[lj_idx].y, width=pos_j[lj_idx].width)
+                        else:
+                            # j is left, i is right
+                            can_j_left = margin_left_j >= nudge_amount
+                            can_i_right = margin_right_i >= nudge_amount
+
+                            if can_j_left and (not can_i_right or margin_left_j >= margin_right_i):
+                                shift = -nudge_amount
+                                pos_j[lj_idx] = type(pos_j[lj_idx])(
+                                    text=pos_j[lj_idx].text, x=pos_j[lj_idx].x + shift,
+                                    y=pos_j[lj_idx].y, width=pos_j[lj_idx].width)
+                            elif can_i_right:
+                                shift = nudge_amount
+                                pos_i[li_idx] = type(pos_i[li_idx])(
+                                    text=pos_i[li_idx].text, x=pos_i[li_idx].x + shift,
+                                    y=pos_i[li_idx].y, width=pos_i[li_idx].width)
+                            else:
+                                half = nudge_amount // 2 + 1
+                                pos_j[lj_idx] = type(pos_j[lj_idx])(
+                                    text=pos_j[lj_idx].text, x=pos_j[lj_idx].x - half,
+                                    y=pos_j[lj_idx].y, width=pos_j[lj_idx].width)
+                                pos_i[li_idx] = type(pos_i[li_idx])(
+                                    text=pos_i[li_idx].text, x=pos_i[li_idx].x + half,
+                                    y=pos_i[li_idx].y, width=pos_i[li_idx].width)
+                    else:
+                        # Vertical nudge is smaller — shift up/down
+                        nudge_amount = needed_y // 2 + 2
+
+                        center_y_i = (ri[1] + ri[3]) // 2
+                        center_y_j = (rj[1] + rj[3]) // 2
+
+                        total_margin_v_i = margin_top_i + margin_bot_i
+                        total_margin_v_j = margin_top_j + margin_bot_j
+
+                        if total_margin_v_i >= total_margin_v_j:
+                            # Shift layout i's lines near the collision
+                            shift = -nudge_amount if center_y_i < center_y_j else nudge_amount
+                            if shift < 0:
+                                for k in range(li_idx + 1):
+                                    pos_i[k] = type(pos_i[k])(text=pos_i[k].text, x=pos_i[k].x, y=pos_i[k].y + shift, width=pos_i[k].width)
+                            else:
+                                for k in range(li_idx, len(pos_i)):
+                                    pos_i[k] = type(pos_i[k])(text=pos_i[k].text, x=pos_i[k].x, y=pos_i[k].y + shift, width=pos_i[k].width)
+                        else:
+                            shift = -nudge_amount if center_y_j < center_y_i else nudge_amount
+                            if shift < 0:
+                                for k in range(lj_idx + 1):
+                                    pos_j[k] = type(pos_j[k])(text=pos_j[k].text, x=pos_j[k].x, y=pos_j[k].y + shift, width=pos_j[k].width)
+                            else:
+                                for k in range(lj_idx, len(pos_j)):
+                                    pos_j[k] = type(pos_j[k])(text=pos_j[k].text, x=pos_j[k].x, y=pos_j[k].y + shift, width=pos_j[k].width)
+
+                    # Update rects after nudge
+                    (size_i, font_i, _), *_ = all_layouts[i]
+                    lh_i = measure_line_height(font_i, size_i)
+                    layout_line_rects[i] = [(p.x, p.y, p.x + measure_width(p.text, font_i), p.y + lh_i) for p in pos_i]
+
+                    (size_j, font_j, _), *_ = all_layouts[j]
+                    lh_j = measure_line_height(font_j, size_j)
+                    layout_line_rects[j] = [(p.x, p.y, p.x + measure_width(p.text, font_j), p.y + lh_j) for p in pos_j]
+                    break  # Re-check after nudge
                 else:
-                    draw.text((pl.x, pl.y), pl.text, font=font, fill=text_color)
+                    continue
+                break  # Move to next pair after resolving
+
+    # ── Pass 3: Render all layouts ───────────────────────────────────────────
+    for layout_idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox) in enumerate(all_layouts):
+        outline_w = max(1, size // 12) if is_free else 0
+        for pl in positioned:
+            if is_free and outline_color:
+                _draw_text_with_outline(draw, (pl.x, pl.y), pl.text, font, text_color, outline_color, outline_w)
+            else:
+                draw.text((pl.x, pl.y), pl.text, font=font, fill=text_color)
 
         # Draw contour outline for debug (thin green)
-        contour = extract_bubble_contour(original_img, bubble_bbox)
+        contour = bubble_contours.get(bubble_bbox)
         if contour is not None:
             pts = contour.reshape(-1, 2).tolist()
             if len(pts) > 2:
@@ -560,121 +810,53 @@ def get_scanline_preview(run_id: str, page_num: int):
     out_path = debug_dir / f"p{page_num:02d}_scanline_preview.jpg"
     result_img.save(str(out_path), quality=90)
 
-    # Save production version (without contours) — re-render without green lines
+    # Save production version (without contours) — reuse resolved layouts
     prod_img = img.copy()
     prod_draw = ImageDraw.Draw(prod_img)
 
-    # Re-render all text without contours (reuse same layout logic via stored results)
-    rendered_bboxes_prod: dict[tuple[int, int, int, int], int] = {}
-    for idx, m in enumerate(matches):
-        r = m["region"]
-        bk = (r["x1"], r["y1"], r["x2"], r["y2"])
-        rendered_bboxes_prod[bk] = idx
-    valid_prod = set(rendered_bboxes_prod.values())
-
-    for match_idx, m in enumerate(matches):
-        if match_idx not in valid_prod:
-            continue
-        dlg_i = m.get("dialogue_index", -1)
-        if dlg_i < 0 or dlg_i >= len(dialogues):
-            continue
-        dlg = dialogues[dlg_i]
-        txt = dlg.get("text_translated") or dlg.get("text", "")
-        if not txt.strip():
-            continue
-        r = m["region"]
-        tbbox = (r["x1"], r["y1"], r["x2"], r["y2"])
-        lbl = r.get("label", "text_bubble")
-        tcx2 = (tbbox[0] + tbbox[2]) // 2
-        tcy2 = (tbbox[1] + tbbox[3]) // 2
-        bbbox = tbbox
-        for bx1, by1, bx2, by2 in bubble_regions:
-            if bx1 <= tcx2 <= bx2 and by1 <= tcy2 <= by2:
-                bbbox = (bx1, by1, bx2, by2)
-                break
-        clean, _ = extract_embedded_breaks(txt)
-        if not clean.strip():
-            continue
-        sty = _tone_to_style(dlg.get("tone", "neutral"), dlg.get("bubble_type", "speech"))
-        bg_c = detect_background_color(img, tbbox)
-        lm = 0.299 * bg_c[0] + 0.587 * bg_c[1] + 0.114 * bg_c[2]
-        tc = (0, 0, 0) if lm > 128 else (255, 255, 255)
-        is_f = lbl in ("text_free", "sfx")
-        oc = compute_outline_color(bg_c) if is_f else None
-        bw2 = bbbox[2] - bbbox[0]
-        bh2 = bbbox[3] - bbbox[1]
-        sp = max(5, min(12, int(min(bw2, bh2) * 0.06)))
-        ms = max(30, min(60, bh2 // 6))
-        bl = None
-        for ts in range(ms, 9, -1):
-            ft = _get_font(sty, ts)
-            lh2 = measure_line_height(ft, ts)
-            for wf2 in (0.90, 0.70, 0.55, 0.45):
-                ps = scanline_layout(original_img, bbbox, clean, ft, ts, lang_code, padding=sp, width_factor=wf2)
-                if not ps:
-                    continue
-                vf = (len(ps) * lh2) / max(1, bh2 - sp * 2)
-                if vf > 0.95:
-                    continue
-                if 0.4 <= vf <= 0.85:
-                    bl = (ts, ft, ps)
-                    break
-                elif bl is None:
-                    bl = (ts, ft, ps)
-            if bl and 0.4 <= (len(bl[2]) * measure_line_height(bl[1], bl[0])) / max(1, bh2 - sp * 2) <= 0.85:
-                break
-        if bl is None:
-            from yomeru.core.typesetting.stages.rendering.text_layout import wrap_text as wt
-            for ts in range(ms, 9, -1):
-                ft = _get_font(sty, ts)
-                lh2 = measure_line_height(ft, ts)
-                bwi = bw2 - sp * 2
-                bhi = bh2 - sp * 2
-                if bwi < 10 or bhi < 10:
-                    continue
-                mxl = max(1, bhi // lh2)
-                ls = wt(clean, bwi, mxl, ft, lang_code)
-                if ls:
-                    from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine as PL
-                    th = len(ls) * lh2
-                    sy = bbbox[1] + sp + (bhi - th) // 2
-                    pls = []
-                    for li2, ln in enumerate(ls):
-                        lw2 = measure_width(ln, ft)
-                        lx2 = bbbox[0] + sp + (bwi - lw2) // 2
-                        pls.append(PL(text=ln, x=lx2, y=sy + li2 * lh2, width=bwi))
-                    bl = (ts, ft, pls)
-                    break
-        if bl:
-            sz, ft, ps = bl
-            ow = max(1, sz // 12) if is_f else 0
-            for pl in ps:
-                if is_f and oc:
-                    _draw_text_with_outline(prod_draw, (pl.x, pl.y), pl.text, ft, tc, oc, ow)
-                else:
-                    prod_draw.text((pl.x, pl.y), pl.text, font=ft, fill=tc)
+    for (size, font, positioned), is_free, text_color, outline_color, _bbox in all_layouts:
+        outline_w = max(1, size // 12) if is_free else 0
+        for pl in positioned:
+            if is_free and outline_color:
+                _draw_text_with_outline(prod_draw, (pl.x, pl.y), pl.text, font, text_color, outline_color, outline_w)
+            else:
+                prod_draw.text((pl.x, pl.y), pl.text, font=font, fill=text_color)
 
     prod_path = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
     prod_img.save(str(prod_path), quality=90)
 
-    return FileResponse(out_path)
+    return FileResponse(out_path, headers={"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"})
 
 
 @router.get("/{run_id}/rendering/scanline-production/{page_num}")
-def get_scanline_production(run_id: str, page_num: int):
+def get_scanline_production(run_id: str, page_num: int, force: int = 0):
     """Serve the production (no contour lines) scanline render."""
     from fastapi.responses import FileResponse
+
+    _NO_CACHE_HEADERS = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
+
     run = _get_run(run_id)
     debug_dir = run.output_dir() / "typeset" / "debug"
     prod_path = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
-    if not prod_path.exists():
-        # Generate it by calling the preview endpoint first
-        get_scanline_preview(run_id, page_num)
+
+    if not force and prod_path.exists():
+        # Invalidate if inputs are newer
+        cache_mtime = prod_path.stat().st_mtime
+        inpainted_path = debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"
+        log_path = debug_dir / f"p{page_num:02d}_render_log.json"
+        refined_matches_path = debug_dir / f"p{page_num:02d}_matches_refined.json"
+        overrides_path = debug_dir / f"p{page_num:02d}_render_overrides.json"
+        analyses_file = run.active_analyses_file()
+        input_files = [inpainted_path, log_path, refined_matches_path, overrides_path, analyses_file]
+        stale = any(f.exists() and f.stat().st_mtime > cache_mtime for f in input_files)
+        if not stale:
+            return FileResponse(prod_path, headers=_NO_CACHE_HEADERS)
+
+    # Generate both by calling preview
+    get_scanline_preview(run_id, page_num, force=1)
     if not prod_path.exists():
         raise HTTPException(404, "Production render not available")
-    return FileResponse(prod_path)
-    result_img.save(str(out_path), quality=90)
-    return FileResponse(out_path)
+    return FileResponse(prod_path, headers=_NO_CACHE_HEADERS)
 
 
 @router.post("/{run_id}/start-all")

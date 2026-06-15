@@ -101,7 +101,37 @@ def run(
                 bubble_mask = np.zeros((img_h, img_w), dtype=np.uint8)
                 free_mask = np.zeros((img_h, img_w), dtype=np.uint8)
 
-                for m in log.get("s3_matching", {}).get("matches", []):
+                # Prefer refined matches if available
+                refined_matches_path = debug_dir / f"p{page_num:02d}_matches_refined.json"
+                if refined_matches_path.exists():
+                    try:
+                        refined = json.loads(refined_matches_path.read_text())
+                        matches_list = _build_matches_from_refined(
+                            refined, log.get("s3_matching", {})
+                        )
+                    except (json.JSONDecodeError, KeyError):
+                        matches_list = log.get("s3_matching", {}).get("matches", [])
+                else:
+                    matches_list = log.get("s3_matching", {}).get("matches", [])
+
+                # Load analyses to check for skipped dialogues
+                from yomeru.core.annotations import AnnotationStore
+                _analyses_file = run.active_analyses_file()
+                _skipped_indices: set[int] = set()
+                if _analyses_file.exists():
+                    _all_analyses = json.loads(_analyses_file.read_text())
+                    _store = AnnotationStore(run.output_dir())
+                    _merged = _store.merged_analyses(_all_analyses)
+                    _page_analysis = next((a for a in _merged if a.get("page_number") == page_num), {})
+                    _page_dlgs = _page_analysis.get("dialogues", [])
+                    _skipped_indices = {i for i, d in enumerate(_page_dlgs) if d.get("skip")}
+
+                for m in matches_list:
+                    # Skip inpainting for dialogues marked as skip
+                    dlg_idx = m.get("dialogue_index", -1)
+                    if dlg_idx in _skipped_indices:
+                        continue
+
                     r = m["region"]
                     bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
                     label = r.get("label", "text_bubble")
@@ -174,6 +204,58 @@ def run(
 def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
     pages = sorted(p for p in folder.iterdir() if p.suffix.lower() in SUPPORTED)
     return [(i, p) for i, p in enumerate(pages, 1)]
+
+
+def _build_matches_from_refined(refined: list[dict], s3_data: dict) -> list[dict]:
+    """
+    Build matches list from manually refined overrides, merged with originals.
+    """
+    original_matches = {m["dialogue_index"]: m for m in s3_data.get("matches", [])}
+    regions_by_id = {}
+    for region in s3_data.get("regions", []):
+        regions_by_id[region.get("id") or region.get("region_id")] = region
+    for m in s3_data.get("matches", []):
+        rid = m.get("region_id")
+        if rid is not None and rid not in regions_by_id:
+            regions_by_id[rid] = m.get("region", {})
+
+    result = []
+    refined_indices = set()
+
+    for override in refined:
+        dlg_i = override.get("dialogue_index")
+        if dlg_i is None:
+            continue
+        refined_indices.add(dlg_i)
+
+        region_id = override.get("region_id")
+        region = None
+        if region_id is not None:
+            region = regions_by_id.get(region_id)
+            if region and "bbox" in region and "x1" not in region:
+                bbox = region["bbox"]
+                region = {"x1": bbox[0], "y1": bbox[1], "x2": bbox[2], "y2": bbox[3],
+                          "label": region.get("label", "text_bubble"), "score": 1.0}
+        if not region:
+            orig = original_matches.get(dlg_i)
+            if orig:
+                region = orig.get("region", {})
+
+        if region and "x1" in region:
+            result.append({
+                "dialogue_index": dlg_i,
+                "region_id": region_id,
+                "match_type": override.get("match_type", "manual"),
+                "region": region,
+                "scores": {"spatial": 1.0, "text": 1.0, "position": 1.0, "total": 1.0},
+                "dialogue_text": override.get("dialogue_text", ""),
+            })
+
+    for dlg_i, m in original_matches.items():
+        if dlg_i not in refined_indices:
+            result.append(m)
+
+    return result
 
 
 def _save_mask_debug(

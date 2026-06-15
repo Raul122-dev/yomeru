@@ -366,10 +366,11 @@ def scanline_layout(
     lang_code: str | None,
     padding: int = 12,
     width_factor: float = 1.0,
+    precomputed_contour: np.ndarray | None = None,
 ) -> list[PositionedLine] | None:
     """
     Full scanline layout pipeline:
-    1. Extract bubble contour from ORIGINAL image
+    1. Extract bubble contour from ORIGINAL image (or use precomputed)
     2. Erode for padding
     3. Compute scanlines
     4. Variable-width wrap
@@ -379,8 +380,8 @@ def scanline_layout(
     """
     lh = measure_line_height(font, font_size)
 
-    # 1. Extract contour
-    contour = extract_bubble_contour(image, bbox)
+    # 1. Extract contour (or use cached)
+    contour = precomputed_contour if precomputed_contour is not None else extract_bubble_contour(image, bbox)
     if contour is None:
         return None
 

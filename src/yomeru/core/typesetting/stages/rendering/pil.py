@@ -566,6 +566,7 @@ class PILRenderer:
         tone: str = "neutral",
         bubble_type: str = "speech",
         font_style: str | None = None,
+        line_break_hint: str | None = None,
         source_language: str = "auto",
         padding: int = 10,
         min_font_size: int = 8,
@@ -576,7 +577,8 @@ class PILRenderer:
         return render_text_in_bubble(
             image=image, bbox=bbox, text=text,
             tone=tone, bubble_type=bubble_type,
-            font_style=font_style, source_language=source_language,
+            font_style=font_style, line_break_hint=line_break_hint,
+            source_language=source_language,
             padding=padding, min_font_size=min_font_size,
             max_font_size=max_font_size, is_free_text=is_free_text,
         )
