@@ -13,57 +13,16 @@ Usage:
         bubble_type="speech",
         source_language="Spanish",
     )
-
-See SPEC.md for the full input/output contract.
 """
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
-from PIL import Image
-
-# Re-export RenderResult so callers can import it from here
-from .pil import RenderResult  # noqa: F401
-
-
-class BaseRenderer(Protocol):
-    """Interface every rendering backend must satisfy."""
-    @property
-    def name(self) -> str: ...
-
-    def render(
-        self,
-        image: Image.Image,
-        bbox: tuple[int, int, int, int],
-        text: str,
-        tone: str,
-        bubble_type: str,
-        font_style: str | None,
-        source_language: str,
-        padding: int,
-        min_font_size: int,
-        max_font_size: int,
-    ) -> "tuple[Image.Image, RenderResult]": ...
-
-
-_cache: dict[str, Any] = {}
+from .pil import RenderResult, PILRenderer, _font_cache  # noqa: F401
 
 
 def build_renderer(backend: str = "pil") -> Any:
-    """
-    Return a cached renderer instance.
-
-    backend: "pil" (only production option currently)
-      - "pil" : PIL + pyphen, pure Python, works everywhere
-    """
-    if backend in _cache:
-        return _cache[backend]
-
+    """Return a cached renderer instance."""
     if backend == "pil":
-        from .pil import PILRenderer
-        inst: Any = PILRenderer()
-    else:
-        raise ValueError(f"unknown renderer backend: {backend!r}")
-
-    _cache[backend] = inst
-    return inst
+        return PILRenderer()
+    raise ValueError(f"unknown renderer backend: {backend!r}")

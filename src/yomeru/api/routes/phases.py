@@ -353,6 +353,330 @@ def get_mask_debug(run_id: str, page_num: int):
     return FileResponse(out_path)
 
 
+@router.get("/{run_id}/rendering/scanline-preview/{page_num}")
+def get_scanline_preview(run_id: str, page_num: int):
+    """
+    Generate a preview of rendering using the scanline approach.
+    Renders text using bubble contour detection + scanline layout.
+    Returns the image for comparison with the stable renderer.
+    """
+    import json
+    from PIL import Image, ImageDraw
+    from fastapi.responses import FileResponse
+    from yomeru.core.typesetting.stages.rendering.pil import (
+        _get_font, _tone_to_style, _draw_text_with_outline,
+    )
+    from yomeru.core.typesetting.stages.rendering.text_layout import (
+        measure_line_height, measure_width, LANG_MAP, extract_embedded_breaks,
+    )
+    from yomeru.core.typesetting.stages.rendering.color_detect import (
+        detect_background_color, detect_text_color, is_colored_text, compute_outline_color,
+    )
+    from yomeru.core.typesetting.stages.rendering.scanline import (
+        extract_bubble_contour, scanline_layout,
+    )
+
+    run = _get_run(run_id)
+    debug_dir = run.output_dir() / "typeset" / "debug"
+    output = run.output_dir()
+
+    # Load inpainted image (for rendering text onto)
+    inpainted_path = debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"
+    if not inpainted_path.exists():
+        raise HTTPException(404, "No inpainted image for this page")
+
+    img = Image.open(inpainted_path).convert("RGB")
+
+    # Load ORIGINAL page image (for bubble contour detection — has visible borders)
+    pages_dir = run.pages_dir()
+    all_pages = sorted(p for p in pages_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"})
+    if page_num < 1 or page_num > len(all_pages):
+        raise HTTPException(404, f"Page {page_num} not found")
+    original_img = Image.open(all_pages[page_num - 1]).convert("RGB")
+
+    # Load matching data
+    log_path = debug_dir / f"p{page_num:02d}_render_log.json"
+    if not log_path.exists():
+        raise HTTPException(404, "No render log for this page")
+    log = json.loads(log_path.read_text())
+    matches = log.get("s3_matching", {}).get("matches", [])
+
+    # Load analyses for dialogue text
+    analyses_file = run.active_analyses_file()
+    analyses = json.loads(analyses_file.read_text()) if analyses_file.exists() else []
+    page_analysis = next((a for a in analyses if a.get("page_number") == page_num), {})
+    dialogues = page_analysis.get("dialogues", [])
+
+    # Load detections for bubble bboxes
+    dets_file = output / "page_detections.json"
+    detections = json.loads(dets_file.read_text()) if dets_file.exists() else []
+    page_det = next((d for d in detections if d.get("page_number") == page_num), {})
+    bubble_regions = [
+        (r["x1"], r["y1"], r["x2"], r["y2"])
+        for r in page_det.get("regions", []) if r.get("label") == "bubble"
+    ]
+
+    source_lang = page_analysis.get("source_language", "auto")
+    lang_code = LANG_MAP.get(source_lang, "en_US")
+
+    result_img = img.copy()
+    draw = ImageDraw.Draw(result_img)
+
+    # Deduplicate: when multiple dialogues share the same region bbox,
+    # keep only the LAST one (typically the actual dialogue, not auxiliary text)
+    seen_bboxes: dict[tuple[int, int, int, int], int] = {}
+    for idx, m in enumerate(matches):
+        r = m["region"]
+        bbox_key = (r["x1"], r["y1"], r["x2"], r["y2"])
+        seen_bboxes[bbox_key] = idx  # last one wins
+    valid_match_indices = set(seen_bboxes.values())
+
+    for match_idx, m in enumerate(matches):
+        if match_idx not in valid_match_indices:
+            continue
+
+        dlg_i = m.get("dialogue_index", -1)
+        if dlg_i < 0 or dlg_i >= len(dialogues):
+            continue
+
+        dlg = dialogues[dlg_i]
+        text = dlg.get("text_translated") or dlg.get("text", "")
+        if not text.strip():
+            continue
+
+        r = m["region"]
+        text_bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
+        label = r.get("label", "text_bubble")
+
+        # Find containing bubble
+        tcx = (text_bbox[0] + text_bbox[2]) // 2
+        tcy = (text_bbox[1] + text_bbox[3]) // 2
+        bubble_bbox = text_bbox  # fallback
+        for bx1, by1, bx2, by2 in bubble_regions:
+            if bx1 <= tcx <= bx2 and by1 <= tcy <= by2:
+                bubble_bbox = (bx1, by1, bx2, by2)
+                break
+
+        # Clean text
+        clean_text, _ = extract_embedded_breaks(text)
+        if not clean_text.strip():
+            continue
+
+        # Determine style and font
+        tone = dlg.get("tone", "neutral")
+        bubble_type = dlg.get("bubble_type", "speech")
+        style = _tone_to_style(tone, bubble_type)
+
+        # Color detection on inpainted image
+        bg_color = detect_background_color(img, text_bbox)
+        lum = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
+        text_color = (0, 0, 0) if lum > 128 else (255, 255, 255)
+        is_free = label in ("text_free", "sfx")
+        outline_color = compute_outline_color(bg_color) if is_free else None
+
+        # Adaptive padding based on bubble size
+        bubble_w = bubble_bbox[2] - bubble_bbox[0]
+        bubble_h = bubble_bbox[3] - bubble_bbox[1]
+        scan_padding = max(5, min(12, int(min(bubble_w, bubble_h) * 0.06)))
+
+        # Max font size proportional to bubble height (bigger bubbles → bigger text)
+        max_size = max(30, min(60, bubble_h // 6))
+
+        # Try scanline layout — find best size that fills the bubble well
+        best_layout = None
+
+        for try_size in range(max_size, 9, -1):
+            font = _get_font(style, try_size)
+            lh = measure_line_height(font, try_size)
+
+            # Try different width factors to find best vertical fill
+            for wf in (0.90, 0.70, 0.55, 0.45):
+                positioned = scanline_layout(
+                    original_img, bubble_bbox, clean_text, font, try_size,
+                    lang_code, padding=scan_padding, width_factor=wf,
+                )
+                if not positioned:
+                    continue
+
+                # Check vertical fill
+                text_h = len(positioned) * lh
+                v_fill = text_h / max(1, bubble_h - scan_padding * 2)
+                if v_fill > 0.95:
+                    continue
+
+                if 0.4 <= v_fill <= 0.85:
+                    best_layout = (try_size, font, positioned)
+                    break
+                elif best_layout is None:
+                    best_layout = (try_size, font, positioned)
+
+            if best_layout and 0.4 <= (len(best_layout[2]) * measure_line_height(best_layout[1], best_layout[0])) / max(1, bubble_h - scan_padding * 2) <= 0.85:
+                break
+
+        # FALLBACK: if scanline failed, use simple bbox centered rendering
+        if best_layout is None:
+            from yomeru.core.typesetting.stages.rendering.text_layout import wrap_text
+            for try_size in range(max_size, 9, -1):
+                font = _get_font(style, try_size)
+                lh = measure_line_height(font, try_size)
+                pad = max(4, scan_padding)
+                bw = bubble_w - pad * 2
+                bh = bubble_h - pad * 2
+                if bw < 10 or bh < 10:
+                    continue
+                max_lines = max(1, bh // lh)
+                lines = wrap_text(clean_text, bw, max_lines, font, lang_code)
+                if lines:
+                    # Create PositionedLines centered in bbox
+                    from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine
+                    total_h = len(lines) * lh
+                    start_y = bubble_bbox[1] + pad + (bh - total_h) // 2
+                    positioned_lines = []
+                    for li, line in enumerate(lines):
+                        lw = measure_width(line, font)
+                        lx = bubble_bbox[0] + pad + (bw - lw) // 2
+                        positioned_lines.append(PositionedLine(text=line, x=lx, y=start_y + li * lh, width=bw))
+                    best_layout = (try_size, font, positioned_lines)
+                    break
+
+        # Render the text
+        if best_layout:
+            size, font, positioned = best_layout
+            outline_w = max(1, size // 12) if is_free else 0
+            for pl in positioned:
+                if is_free and outline_color:
+                    _draw_text_with_outline(draw, (pl.x, pl.y), pl.text, font, text_color, outline_color, outline_w)
+                else:
+                    draw.text((pl.x, pl.y), pl.text, font=font, fill=text_color)
+
+        # Draw contour outline for debug (thin green)
+        contour = extract_bubble_contour(original_img, bubble_bbox)
+        if contour is not None:
+            pts = contour.reshape(-1, 2).tolist()
+            if len(pts) > 2:
+                draw.polygon([tuple(p) for p in pts], outline=(0, 200, 0))
+
+    # Save debug version (with contours)
+    out_path = debug_dir / f"p{page_num:02d}_scanline_preview.jpg"
+    result_img.save(str(out_path), quality=90)
+
+    # Save production version (without contours) — re-render without green lines
+    prod_img = img.copy()
+    prod_draw = ImageDraw.Draw(prod_img)
+
+    # Re-render all text without contours (reuse same layout logic via stored results)
+    rendered_bboxes_prod: dict[tuple[int, int, int, int], int] = {}
+    for idx, m in enumerate(matches):
+        r = m["region"]
+        bk = (r["x1"], r["y1"], r["x2"], r["y2"])
+        rendered_bboxes_prod[bk] = idx
+    valid_prod = set(rendered_bboxes_prod.values())
+
+    for match_idx, m in enumerate(matches):
+        if match_idx not in valid_prod:
+            continue
+        dlg_i = m.get("dialogue_index", -1)
+        if dlg_i < 0 or dlg_i >= len(dialogues):
+            continue
+        dlg = dialogues[dlg_i]
+        txt = dlg.get("text_translated") or dlg.get("text", "")
+        if not txt.strip():
+            continue
+        r = m["region"]
+        tbbox = (r["x1"], r["y1"], r["x2"], r["y2"])
+        lbl = r.get("label", "text_bubble")
+        tcx2 = (tbbox[0] + tbbox[2]) // 2
+        tcy2 = (tbbox[1] + tbbox[3]) // 2
+        bbbox = tbbox
+        for bx1, by1, bx2, by2 in bubble_regions:
+            if bx1 <= tcx2 <= bx2 and by1 <= tcy2 <= by2:
+                bbbox = (bx1, by1, bx2, by2)
+                break
+        clean, _ = extract_embedded_breaks(txt)
+        if not clean.strip():
+            continue
+        sty = _tone_to_style(dlg.get("tone", "neutral"), dlg.get("bubble_type", "speech"))
+        bg_c = detect_background_color(img, tbbox)
+        lm = 0.299 * bg_c[0] + 0.587 * bg_c[1] + 0.114 * bg_c[2]
+        tc = (0, 0, 0) if lm > 128 else (255, 255, 255)
+        is_f = lbl in ("text_free", "sfx")
+        oc = compute_outline_color(bg_c) if is_f else None
+        bw2 = bbbox[2] - bbbox[0]
+        bh2 = bbbox[3] - bbbox[1]
+        sp = max(5, min(12, int(min(bw2, bh2) * 0.06)))
+        ms = max(30, min(60, bh2 // 6))
+        bl = None
+        for ts in range(ms, 9, -1):
+            ft = _get_font(sty, ts)
+            lh2 = measure_line_height(ft, ts)
+            for wf2 in (0.90, 0.70, 0.55, 0.45):
+                ps = scanline_layout(original_img, bbbox, clean, ft, ts, lang_code, padding=sp, width_factor=wf2)
+                if not ps:
+                    continue
+                vf = (len(ps) * lh2) / max(1, bh2 - sp * 2)
+                if vf > 0.95:
+                    continue
+                if 0.4 <= vf <= 0.85:
+                    bl = (ts, ft, ps)
+                    break
+                elif bl is None:
+                    bl = (ts, ft, ps)
+            if bl and 0.4 <= (len(bl[2]) * measure_line_height(bl[1], bl[0])) / max(1, bh2 - sp * 2) <= 0.85:
+                break
+        if bl is None:
+            from yomeru.core.typesetting.stages.rendering.text_layout import wrap_text as wt
+            for ts in range(ms, 9, -1):
+                ft = _get_font(sty, ts)
+                lh2 = measure_line_height(ft, ts)
+                bwi = bw2 - sp * 2
+                bhi = bh2 - sp * 2
+                if bwi < 10 or bhi < 10:
+                    continue
+                mxl = max(1, bhi // lh2)
+                ls = wt(clean, bwi, mxl, ft, lang_code)
+                if ls:
+                    from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine as PL
+                    th = len(ls) * lh2
+                    sy = bbbox[1] + sp + (bhi - th) // 2
+                    pls = []
+                    for li2, ln in enumerate(ls):
+                        lw2 = measure_width(ln, ft)
+                        lx2 = bbbox[0] + sp + (bwi - lw2) // 2
+                        pls.append(PL(text=ln, x=lx2, y=sy + li2 * lh2, width=bwi))
+                    bl = (ts, ft, pls)
+                    break
+        if bl:
+            sz, ft, ps = bl
+            ow = max(1, sz // 12) if is_f else 0
+            for pl in ps:
+                if is_f and oc:
+                    _draw_text_with_outline(prod_draw, (pl.x, pl.y), pl.text, ft, tc, oc, ow)
+                else:
+                    prod_draw.text((pl.x, pl.y), pl.text, font=ft, fill=tc)
+
+    prod_path = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
+    prod_img.save(str(prod_path), quality=90)
+
+    return FileResponse(out_path)
+
+
+@router.get("/{run_id}/rendering/scanline-production/{page_num}")
+def get_scanline_production(run_id: str, page_num: int):
+    """Serve the production (no contour lines) scanline render."""
+    from fastapi.responses import FileResponse
+    run = _get_run(run_id)
+    debug_dir = run.output_dir() / "typeset" / "debug"
+    prod_path = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
+    if not prod_path.exists():
+        # Generate it by calling the preview endpoint first
+        get_scanline_preview(run_id, page_num)
+    if not prod_path.exists():
+        raise HTTPException(404, "Production render not available")
+    return FileResponse(prod_path)
+    result_img.save(str(out_path), quality=90)
+    return FileResponse(out_path)
+
+
 @router.post("/{run_id}/start-all")
 def start_all_phases(run_id: str, body: StartAllRequest | None = None):
     """Run all phases sequentially."""

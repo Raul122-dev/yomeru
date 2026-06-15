@@ -228,13 +228,42 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                   </div>
                   <div className="space-y-2">
                     <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
-                      rendered
+                      rendered (stable)
                     </p>
                     <ImageViewer
                       src={`${typesetPageUrl(runId, selectedEntry.filename)}?v=${refreshNonce}`}
                       alt={`rendered ${selectedEntry.filename}`}
                       label={`rendered · p${selectedEntry.page}`}
                     />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+                      scanline debug (contour detection)
+                    </p>
+                    <ImageViewer
+                      src={`/api/phases/${runId}/rendering/scanline-preview/${selectedEntry.page}?v=${refreshNonce}`}
+                      alt={`scanline debug p${selectedEntry.page}`}
+                      label={`debug · p${selectedEntry.page}`}
+                    />
+                    <p className="text-[10px] text-[hsl(var(--text-muted))]">
+                      Green outline = detected bubble contour.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+                      scanline production
+                    </p>
+                    <ImageViewer
+                      src={`/api/phases/${runId}/rendering/scanline-production/${selectedEntry.page}?v=${refreshNonce}`}
+                      alt={`scanline production p${selectedEntry.page}`}
+                      label={`production · p${selectedEntry.page}`}
+                    />
+                    <p className="text-[10px] text-[hsl(var(--text-muted))]">
+                      Final output without debug overlays.
+                    </p>
                   </div>
                 </div>
 

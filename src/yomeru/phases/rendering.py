@@ -138,10 +138,7 @@ def run(
 
                 dlg = dialogues[dlg_i] if 0 <= dlg_i < len(dialogues) else {}
 
-                # Filter by bubble type
-                if skip_sfx and dlg.get("bubble_type") == "sfx":
-                    skip_count += 1
-                    continue
+                # Filter by bubble type (SFX uses subtitle mode, not skipped)
                 if skip_narration and dlg.get("bubble_type") == "narration":
                     skip_count += 1
                     continue
@@ -160,6 +157,8 @@ def run(
 
                 r = m["region"]
                 bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
+                region_label = r.get("label", "text_bubble")
+                is_free = region_label in ("text_free", "sfx")
 
                 rendered_img, rr = renderer.render(
                     image=result_img, bbox=bbox, text=text,
@@ -169,6 +168,7 @@ def run(
                     source_language=source_lang,
                     padding=padding, min_font_size=min_font_size,
                     max_font_size=ovr.get("font_size_override") or max_font_size,
+                    is_free_text=is_free,
                 )
 
                 if rr.status == "ok":

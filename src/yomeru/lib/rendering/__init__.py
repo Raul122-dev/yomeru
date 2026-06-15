@@ -2,7 +2,7 @@
 Rendering stage — public interface.
 
 Usage:
-    from yomeru.core.typesetting.stages.rendering import build_renderer, RenderResult
+    from yomeru.lib.rendering import build_renderer, RenderResult
 
     renderer = build_renderer("pil")
     image, result = renderer.render(
@@ -13,8 +13,6 @@ Usage:
         bubble_type="speech",
         source_language="Spanish",
     )
-
-See SPEC.md for the full input/output contract.
 """
 from __future__ import annotations
 
@@ -22,8 +20,8 @@ from typing import Any, Protocol
 
 from PIL import Image
 
-# Re-export RenderResult so callers can import it from here
-from .pil import RenderResult  # noqa: F401
+# Re-export from the actual implementation
+from yomeru.core.typesetting.stages.rendering.pil import RenderResult, PILRenderer, _font_cache  # noqa: F401
 
 
 class BaseRenderer(Protocol):
@@ -54,13 +52,12 @@ def build_renderer(backend: str = "pil") -> Any:
     Return a cached renderer instance.
 
     backend: "pil" (only production option currently)
-      - "pil" : PIL + pyphen, pure Python, works everywhere
+      - "pil" : PIL v2 + pyphen, with outline, rotation, CJK, shape fitting
     """
     if backend in _cache:
         return _cache[backend]
 
     if backend == "pil":
-        from .pil import PILRenderer
         inst: Any = PILRenderer()
     else:
         raise ValueError(f"unknown renderer backend: {backend!r}")
