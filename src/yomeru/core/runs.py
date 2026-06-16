@@ -161,4 +161,8 @@ class Run:
         return d
 
     def _write_meta(self, data: dict) -> None:
-        (self.dir / "meta.json").write_text(json.dumps(data, indent=2))
+        # Atomic write: write to temp file then rename to prevent race conditions
+        meta_path = self.dir / "meta.json"
+        tmp_path = self.dir / "meta.json.tmp"
+        tmp_path.write_text(json.dumps(data, indent=2))
+        tmp_path.replace(meta_path)

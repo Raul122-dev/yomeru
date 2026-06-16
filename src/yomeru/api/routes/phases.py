@@ -353,6 +353,58 @@ def get_mask_debug(run_id: str, page_num: int):
     return FileResponse(out_path)
 
 
+def _render_scanline_rotated(draw, base_img, positioned, font, size, text_color, outline_color, outline_w, angle, bubble_bbox):
+    """Render positioned lines with rotation for angled free text."""
+    from PIL import Image, ImageDraw as ID
+
+    # Compute text block bounds
+    lh = int(font.getmetrics()[0] + font.getmetrics()[1])
+    min_x = min(pl.x for pl in positioned)
+    min_y = min(pl.y for pl in positioned)
+    max_x = max(pl.x + int(font.getlength(pl.text)) for pl in positioned)
+    max_y = max(pl.y + lh for pl in positioned)
+
+    # Create a transparent canvas for the text block
+    block_w = max_x - min_x + outline_w * 2 + 4
+    block_h = max_y - min_y + outline_w * 2 + 4
+    canvas = Image.new("RGBA", (block_w, block_h), (0, 0, 0, 0))
+    cdraw = ID.Draw(canvas)
+
+    # Draw text on canvas (offset to local coords)
+    for pl in positioned:
+        local_x = pl.x - min_x + outline_w + 2
+        local_y = pl.y - min_y + outline_w + 2
+        if outline_color and outline_w > 0:
+            ow_sq = (outline_w + 0.5) ** 2
+            for dx in range(-outline_w, outline_w + 1):
+                for dy in range(-outline_w, outline_w + 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    if dx * dx + dy * dy > ow_sq:
+                        continue
+                    cdraw.text((local_x + dx, local_y + dy), pl.text, font=font, fill=outline_color + (255,))
+            cdraw.text((local_x, local_y), pl.text, font=font, fill=text_color + (255,))
+        else:
+            cdraw.text((local_x, local_y), pl.text, font=font, fill=text_color + (255,))
+
+    # Rotate the canvas
+    rotated = canvas.rotate(-angle, expand=True, resample=Image.BICUBIC)
+
+    # Compute paste position (center rotated block on original text center)
+    cx = (min_x + max_x) // 2
+    cy = (min_y + max_y) // 2
+    paste_x = cx - rotated.width // 2
+    paste_y = cy - rotated.height // 2
+
+    # Composite onto base image (handle RGB images by using temp RGBA conversion)
+    if base_img.mode != "RGBA":
+        # Convert to RGBA, paste, convert back
+        rgba_img = base_img.convert("RGBA")
+        rgba_img.paste(rotated, (paste_x, paste_y), rotated)
+        # Copy pixels back to original image (maintains reference)
+        base_img.paste(rgba_img.convert("RGB"))
+
+
 @router.get("/{run_id}/rendering/scanline-preview/{page_num}")
 def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
     """
@@ -517,6 +569,9 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
         text_bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
         label = r.get("label", "text_bubble")
 
+        # Color and style for free text vs bubble text
+        is_free = label in ("text_free", "sfx")
+
         # Find containing bubble
         tcx = (text_bbox[0] + text_bbox[2]) // 2
         tcy = (text_bbox[1] + text_bbox[3]) // 2
@@ -525,6 +580,13 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
             if bx1 <= tcx <= bx2 and by1 <= tcy <= by2:
                 bubble_bbox = (bx1, by1, bx2, by2)
                 break
+
+        # For free text: expand bbox horizontally into surrounding homogeneous area
+        if is_free and bubble_bbox == text_bbox:
+            from yomeru.phases.rendering import _expand_free_text_bbox
+            expanded = _expand_free_text_bbox(img, text_bbox)
+            # Use expanded X (width) but keep original Y (vertical centering on sign)
+            bubble_bbox = (expanded[0], text_bbox[1], expanded[2], text_bbox[3])
 
         # Clean text
         clean_text, _ = extract_embedded_breaks(text)
@@ -537,55 +599,131 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
         font_style_ovr = ovr.get("font_style") or dlg.get("font_style")
         style = font_style_ovr if font_style_ovr else _tone_to_style(tone, bubble_type)
 
-        # Color detection on inpainted image
-        bg_color = detect_background_color(img, text_bbox)
-        lum = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
-        text_color = (0, 0, 0) if lum > 128 else (255, 255, 255)
-        is_free = label in ("text_free", "sfx")
-        outline_color = compute_outline_color(bg_color) if is_free else None
+        if is_free:
+            # Free text: ALWAYS black text + white outline (universally readable)
+            text_color = (0, 0, 0)
+            outline_color = (255, 255, 255)
+            # Force bold for free text
+            style = "bold"
+        else:
+            bg_color = detect_background_color(img, text_bbox)
+            lum = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
+            text_color = (0, 0, 0) if lum > 128 else (255, 255, 255)
+            outline_color = None
 
         # Adaptive padding based on bubble size
         bubble_w = bubble_bbox[2] - bubble_bbox[0]
         bubble_h = bubble_bbox[3] - bubble_bbox[1]
         scan_padding = max(5, min(12, int(min(bubble_w, bubble_h) * 0.06)))
 
-        # Max font size proportional to bubble height
-        max_size = max(30, min(60, bubble_h // 6))
+        # Detect vertical bubble (tall and narrow)
+        is_vertical_bubble = bubble_h > bubble_w * 1.8
 
-        # Try scanline layout — find best size that fills the bubble well
+        # Max font size: for vertical bubbles, allow larger fonts
+        # (they'll use more lines with narrow width factors)
+        if is_vertical_bubble:
+            max_size = max(20, min(50, bubble_h // 5))
+        else:
+            max_size = max(30, min(60, bubble_h // 6))
+            if bubble_w < 80:
+                max_size = min(max_size, max(12, bubble_w // 4))
+
+        # Width factors: vertical bubbles get narrower factors to use more lines
+        if is_vertical_bubble:
+            width_factors = (0.90, 0.75, 0.60, 0.45, 0.35, 0.25)
+        else:
+            width_factors = (0.90, 0.70, 0.55, 0.45)
+
+        # For very narrow bubbles with SHORT text, use vertical text layout
+        # (char-by-char top-to-bottom). Only for brief expressions (≤3 short words,
+        # ≤12 chars total) — longer text uses normal horizontal layout with small font.
         best_layout = None
+        words = clean_text.strip().split()
+        char_count = len(clean_text.replace(" ", ""))
+        is_short_text = len(words) <= 3 and char_count <= 12
 
-        for try_size in range(max_size, 9, -3):
-            font = _get_font(style, try_size)
-            lh = measure_line_height(font, try_size)
+        # Determine if vertical layout would produce a significantly better result:
+        # Compare potential font size in horizontal vs vertical mode
+        horiz_max_font = max(8, bubble_w // max(len(max(words, key=len)) if words else 1, 1))
+        vert_potential_font = min(bubble_w - 10, bubble_h // max(char_count, 1) - 2) if char_count > 0 else 0
 
-            for wf in (0.90, 0.70, 0.55, 0.45):
-                positioned = scanline_layout(
-                    original_img, bubble_bbox, clean_text, font, try_size,
-                    lang_code, padding=scan_padding, width_factor=wf,
-                    precomputed_contour=bubble_contours.get(bubble_bbox),
-                )
-                if not positioned:
-                    continue
+        use_vertical = (
+            is_short_text
+            and vert_potential_font > horiz_max_font * 1.5  # vertical gives ≥50% larger font
+            and vert_potential_font >= 12  # minimum legible size
+            and bubble_h > bubble_w * 1.8
+        )
 
-                text_h = len(positioned) * lh
-                v_fill = text_h / max(1, bubble_h - scan_padding * 2)
-                if v_fill > 0.95:
-                    continue
+        if use_vertical and clean_text.strip():
+            from yomeru.core.typesetting.stages.rendering.text_layout import measure_line_height as mlh
+            flat = clean_text.replace(" ", "")
+            vert_pad = max(3, scan_padding)
+            usable_w = bubble_w - vert_pad * 2
+            usable_h = bubble_h - vert_pad * 2
+            vert_size = min(usable_w - 4, usable_h // max(len(flat), 1) - 2)
+            vert_size = max(10, min(40, vert_size))
 
-                if 0.4 <= v_fill <= 0.85:
-                    best_layout = (try_size, font, positioned)
+            vert_font = _get_font(style, vert_size)
+            char_h = mlh(vert_font, vert_size)
+            chars_per_col = max(1, usable_h // char_h)
+
+            from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine
+            cols = [flat[i:i + chars_per_col] for i in range(0, len(flat), chars_per_col)]
+            positioned_lines = []
+
+            # Center the text block vertically and horizontally in the bubble
+            total_text_h = min(len(flat), chars_per_col) * char_h
+            start_y = bubble_bbox[1] + vert_pad + (usable_h - total_text_h) // 2
+            n_cols = len(cols)
+            total_cols_w = n_cols * vert_size + (n_cols - 1) * 2
+            start_x = bubble_bbox[0] + vert_pad + (usable_w - total_cols_w) // 2
+
+            for col_idx, col in enumerate(cols):
+                col_x = start_x + col_idx * (vert_size + 2)
+                if col_x + vert_size > bubble_bbox[2] - vert_pad:
                     break
-                elif best_layout is None:
-                    best_layout = (try_size, font, positioned)
+                for row_idx, ch in enumerate(col):
+                    cy = start_y + row_idx * char_h
+                    cw = int(vert_font.getlength(ch))
+                    cx = col_x + (vert_size - cw) // 2
+                    positioned_lines.append(PositionedLine(text=ch, x=cx, y=cy, width=vert_size))
 
-            if best_layout and 0.4 <= (len(best_layout[2]) * measure_line_height(best_layout[1], best_layout[0])) / max(1, bubble_h - scan_padding * 2) <= 0.85:
-                break
+            if positioned_lines:
+                best_layout = (vert_size, vert_font, positioned_lines)
+
+        # Try scanline layout if vertical didn't apply or wasn't needed
+        if best_layout is None:
+            for try_size in range(max_size, 7, -3):
+                font = _get_font(style, try_size)
+                lh = measure_line_height(font, try_size)
+
+                for wf in width_factors:
+                    positioned = scanline_layout(
+                        original_img, bubble_bbox, clean_text, font, try_size,
+                        lang_code, padding=scan_padding, width_factor=wf,
+                        precomputed_contour=bubble_contours.get(bubble_bbox),
+                    )
+                    if not positioned:
+                        continue
+
+                    text_h = len(positioned) * lh
+                    v_fill = text_h / max(1, bubble_h - scan_padding * 2)
+                    if v_fill > 0.95:
+                        continue
+
+                    if 0.4 <= v_fill <= 0.85:
+                        best_layout = (try_size, font, positioned)
+                        break
+                    elif best_layout is None:
+                        best_layout = (try_size, font, positioned)
+
+                if best_layout and 0.4 <= (len(best_layout[2]) * measure_line_height(best_layout[1], best_layout[0])) / max(1, bubble_h - scan_padding * 2) <= 0.85:
+                    break
 
         # FALLBACK: if scanline failed, use simple bbox centered rendering
         if best_layout is None:
             from yomeru.core.typesetting.stages.rendering.text_layout import wrap_text
-            for try_size in range(max_size, 9, -1):
+            for try_size in range(max_size, 7, -1):
                 font = _get_font(style, try_size)
                 lh = measure_line_height(font, try_size)
                 pad = max(4, scan_padding)
@@ -608,7 +746,13 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
                     break
 
         if best_layout:
-            all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox))
+            # Detect text angle for free text regions
+            text_angle = 0.0
+            if is_free:
+                from yomeru.core.typesetting.stages.rendering.angle_detect import detect_text_angle
+                text_angle = detect_text_angle(original_img, text_bbox)
+
+            all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox, text_angle))
 
     # ── Pass 2: Resolve line-level collisions between regions ────────────────
     # For each layout, compute per-line bounding boxes
@@ -791,13 +935,22 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
                 break  # Move to next pair after resolving
 
     # ── Pass 3: Render all layouts ───────────────────────────────────────────
-    for layout_idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox) in enumerate(all_layouts):
-        outline_w = max(1, size // 12) if is_free else 0
-        for pl in positioned:
-            if is_free and outline_color:
-                _draw_text_with_outline(draw, (pl.x, pl.y), pl.text, font, text_color, outline_color, outline_w)
-            else:
-                draw.text((pl.x, pl.y), pl.text, font=font, fill=text_color)
+    for layout_idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox, text_angle) in enumerate(all_layouts):
+        outline_w = max(4, size // 4) if is_free else 0
+
+        if is_free and abs(text_angle) > 3 and positioned:
+            # Render rotated text for angled free text
+            _render_scanline_rotated(
+                draw, result_img, positioned, font, size, text_color,
+                outline_color, outline_w, text_angle, bubble_bbox,
+            )
+        else:
+            from yomeru.core.typesetting.stages.rendering.pil import _render_text_with_fallback
+            for pl in positioned:
+                _render_text_with_fallback(
+                    draw, (pl.x, pl.y), pl.text, font, text_color, size,
+                    outline_color if is_free else None, outline_w,
+                )
 
         # Draw contour outline for debug (thin green)
         contour = bubble_contours.get(bubble_bbox)
@@ -814,13 +967,21 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
     prod_img = img.copy()
     prod_draw = ImageDraw.Draw(prod_img)
 
-    for (size, font, positioned), is_free, text_color, outline_color, _bbox in all_layouts:
-        outline_w = max(1, size // 12) if is_free else 0
-        for pl in positioned:
-            if is_free and outline_color:
-                _draw_text_with_outline(prod_draw, (pl.x, pl.y), pl.text, font, text_color, outline_color, outline_w)
-            else:
-                prod_draw.text((pl.x, pl.y), pl.text, font=font, fill=text_color)
+    for (size, font, positioned), is_free, text_color, outline_color, _bbox, text_angle in all_layouts:
+        outline_w = max(4, size // 4) if is_free else 0
+
+        if is_free and abs(text_angle) > 3 and positioned:
+            _render_scanline_rotated(
+                prod_draw, prod_img, positioned, font, size, text_color,
+                outline_color, outline_w, text_angle, _bbox,
+            )
+        else:
+            from yomeru.core.typesetting.stages.rendering.pil import _render_text_with_fallback
+            for pl in positioned:
+                _render_text_with_fallback(
+                    prod_draw, (pl.x, pl.y), pl.text, font, text_color, size,
+                    outline_color if is_free else None, outline_w,
+                )
 
     prod_path = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
     prod_img.save(str(prod_path), quality=90)

@@ -206,14 +206,14 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
       {isComplete ? (
         pageLogs.length > 0 ? (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="scroll-strip flex gap-3 overflow-x-auto pb-3" ref={(el) => { if (!el) return; const handler = (e: WheelEvent) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); } }; el.onwheel = handler; }}>
               {pageLogs.map((entry) => {
                 const matching = entry.log?.s3_matching;
                 return (
                   <button
                     key={entry.page}
                     onClick={() => setSelectedPage(entry.page)}
-                    className={`rounded-lg border p-4 text-left transition-colors ${
+                    className={`shrink-0 w-96 rounded-lg border p-3 text-left transition-colors ${
                       entry.page === selectedPage
                         ? "border-[hsl(var(--accent2))] bg-[hsl(var(--accent2)/.05)]"
                         : "border-[hsl(var(--border))] bg-[hsl(var(--bg-surface))] hover:border-[hsl(var(--accent2)/.35)]"

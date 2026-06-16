@@ -140,6 +140,8 @@ def run(
                     combined_mask = np.maximum(combined_mask, text_mask)
 
                     if label in ("text_free", "sfx"):
+                        # Always use LaMa for free text — it has full page context
+                        # and produces best results with complete bbox masks
                         free_mask = np.maximum(free_mask, text_mask)
                     else:
                         bubble_mask = np.maximum(bubble_mask, text_mask)

@@ -137,7 +137,131 @@ def _tone_to_style(tone: str, bubble_type: str, font_style: str | None = None) -
     return "regular"
 
 
+# ── symbol fallback ───────────────────────────────────────────────────────────
+
+_SYMBOL_FONT_PATHS = [
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"),
+    _FONTS_DIR / "NotoSansCJK-Regular.ttc",
+]
+
+_symbol_font_cache: dict[int, ImageFont.FreeTypeFont | None] = {}
+_notdef_signature: int | None = None
+
+
+def _get_symbol_font(size: int) -> ImageFont.FreeTypeFont | None:
+    """Get a fallback font for symbols/emoji not in the primary font."""
+    if size in _symbol_font_cache:
+        return _symbol_font_cache[size]
+    for p in _SYMBOL_FONT_PATHS:
+        if p.exists():
+            try:
+                f = ImageFont.truetype(str(p), size)
+                _symbol_font_cache[size] = f
+                return f
+            except Exception:
+                continue
+    _symbol_font_cache[size] = None
+    return None
+
+
+def _get_notdef_sig(font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> int:
+    """Get a signature of the .notdef glyph to detect missing characters."""
+    global _notdef_signature
+    if _notdef_signature is not None:
+        return _notdef_signature
+    # Render a character that definitely doesn't exist in the font
+    from PIL import Image as _Img, ImageDraw as _ID
+    img = _Img.new("L", (30, 30), 255)
+    d = _ID.Draw(img)
+    d.text((2, 2), "\U000E0000", font=font, fill=0)  # Tag character — never in display fonts
+    import numpy as np
+    _notdef_signature = int((np.array(img) < 128).sum())
+    return _notdef_signature
+
+
+def _is_symbol_char(ch: str) -> bool:
+    """Check if a character is a symbol/emoji that might need a fallback font."""
+    cp = ord(ch)
+    # Common symbol Unicode ranges
+    return (
+        0x2600 <= cp <= 0x27BF  # Miscellaneous Symbols, Dingbats
+        or 0x2500 <= cp <= 0x25FF  # Box Drawing, Geometric Shapes
+        or 0x2190 <= cp <= 0x21FF  # Arrows
+        or 0x1F300 <= cp <= 0x1FAFF  # Emoji/Symbols
+        or 0x2700 <= cp <= 0x27BF  # Dingbats
+        or 0xFE00 <= cp <= 0xFE0F  # Variation selectors
+        or cp in (0x2665, 0x2661, 0x2605, 0x2606, 0x266A, 0x266B,  # ♥♡★☆♪♫
+                  0x2764, 0x2763, 0x2660, 0x2666, 0x2663)  # ❤❣♠♦♣
+    )
+
+
+def _render_text_with_fallback(
+    draw,
+    pos: tuple[int, int],
+    text: str,
+    font,
+    fill,
+    size: int,
+    outline_color=None,
+    outline_width: int = 0,
+):
+    """Render text using primary font, falling back to symbol font for special chars."""
+    # Quick check: if no symbols, render normally
+    if not any(_is_symbol_char(ch) for ch in text):
+        if outline_color and outline_width > 0:
+            _draw_text_with_outline(draw, pos, text, font, fill, outline_color, outline_width)
+        else:
+            draw.text(pos, text, font=font, fill=fill)
+        return
+
+    # Has symbols — render character by character with font switching
+    sym_font = _get_symbol_font(size)
+    x, y = pos
+    for ch in text:
+        use_font = sym_font if (_is_symbol_char(ch) and sym_font) else font
+        if outline_color and outline_width > 0:
+            _draw_text_with_outline(draw, (x, y), ch, use_font, fill, outline_color, outline_width)
+        else:
+            draw.text((x, y), ch, font=use_font, fill=fill)
+        x += int(use_font.getlength(ch))
+
+
 # ── outline drawing ───────────────────────────────────────────────────────────
+
+def _spaced_line_width(text: str, font, spacing: int) -> int:
+    """Compute total width of text rendered with letter spacing."""
+    if not text:
+        return 0
+    total = 0
+    for ch in text:
+        total += int(font.getlength(ch)) + spacing
+    return total - spacing  # no trailing space
+
+
+def _draw_text_spaced(
+    draw: ImageDraw.ImageDraw,
+    pos: tuple[int, int],
+    text: str,
+    font,
+    fill: tuple[int, int, int],
+    outline_color: tuple[int, int, int] | None,
+    outline_width: int,
+    spacing: int,
+    size: int = 20,
+) -> None:
+    """Draw text character by character with extra spacing and symbol fallback."""
+    x, y = pos
+    sym_font = _get_symbol_font(size) if any(_is_symbol_char(ch) for ch in text) else None
+    for ch in text:
+        use_font = sym_font if (_is_symbol_char(ch) and sym_font) else font
+        if outline_color and outline_width > 0:
+            _draw_text_with_outline(draw, (x, y), ch, use_font, fill, outline_color, outline_width)
+        else:
+            draw.text((x, y), ch, font=use_font, fill=fill)
+        x += int(use_font.getlength(ch)) + spacing
+
 
 def _draw_text_with_outline(
     draw: ImageDraw.ImageDraw,
@@ -150,13 +274,14 @@ def _draw_text_with_outline(
 ) -> None:
     """Draw text with an outline (stroke) for legibility."""
     x, y = pos
-    # Draw outline in 8 directions
+    # Draw outline using circular distance for smooth coverage
+    ow_sq = (outline_width + 0.5) ** 2
     for dx in range(-outline_width, outline_width + 1):
         for dy in range(-outline_width, outline_width + 1):
             if dx == 0 and dy == 0:
                 continue
-            if abs(dx) + abs(dy) > outline_width + 1:
-                continue  # Skip corners for smoother outline
+            if dx * dx + dy * dy > ow_sq:
+                continue  # Circular clip for smooth outline
             draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
     # Draw fill on top
     draw.text((x, y), text, font=font, fill=fill)
@@ -394,20 +519,20 @@ def render_text_in_bubble(
 
     # Color detection
     use_outline = is_free_text
-    if is_colored_text(detect_text_color(image, (x1, y1, x2, y2))):
+    if is_free_text:
+        # Free text on manga: ALWAYS black text + white outline.
+        # This is universally readable against any background (dark, light, halftone, solid).
+        text_color = (0, 0, 0)
+        outline_color = (255, 255, 255)
+    elif is_colored_text(detect_text_color(image, (x1, y1, x2, y2))):
         text_color = detect_text_color(image, (x1, y1, x2, y2))
+        outline_color = (0, 0, 0)
     else:
         # Standard: black on light, white on dark
         bg_color = detect_background_color(image, (x1, y1, x2, y2))
         lum = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
         text_color = (0, 0, 0) if lum > 128 else (255, 255, 255)
-
-    outline_color = compute_outline_color(
-        detect_background_color(image, (x1, y1, x2, y2))
-    ) if use_outline else (0, 0, 0)
-    # Invert: outline should contrast with text_color for free text
-    if use_outline:
-        outline_color = (255, 255, 255) if sum(text_color) < 384 else (0, 0, 0)
+        outline_color = (0, 0, 0)
 
     # Angle detection for free text
     angle = 0.0
@@ -439,6 +564,9 @@ def render_text_in_bubble(
         return image, r
 
     style = _tone_to_style(tone, bubble_type, font_style)
+    # Free text always uses bold for better contrast against complex backgrounds
+    if is_free_text and style not in ("bold",):
+        style = "bold"
     lang_code = LANG_MAP.get(source_language, "en_US")
 
     # ── Vertical text check ──
@@ -461,9 +589,11 @@ def render_text_in_bubble(
         return img, r
 
     # ── Find best fit (simple bbox approach) ──
+    # For free text with letter spacing, reduce available width to compensate
+    fit_box_w = int(box_w * 0.82) if is_free_text else box_w
     fit = _find_fit(
         text=clean_text, embedded_lines=embedded_lines,
-        box_w=box_w, box_h=box_h,
+        box_w=fit_box_w, box_h=box_h,
         min_size=min_font_size, max_size=max_font_size,
         style=style, lang_code=lang_code,
     )
@@ -480,7 +610,10 @@ def render_text_in_bubble(
     total_h = len(lines) * lh
     start_y = fy1 + max(0, (box_h - total_h) // 2)
 
-    outline_w = max(1, size // 12) if use_outline else 0
+    outline_w = max(4, size // 4) if (use_outline and is_free_text) else (max(1, size // 12) if use_outline else 0)
+
+    # Letter spacing for free text (improves readability on complex backgrounds)
+    letter_spacing = max(1, size // 10) if is_free_text else 0
 
     # ── Render (with optional rotation) ──
     if abs(angle) > 3:
@@ -492,14 +625,24 @@ def render_text_in_bubble(
         img = image.copy()
         draw = ImageDraw.Draw(img)
         for i, line in enumerate(lines):
-            lw = measure_width(line, font)
-            line_x = (fx1 + fx2) // 2 - lw // 2
-            line_x = max(fx1, min(line_x, fx2 - max(0, lw)))
-            pos = (line_x, start_y + i * lh)
-            if use_outline:
-                _draw_text_with_outline(draw, pos, line, font, text_color, outline_color, outline_w)
+            if letter_spacing > 0:
+                # Render with letter spacing: compute total spaced width for centering
+                spaced_w = _spaced_line_width(line, font, letter_spacing)
+                line_x = (fx1 + fx2) // 2 - spaced_w // 2
+                line_x = max(fx1, min(line_x, fx2 - max(0, spaced_w)))
+                pos = (line_x, start_y + i * lh)
+                _draw_text_spaced(draw, pos, line, font, text_color,
+                                  outline_color if use_outline else None,
+                                  outline_w, letter_spacing, size)
             else:
-                draw.text(pos, line, font=font, fill=text_color)
+                lw = measure_width(line, font)
+                line_x = (fx1 + fx2) // 2 - lw // 2
+                line_x = max(fx1, min(line_x, fx2 - max(0, lw)))
+                pos = (line_x, start_y + i * lh)
+                _render_text_with_fallback(
+                    draw, pos, line, font, text_color, size,
+                    outline_color if use_outline else None, outline_w,
+                )
 
     r = RenderResult(
         text=clean_text, status="ok", lines=lines,

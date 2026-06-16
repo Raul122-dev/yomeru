@@ -5,7 +5,6 @@ import {
   getRenderLog,
   getRun,
   pageImageUrl,
-  typesetPageUrl,
 } from "../../lib/api";
 import type { PhaseStatus, Run, StageLog } from "../../lib/types";
 import { getRunPhaseStatus, isPhaseComplete } from "../../lib/phase";
@@ -163,14 +162,14 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
       {isComplete ? (
         pageLogs.length > 0 ? (
           <>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="scroll-strip flex gap-3 overflow-x-auto pb-3" ref={(el) => { if (!el) return; const handler = (e: WheelEvent) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); } }; el.onwheel = handler; }}>
               {pageLogs.map((entry) => {
                 const rendering = entry.log?.s5_rendering;
                 return (
                   <button
                     key={entry.page}
                     onClick={() => setSelectedPage(entry.page)}
-                    className={`rounded-lg border p-4 text-left transition-colors ${
+                    className={`shrink-0 w-96 rounded-lg border p-3 text-left transition-colors ${
                       entry.page === selectedPage
                         ? "border-[hsl(var(--accent2))] bg-[hsl(var(--accent2)/.05)]"
                         : "border-[hsl(var(--border))] bg-[hsl(var(--bg-surface))] hover:border-[hsl(var(--accent2)/.35)]"
@@ -183,7 +182,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                       <span className="text-xs text-[hsl(var(--text-muted))]">{entry.filename}</span>
                     </div>
                     <img
-                      src={`${typesetPageUrl(runId, entry.filename)}?v=${refreshNonce}`}
+                      src={`/api/phases/${runId}/rendering/scanline-production/${entry.page}?v=${refreshNonce}`}
                       alt={`rendered ${entry.filename}`}
                       className="mb-3 h-40 w-full rounded border border-[hsl(var(--border))] object-cover"
                     />
@@ -228,45 +227,30 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                   </div>
                   <div className="space-y-2">
                     <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
-                      rendered (stable)
+                      rendered
                     </p>
                     <ImageViewer
-                      src={`${typesetPageUrl(runId, selectedEntry.filename)}?v=${refreshNonce}`}
-                      alt={`rendered ${selectedEntry.filename}`}
+                      key={`scan-prod-${selectedEntry.page}`}
+                      src={`/api/phases/${runId}/rendering/scanline-production/${selectedEntry.page}?v=${refreshNonce}&p=${selectedEntry.page}`}
+                      alt={`rendered p${selectedEntry.page}`}
                       label={`rendered · p${selectedEntry.page}`}
                     />
                   </div>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
-                      scanline debug (contour detection)
-                    </p>
-                    <ImageViewer
-                      key={`scan-debug-${selectedEntry.page}`}
-                      src={`/api/phases/${runId}/rendering/scanline-preview/${selectedEntry.page}?v=${refreshNonce}&p=${selectedEntry.page}`}
-                      alt={`scanline debug p${selectedEntry.page}`}
-                      label={`debug · p${selectedEntry.page}`}
-                    />
-                    <p className="text-[10px] text-[hsl(var(--text-muted))]">
-                      Green outline = detected bubble contour.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
-                      scanline production
-                    </p>
-                    <ImageViewer
-                      key={`scan-prod-${selectedEntry.page}`}
-                      src={`/api/phases/${runId}/rendering/scanline-production/${selectedEntry.page}?v=${refreshNonce}&p=${selectedEntry.page}`}
-                      alt={`scanline production p${selectedEntry.page}`}
-                      label={`production · p${selectedEntry.page}`}
-                    />
-                    <p className="text-[10px] text-[hsl(var(--text-muted))]">
-                      Final output without debug overlays.
-                    </p>
-                  </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+                    debug (contour detection)
+                  </p>
+                  <ImageViewer
+                    key={`scan-debug-${selectedEntry.page}`}
+                    src={`/api/phases/${runId}/rendering/scanline-preview/${selectedEntry.page}?v=${refreshNonce}&p=${selectedEntry.page}`}
+                    alt={`debug p${selectedEntry.page}`}
+                    label={`debug · p${selectedEntry.page}`}
+                  />
+                  <p className="text-[10px] text-[hsl(var(--text-muted))]">
+                    Green outline = detected bubble contour.
+                  </p>
                 </div>
 
                 <RenderEditor

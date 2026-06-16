@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from yomeru.core.runs import Run
@@ -37,16 +38,8 @@ def run(
         min_font_size: int = 9
         max_font_size: int = 30
     """
-    from yomeru.lib.rendering import build_renderer
-
     meta = run.meta()
-    renderer_backend = options.get("renderer_backend", "pil")
     use_translation = options.get("use_translation", True)
-    skip_sfx = options.get("skip_sfx", True)
-    skip_narration = options.get("skip_narration", False)
-    padding = options.get("padding", 12)
-    min_font_size = options.get("min_font_size", 9)
-    max_font_size = options.get("max_font_size", 30)
     source_language = options.get("source_language", meta.get("source_language", "auto"))
 
     output_dir = run.output_dir()
@@ -68,9 +61,8 @@ def run(
 
     total = len(analyses)
     on_progress({"type": "phase_progress", "phase": "rendering", "total": total, "processed": 0})
-    print(f"\n[rendering] {total} pages, backend={renderer_backend}", file=sys.stderr)
+    print(f"\n[rendering] {total} pages, engine=scanline", file=sys.stderr)
 
-    renderer = build_renderer(renderer_backend)
     results: list[PageResult] = []
 
     for analysis in sorted(analyses, key=lambda a: a.get("page_number", 0)):
@@ -91,16 +83,13 @@ def run(
                 if scan_file.exists():
                     scan_file.unlink()
 
-            # Load inpainted image
+            # Check prerequisites
             inpainted_path = debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"
             if not inpainted_path.exists():
                 on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No inpainted image"})
                 results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No inpainted image"))
                 continue
 
-            inpainted = Image.open(inpainted_path).convert("RGB")
-
-            # Load matching data
             log_path = debug_dir / f"p{page_num:02d}_render_log.json"
             if not log_path.exists():
                 on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No match log"})
@@ -139,84 +128,59 @@ def run(
                 except (json.JSONDecodeError, KeyError):
                     overrides = {}
 
-            result_img = inpainted.copy()
+            # Build render events from match data (for log/editor sync)
             render_events: list[dict] = []
-            ok_count = 0
-            skip_count = 0
-
             for m in matches_data:
                 dlg_i = m.get("dialogue_index", -1)
                 if dlg_i < 0:
                     continue
                 ovr = overrides.get(dlg_i, {})
-
-                # Check for skip override
-                if ovr.get("skip"):
-                    render_events.append({"dialogue_index": dlg_i, "status": "skip", "skip_reason": "override"})
-                    skip_count += 1
-                    continue
-
                 dlg = dialogues[dlg_i] if 0 <= dlg_i < len(dialogues) else {}
 
-                # Check for VLM-suggested skip (titles, credits, decorative text)
-                if dlg.get("skip"):
-                    render_events.append({"dialogue_index": dlg_i, "status": "skip", "skip_reason": dlg.get("skip_reason", "analysis")})
-                    skip_count += 1
-                    continue
-
-                # Filter by bubble type (SFX uses subtitle mode, not skipped)
-                if skip_narration and dlg.get("bubble_type") == "narration":
-                    skip_count += 1
-                    continue
-
-                # Get text to render
-                text = ""
-                if use_translation:
-                    text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
+                if ovr.get("skip") or dlg.get("skip"):
+                    render_events.append({
+                        "dialogue_index": dlg_i, "status": "skip",
+                        "skip_reason": ovr.get("skip_reason") or dlg.get("skip_reason", "analysis"),
+                        "region_id": m.get("region_id"), "text": "",
+                    })
                 else:
-                    text = ovr.get("text") or dlg.get("text", "")
+                    text = ""
+                    if use_translation:
+                        text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
+                    else:
+                        text = ovr.get("text") or dlg.get("text", "")
 
-                if not text.strip():
-                    render_events.append({"dialogue_index": dlg_i, "status": "skip", "skip_reason": "empty_text"})
-                    skip_count += 1
-                    continue
+                    render_events.append({
+                        "dialogue_index": dlg_i,
+                        "status": "ok" if text.strip() else "skip",
+                        "skip_reason": "" if text.strip() else "empty_text",
+                        "region_id": m.get("region_id"),
+                        "text": text,
+                        "tone": ovr.get("tone") or dlg.get("tone", "neutral"),
+                        "bubble_type": dlg.get("bubble_type", "speech"),
+                        "font_style": ovr.get("font_style") or dlg.get("font_style") or "bold",
+                    })
 
-                r = m["region"]
-                bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
-                region_label = r.get("label", "text_bubble")
-                is_free = region_label in ("text_free", "sfx")
+            ok_count = sum(1 for e in render_events if e["status"] == "ok")
+            skip_count = sum(1 for e in render_events if e["status"] == "skip")
 
-                rendered_img, rr = renderer.render(
-                    image=result_img, bbox=bbox, text=text,
-                    tone=ovr.get("tone") or dlg.get("tone", "neutral"),
-                    bubble_type=dlg.get("bubble_type", "speech"),
-                    font_style=ovr.get("font_style") or dlg.get("font_style"),
-                    line_break_hint=dlg.get("line_break_hint"),
-                    source_language=source_lang,
-                    padding=padding, min_font_size=min_font_size,
-                    max_font_size=ovr.get("font_size_override") or max_font_size,
-                    is_free_text=is_free,
-                )
+            # Generate scanline production (the primary render engine)
+            from yomeru.api.routes.phases import get_scanline_preview
+            try:
+                get_scanline_preview(run.id, page_num, force=1)
+            except Exception as scan_err:
+                print(f"  [render] scanline generation warning: {scan_err}", file=sys.stderr)
 
-                if rr.status == "ok":
-                    result_img = rendered_img
-                    ok_count += 1
-                else:
-                    skip_count += 1
-
-                ev = rr.to_dict()
-                ev["dialogue_index"] = dlg_i
-                ev["region_id"] = m.get("region_id")
-                ev["text"] = text
-                ev["tone"] = dlg.get("tone", "neutral")
-                ev["bubble_type"] = dlg.get("bubble_type", "speech")
-                render_events.append(ev)
-
-            # Save final output
+            # Copy scanline production as the final typeset output
+            scanline_prod = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
             out_path = typeset_dir / page_path.name
-            save_kwargs = {"quality": 95} if out_path.suffix.lower() in (".jpg", ".jpeg") else {}
-            result_img.save(str(out_path), **save_kwargs)
-            result_img.save(str(debug_dir / f"p{page_num:02d}_s5_final.jpg"), quality=88)
+            if scanline_prod.exists():
+                import shutil
+                if out_path.suffix.lower() in (".jpg", ".jpeg"):
+                    shutil.copy2(str(scanline_prod), str(out_path))
+                else:
+                    Image.open(scanline_prod).save(str(out_path))
+                shutil.copy2(str(scanline_prod), str(debug_dir / f"p{page_num:02d}_s5_final.jpg"))
 
             # Update render log
             log["s5_rendering"] = {"ok": ok_count, "skipped": skip_count, "renders": render_events}
@@ -261,6 +225,80 @@ def _load_analyses(run: Run) -> list[dict]:
 def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
     pages = sorted(p for p in folder.iterdir() if p.suffix.lower() in SUPPORTED)
     return [(i, p) for i, p in enumerate(pages, 1)]
+
+
+def _expand_free_text_bbox(
+    image: Image.Image,
+    bbox: tuple[int, int, int, int],
+    max_expand: int = 80,
+    variance_threshold: float = 50.0,
+) -> tuple[int, int, int, int]:
+    """
+    Expand a text_free bbox into surrounding homogeneous area.
+
+    Checks strips of pixels outside the bbox in each direction.
+    If the strip has low color variance (uniform background like a sign),
+    expand the bbox in that direction.
+
+    Only expands where the background is clearly uniform (not into detailed art).
+    """
+    arr = np.array(image)
+    img_h, img_w = arr.shape[:2]
+    x1, y1, x2, y2 = bbox
+
+    def strip_std(strip: np.ndarray) -> float:
+        """Compute std of a strip (lower = more uniform)."""
+        if strip.size == 0:
+            return 999.0
+        return float(strip.astype(np.float32).std())
+
+    # Try expanding LEFT
+    new_x1 = x1
+    for step in range(4, max_expand + 1, 4):
+        check_x = max(0, x1 - step)
+        strip = arr[y1:y2, check_x:check_x + 4]
+        if strip.size > 0 and strip_std(strip) < variance_threshold:
+            new_x1 = check_x
+        else:
+            break
+
+    # Try expanding RIGHT
+    new_x2 = x2
+    for step in range(4, max_expand + 1, 4):
+        check_end = min(img_w, x2 + step)
+        check_start = check_end - 4
+        if check_start < x2:
+            check_start = x2
+        strip = arr[y1:y2, check_start:check_end]
+        if strip.size > 0 and strip_std(strip) < variance_threshold:
+            new_x2 = check_end
+        else:
+            break
+
+    # Try expanding UP (less aggressive)
+    new_y1 = y1
+    for step in range(4, max_expand // 2 + 1, 4):
+        check_y = max(0, y1 - step)
+        strip = arr[check_y:check_y + 4, x1:x2]
+        if strip.size > 0 and strip_std(strip) < variance_threshold:
+            new_y1 = check_y
+        else:
+            break
+
+    # Try expanding DOWN
+    new_y2 = y2
+    for step in range(4, max_expand // 2 + 1, 4):
+        check_end = min(img_h, y2 + step)
+        check_start = check_end - 4
+        if check_start < y2:
+            check_start = y2
+        strip = arr[check_start:check_end, x1:x2]
+        if strip.size > 0 and strip_std(strip) < variance_threshold:
+            new_y2 = check_end
+        else:
+            break
+
+    return (new_x1, new_y1, new_x2, new_y2)
 
 
 def _build_matches_from_refined(refined: list[dict], s3_data: dict) -> list[dict]:

@@ -230,3 +230,41 @@ Cover pages, title pages, and chapter splash pages typically contain MANY region
 
 If you cannot confidently read text: use "〈illegible〉" as the text value.
 If you cannot identify a speaker: set speaker_id = null (do not guess).
+
+### SFX / onomatopoeia translation rules
+
+When translating sound effects (bubble_type = "sfx"), you MUST produce an equivalent **onomatopoeic word** in the target language — NOT a description of the sound.
+
+**Rules:**
+1. **Translate to equivalent onomatopoeia**, not descriptions. The reader needs a SOUND, not an explanation.
+2. **Keep it short** — SFX renders as a small subtitle near the original art. 1-3 words max.
+3. **Use established comic/manga onomatopoeia** in the target language when possible.
+4. If no direct equivalent exists, transliterate or use the closest phonetic approximation.
+
+**Examples (Korean/Japanese → Spanish/English):**
+
+| Source | ❌ BAD (description) | ✅ GOOD (onomatopoeia) |
+|--------|---------------------|----------------------|
+| ドキドキ | "sonido de corazón latiendo" | "Thump thump" / "Pum pum" |
+| 수후 / スー | "sonido de burbujeo/vapor" | "Fshhh" / "Sssss" |
+| ガタ | "sonido de algo cayendo" | "Clack" / "Crash" |
+| 시끄 | "sonido de ruido/bullicio" | "Bzzzz" / "Murmur" |
+| ドン | "sonido de impacto" | "BOOM" / "BAM" |
+| ざわ | "sonido de murmullo" | "Murmur..." / "Chatter..." |
+| ゴゴゴ | "sonido amenazante" | "Rumble..." / "Grrr..." |
+
+**For `text_translated` of SFX:** Always give the onomatopoeic equivalent, never a parenthetical description.
+
+### Translation length awareness
+
+When translating from CJK languages (Japanese, Korean, Chinese) to alphabetic languages (Spanish, English, etc.), be aware that translations EXPAND significantly. A 3-character Korean/Japanese word can become a 20+ character phrase.
+
+**Rules for space-conscious translation:**
+1. **Short labels/signs** (1-5 source characters): Use the most concise natural translation. Prefer single words or abbreviations when the meaning is clear.
+   - 과학실 → "Ciencias" (NOT "Laboratorio de Ciencias")
+   - 保健室 → "Enfermería" (NOT "Sala de Enfermería")
+   - 図書室 → "Biblioteca"
+   - 出口 → "Salida"
+2. **Region size hint**: If the numbered region box on the image is visually small (narrow or short), keep `text_translated` as concise as possible while preserving meaning.
+3. **SFX**: Already short by nature (1-3 words).
+4. **Normal dialogue**: Translate naturally — don't compress dialogue unnaturally. The renderer handles wrapping.

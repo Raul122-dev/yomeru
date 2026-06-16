@@ -76,14 +76,15 @@ def build_text_mask(
     """
     Build a binary mask for inpainting a text region.
 
-    Approach (same for all region types):
-      1. Crop the region from the full page image
-      2. Convert to grayscale
-      3. Threshold (Otsu) to isolate text as foreground blobs
-      4. Filter out connected components touching the bbox edges
-         (those are bubble borders, not text)
-      5. Morphological close + mild dilate for character coverage
-      6. The resulting blob = mask (follows the exact text shape)
+    For text_bubble:
+      1. Crop → grayscale → Otsu threshold
+      2. Remove edge-touching components (bubble borders)
+      3. Morphological close + dilate
+
+    For text_free / sfx:
+      1. Crop → median blur (reduce halftone) → grayscale → Otsu threshold
+      2. Do NOT remove edge-touching components (text can touch bbox edges)
+      3. Morphological close + stronger dilate for full character coverage
 
     Args:
         image: Full page image (RGB)
@@ -110,45 +111,129 @@ def build_text_mask(
         return full
 
     h, w = crop.shape[:2]
+    is_free = region_label in ("text_free", "sfx")
 
-    # 2. Grayscale
-    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    # For text_free: use full bbox as mask — let LaMa reconstruct the entire area.
+    # LaMa has full page context and produces best results with clean, complete masks.
+    # Character-level thresholding for free text is unreliable across manga styles.
+    if is_free:
+        full[y1:y2, x1:x2] = 255
+        return full
 
-    # 3. Otsu threshold — text becomes foreground (white=255 in binary)
-    mean_brightness = float(gray.mean())
-    if mean_brightness > 140:
-        _, binary = cv2.threshold(
-            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )
+    # 2. Pre-processing: reduce halftone noise for free text
+    if is_free:
+        # Stronger median blur for halftone reduction
+        crop_processed = cv2.medianBlur(crop, 5)
     else:
-        _, binary = cv2.threshold(
-            gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
+        crop_processed = crop
 
-    # 4. Remove connected components touching the edges (bubble borders)
-    #    Text characters are centered, borders run along edges.
-    num_labels, labels = cv2.connectedComponents(binary)
-    edge_labels = set()
-    # Collect labels touching any edge
-    edge_labels.update(labels[0, :].tolist())       # top row
-    edge_labels.update(labels[-1, :].tolist())      # bottom row
-    edge_labels.update(labels[:, 0].tolist())       # left col
-    edge_labels.update(labels[:, -1].tolist())      # right col
-    edge_labels.discard(0)  # background
+    # 3. Grayscale
+    gray = cv2.cvtColor(crop_processed, cv2.COLOR_RGB2GRAY)
 
-    # Remove edge-touching components
-    for lbl in edge_labels:
-        binary[labels == lbl] = 0
+    # 4. Threshold to isolate text
+    mean_brightness = float(gray.mean())
+    gray_std = float(gray.std())
 
-    # 5. Morphological close to fill gaps within characters
-    close_kernel = np.ones((3, 3), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+    if is_free:
+        # For free text on manga: use strategy based on image characteristics
+        if gray_std > 80:
+            # High contrast bimodal image (text on halftone/patterned background)
+            # Strategy: aggressive low threshold to capture dark text,
+            # then filter by component size (text = large blobs, halftone = tiny dots)
+            # Use a percentile-based threshold: text is the darkest cluster
+            dark_threshold = int(np.percentile(gray, 25))  # darkest 25%
+            dark_threshold = max(60, min(120, dark_threshold))
+            _, binary = cv2.threshold(gray, dark_threshold, 255, cv2.THRESH_BINARY_INV)
 
-    # 6. Mild dilate to cover anti-aliased character edges
-    dilate_kernel = np.ones((3, 3), np.uint8)
-    binary = cv2.dilate(binary, dilate_kernel, iterations=1)
+            # Close with larger kernel to connect text strokes
+            text_close = np.ones((5, 5), np.uint8)
+            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, text_close, iterations=2)
 
-    # 7. Place into full-page mask
+            # Remove small components (halftone remnants) — keep only text-sized blobs
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
+            total_area = h * w
+            min_text_area = max(30, total_area // 500)  # text chars are at least this big
+            for lbl in range(1, num_labels):
+                if stats[lbl, cv2.CC_STAT_AREA] < min_text_area:
+                    binary[labels == lbl] = 0
+        else:
+            # Lower contrast: use Otsu + adaptive combined approach
+            if mean_brightness > 140:
+                _, otsu_binary = cv2.threshold(
+                    gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+                )
+            else:
+                _, otsu_binary = cv2.threshold(
+                    gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+                )
+
+            # Adaptive threshold for local contrast variations
+            block_size = max(11, (min(h, w) // 8) | 1)
+            adaptive_binary = cv2.adaptiveThreshold(
+                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV if mean_brightness > 140 else cv2.THRESH_BINARY,
+                block_size, 5
+            )
+
+            binary = cv2.bitwise_or(otsu_binary, adaptive_binary)
+    else:
+        # For bubbles: Otsu alone is sufficient (clean white backgrounds)
+        if mean_brightness > 140:
+            _, binary = cv2.threshold(
+                gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+            )
+        else:
+            _, binary = cv2.threshold(
+                gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
+
+    # 5. Connected component filtering
+    if not is_free:
+        # For bubbles: remove components touching edges (those are bubble borders)
+        num_labels, labels = cv2.connectedComponents(binary)
+        edge_labels = set()
+        edge_labels.update(labels[0, :].tolist())       # top row
+        edge_labels.update(labels[-1, :].tolist())      # bottom row
+        edge_labels.update(labels[:, 0].tolist())       # left col
+        edge_labels.update(labels[:, -1].tolist())      # right col
+        edge_labels.discard(0)  # background
+
+        for lbl in edge_labels:
+            binary[labels == lbl] = 0
+    else:
+        # For free text: remove only very small noise components (not text)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
+        min_area = max(15, (h * w) // 200)  # minimum component size
+        for lbl in range(1, num_labels):
+            if stats[lbl, cv2.CC_STAT_AREA] < min_area:
+                binary[labels == lbl] = 0
+
+    # 6. Morphological close to fill gaps within characters
+    if is_free and gray_std > 80:
+        # Stronger close for bimodal regions — fills internal gaps in characters
+        close_kernel = np.ones((5, 5), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_kernel, iterations=2)
+
+        # Fill internal holes: any enclosed zero-area inside a text blob becomes mask
+        # Use floodFill from the edges to find external background, then invert
+        flood = binary.copy()
+        fill_mask = np.zeros((h + 2, w + 2), np.uint8)
+        cv2.floodFill(flood, fill_mask, (0, 0), 255)
+        holes = cv2.bitwise_not(flood)
+        binary = cv2.bitwise_or(binary, holes)
+    else:
+        close_kernel = np.ones((3, 3), np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+
+    # 7. Dilate to cover character edges (stronger for free text)
+    if is_free:
+        dilate_kernel = np.ones((5, 5), np.uint8)
+        binary = cv2.dilate(binary, dilate_kernel, iterations=2)
+    else:
+        dilate_kernel = np.ones((3, 3), np.uint8)
+        binary = cv2.dilate(binary, dilate_kernel, iterations=1)
+
+    # 8. Place into full-page mask
     full[y1:y2, x1:x2] = binary
 
     return full

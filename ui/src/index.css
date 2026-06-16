@@ -79,3 +79,23 @@
     border-color: hsl(var(--accent2));
   }
 }
+
+/* Horizontal scroll strip — page selector in phases */
+.scroll-strip {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border-strong)) transparent;
+}
+.scroll-strip::-webkit-scrollbar {
+  height: 6px;
+}
+.scroll-strip::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+.scroll-strip::-webkit-scrollbar-thumb {
+  background: hsl(var(--border-strong));
+  border-radius: 3px;
+}
+.scroll-strip::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--text-muted));
+}

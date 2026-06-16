@@ -53,6 +53,9 @@ def _get_lama() -> Any:
         return None
 
 
+MAX_LAMA_SIDE = 2048  # Downscale images larger than this for LaMa inference
+
+
 def _inpaint_lama(image: Image.Image, mask: np.ndarray) -> Image.Image:
     from .opencv import _inpaint_opencv
     try:
@@ -60,11 +63,42 @@ def _inpaint_lama(image: Image.Image, mask: np.ndarray) -> Image.Image:
         if lama is None:
             return _inpaint_opencv(image, mask)
 
-        # simple-lama expects PIL Image for both image and mask
-        mask_img = Image.fromarray(mask).convert("L")
-        result = lama(image, mask_img)
-        print("  [inpaint] LaMa OK", file=sys.stderr)
-        return result
+        orig_size = image.size  # (w, h)
+        max_side = max(orig_size)
+
+        if max_side > MAX_LAMA_SIDE:
+            # Downscale for faster LaMa inference, then composite back
+            scale = MAX_LAMA_SIDE / max_side
+            new_w = int(orig_size[0] * scale)
+            new_h = int(orig_size[1] * scale)
+
+            small_img = image.resize((new_w, new_h), Image.LANCZOS)
+            small_mask = Image.fromarray(mask).convert("L").resize((new_w, new_h), Image.NEAREST)
+
+            small_result = lama(small_img, small_mask)
+
+            # Upscale result back to original size
+            result_upscaled = small_result.resize(orig_size, Image.LANCZOS)
+
+            # Composite: use original pixels where mask=0, inpainted where mask>0
+            # This preserves full-res detail in non-inpainted areas
+            orig_arr = np.array(image)
+            result_arr = np.array(result_upscaled)
+            mask_bool = mask > 0
+            # Dilate mask slightly to blend edges
+            import cv2
+            blend_mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)
+            blend_float = (blend_mask / 255.0)[:, :, np.newaxis]
+            composited = (orig_arr * (1 - blend_float) + result_arr * blend_float).astype(np.uint8)
+
+            print(f"  [inpaint] LaMa OK (scaled {orig_size[0]}x{orig_size[1]} → {new_w}x{new_h})", file=sys.stderr)
+            return Image.fromarray(composited)
+        else:
+            # Image is small enough — process directly
+            mask_img = Image.fromarray(mask).convert("L")
+            result = lama(image, mask_img)
+            print("  [inpaint] LaMa OK", file=sys.stderr)
+            return result
     except Exception as e:
         print(f"  [inpaint] LaMa inference error: {e}, falling back to OpenCV", file=sys.stderr)
         return _inpaint_opencv(image, mask)
