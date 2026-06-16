@@ -88,12 +88,14 @@ def measure_line_height(font: ImageFont.FreeTypeFont | ImageFont.ImageFont, size
 
 # ── hyphenation ────────────────────────────────────────────────────────────────
 
-@lru_cache(maxsize=8)
-def _get_hyphenator(lang: str):
+@lru_cache(maxsize=16)
+def _get_hyphenator(lang: str, aggressive: bool = False):
     try:
         import pyphen
         for code in (lang, lang.split("_")[0], lang.split("-")[0]):
             try:
+                if aggressive:
+                    return pyphen.Pyphen(lang=code, left=2, right=2)
                 return pyphen.Pyphen(lang=code)
             except Exception:
                 continue
@@ -204,12 +206,13 @@ def _try_hyphenate(
     hyph: object | None,
     font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     box_w: int,
+    min_root_len: int = 5,
 ) -> tuple[str, str]:
     """Try syllabic hyphenation on a word that's too wide."""
     if hyph is None:
         return "", word
     lead, root, trail = _split_word_punct(word)
-    if not root:
+    if not root or len(root) < min_root_len:
         return "", word
     parts = hyph.positions(root)  # type: ignore[attr-defined]
     for pos in reversed(parts):
@@ -231,7 +234,9 @@ def wrap_latin(
     Wrap Latin text (word-level) with optional hyphenation.
     Guarantees no words are lost.
     """
-    hyph = _get_hyphenator(lang_code) if lang_code else None
+    aggressive_hyphenation = box_w < 150
+    min_hyphen_len = 4 if aggressive_hyphenation else 5
+    hyph = _get_hyphenator(lang_code, aggressive=aggressive_hyphenation) if lang_code else None
     words = text.split()
     if not words:
         return None
@@ -255,7 +260,7 @@ def wrap_latin(
                 continue
 
         # Word too long — try hyphenation
-        prefix, remaining = _try_hyphenate(word, hyph, font, box_w)
+        prefix, remaining = _try_hyphenate(word, hyph, font, box_w, min_root_len=min_hyphen_len)
         if prefix:
             lines.append(prefix)
             if len(lines) >= max_lines:
@@ -264,7 +269,8 @@ def wrap_latin(
             continue
 
         # No good break — place as-is
-        lines.append(current)
+        overflow_word = current or word
+        lines.append(overflow_word)
         if len(lines) >= max_lines:
             return None
         current = ""
@@ -274,6 +280,69 @@ def wrap_latin(
 
     lines = [l for l in lines if l.strip()]
     return lines if lines and len(lines) <= max_lines else None
+
+
+def wrap_balanced(
+    text: str,
+    box_w: int,
+    max_lines: int,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    lang_code: str = "en_US",
+) -> list[str] | None:
+    """Balanced word wrap — minimizes raggedness (Knuth-Plass style DP)."""
+    if max_lines <= 0:
+        return None
+
+    words = text.split()
+    if not words:
+        return None
+    n = len(words)
+
+    word_widths = [measure_width(w, font) for w in words]
+    space_w = measure_width(" ", font)
+
+    INF = float("inf")
+    cost = [INF] * (n + 1)
+    line_counts = [0] * (n + 1)
+    breaks = [0] * (n + 1)
+    cost[n] = 0
+
+    for i in range(n - 1, -1, -1):
+        line_w = 0
+        for j in range(i, n):
+            if j > i:
+                line_w += space_w
+            line_w += word_widths[j]
+            if line_w > box_w:
+                break
+
+            remaining_cost = cost[j + 1]
+            remaining_lines = line_counts[j + 1]
+            if remaining_cost == INF or remaining_lines + 1 > max_lines:
+                continue
+
+            slack_cost = 0 if j + 1 == n else (box_w - line_w) ** 2
+            total = slack_cost + remaining_cost
+            if total < cost[i]:
+                cost[i] = total
+                line_counts[i] = remaining_lines + 1
+                breaks[i] = j + 1
+
+    if cost[0] == INF:
+        return None
+
+    lines = []
+    i = 0
+    while i < n:
+        j = breaks[i]
+        if j <= i:
+            return None
+        lines.append(" ".join(words[i:j]))
+        i = j
+
+    if len(lines) > max_lines:
+        return None
+    return lines
 
 
 def wrap_segments(
@@ -314,6 +383,9 @@ def wrap_text(
     """
     if is_cjk_text(text):
         return wrap_cjk(text, box_w, max_lines, font)
+    balanced = wrap_balanced(text, box_w, max_lines, font, lang_code or "en_US")
+    if balanced is not None:
+        return balanced
     return wrap_latin(text, box_w, max_lines, font, lang_code)
 
 

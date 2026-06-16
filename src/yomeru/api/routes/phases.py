@@ -443,7 +443,7 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
         _get_font, _tone_to_style, _draw_text_with_outline,
     )
     from yomeru.core.typesetting.stages.rendering.text_layout import (
-        measure_line_height, measure_width, LANG_MAP, extract_embedded_breaks,
+        measure_line_height, measure_width, LANG_MAP, extract_embedded_breaks, wrap_text,
     )
     from yomeru.core.typesetting.stages.rendering.color_detect import (
         detect_background_color, detect_text_color, is_colored_text, compute_outline_color,
@@ -460,6 +460,10 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
         raise HTTPException(404, "No inpainted image for this page")
 
     img = Image.open(inpainted_path).convert("RGB")
+
+    # Resolution-relative font floor
+    img_max_side = max(img.size)
+    MIN_FONT = max(8, img_max_side // 150)
 
     # Load ORIGINAL page image (for bubble contour detection — has visible borders)
     pages_dir = run.pages_dir()
@@ -543,7 +547,7 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
     valid_match_indices = set(seen_bboxes.values())
 
     # ── Pass 1: Compute all layouts ──────────────────────────────────────────
-    # Store: list of (positioned_lines, font, size, is_free, text_color, outline_color, bubble_bbox)
+    # Store: list of (layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, lang_code)
     all_layouts: list[tuple] = []
 
     for match_idx, m in enumerate(matches):
@@ -592,6 +596,7 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
         clean_text, _ = extract_embedded_breaks(text)
         if not clean_text.strip():
             continue
+        lang_code_for_this_match = lang_code
 
         # Determine style and font
         tone = ovr.get("tone") or dlg.get("tone", "neutral")
@@ -693,14 +698,14 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
 
         # Try scanline layout if vertical didn't apply or wasn't needed
         if best_layout is None:
-            for try_size in range(max_size, 7, -3):
+            for try_size in range(max_size, MIN_FONT, -3):
                 font = _get_font(style, try_size)
                 lh = measure_line_height(font, try_size)
 
                 for wf in width_factors:
                     positioned = scanline_layout(
                         original_img, bubble_bbox, clean_text, font, try_size,
-                        lang_code, padding=scan_padding, width_factor=wf,
+                        lang_code_for_this_match, padding=scan_padding, width_factor=wf,
                         precomputed_contour=bubble_contours.get(bubble_bbox),
                     )
                     if not positioned:
@@ -722,8 +727,7 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
 
         # FALLBACK: if scanline failed, use simple bbox centered rendering
         if best_layout is None:
-            from yomeru.core.typesetting.stages.rendering.text_layout import wrap_text
-            for try_size in range(max_size, 7, -1):
+            for try_size in range(max_size, MIN_FONT, -1):
                 font = _get_font(style, try_size)
                 lh = measure_line_height(font, try_size)
                 pad = max(4, scan_padding)
@@ -732,7 +736,7 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
                 if bw < 10 or bh < 10:
                     continue
                 max_lines = max(1, bh // lh)
-                lines = wrap_text(clean_text, bw, max_lines, font, lang_code)
+                lines = wrap_text(clean_text, bw, max_lines, font, lang_code_for_this_match)
                 if lines:
                     from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine
                     total_h = len(lines) * lh
@@ -752,7 +756,67 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
                 from yomeru.core.typesetting.stages.rendering.angle_detect import detect_text_angle
                 text_angle = detect_text_angle(original_img, text_bbox)
 
-            all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox, text_angle))
+            all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, lang_code_for_this_match))
+
+    # ── Font consistency: normalize sizes toward page median ─────────────────
+    if len(all_layouts) > 2:
+        sizes = [layout[0][0] for layout in all_layouts]
+        target_size = sorted(sizes)[len(sizes) // 2]
+
+        for idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, layout_lang_code) in enumerate(all_layouts):
+            if size >= target_size * 0.7 or target_size <= size:
+                continue
+
+            try:
+                target_font = font.font_variant(size=target_size)
+            except Exception:
+                continue
+
+            bubble_w = bubble_bbox[2] - bubble_bbox[0]
+            bubble_h = bubble_bbox[3] - bubble_bbox[1]
+            scan_padding = max(5, min(12, int(min(bubble_w, bubble_h) * 0.06)))
+            width_factors = (0.90, 0.75, 0.60, 0.45, 0.35, 0.25) if bubble_h > bubble_w * 1.8 else (0.90, 0.70, 0.55, 0.45)
+            replacement_layout = None
+            target_lh = measure_line_height(target_font, target_size)
+
+            for wf in width_factors:
+                candidate = scanline_layout(
+                    original_img, bubble_bbox, clean_text, target_font, target_size,
+                    layout_lang_code, padding=scan_padding, width_factor=wf,
+                    precomputed_contour=bubble_contours.get(bubble_bbox),
+                )
+                if not candidate:
+                    continue
+
+                text_h = len(candidate) * target_lh
+                v_fill = text_h / max(1, bubble_h - scan_padding * 2)
+                if v_fill > 0.95:
+                    continue
+
+                replacement_layout = (target_size, target_font, candidate)
+                if 0.4 <= v_fill <= 0.85:
+                    break
+
+            if replacement_layout is None:
+                pad = max(4, scan_padding)
+                bw = bubble_w - pad * 2
+                bh = bubble_h - pad * 2
+                if bw >= 10 and bh >= 10:
+                    max_lines = max(1, bh // target_lh)
+                    lines = wrap_text(clean_text, bw, max_lines, target_font, layout_lang_code)
+                    if lines:
+                        from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine
+                        total_h = len(lines) * target_lh
+                        start_y = bubble_bbox[1] + pad + (bh - total_h) // 2
+                        positioned_lines = []
+                        for li, line in enumerate(lines):
+                            lw = measure_width(line, target_font)
+                            lx = bubble_bbox[0] + pad + (bw - lw) // 2
+                            positioned_lines.append(PositionedLine(text=line, x=lx, y=start_y + li * target_lh, width=bw))
+                        replacement_layout = (target_size, target_font, positioned_lines)
+
+            if replacement_layout is not None:
+                all_layouts[idx] = (replacement_layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, layout_lang_code)
 
     # ── Pass 2: Resolve line-level collisions between regions ────────────────
     # For each layout, compute per-line bounding boxes
@@ -935,7 +999,7 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
                 break  # Move to next pair after resolving
 
     # ── Pass 3: Render all layouts ───────────────────────────────────────────
-    for layout_idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox, text_angle) in enumerate(all_layouts):
+    for layout_idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox, text_angle, _clean_text, _layout_lang_code) in enumerate(all_layouts):
         outline_w = max(4, size // 4) if is_free else 0
 
         if is_free and abs(text_angle) > 3 and positioned:
@@ -967,7 +1031,7 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
     prod_img = img.copy()
     prod_draw = ImageDraw.Draw(prod_img)
 
-    for (size, font, positioned), is_free, text_color, outline_color, _bbox, text_angle in all_layouts:
+    for (size, font, positioned), is_free, text_color, outline_color, _bbox, text_angle, _clean_text, _layout_lang_code in all_layouts:
         outline_w = max(4, size // 4) if is_free else 0
 
         if is_free and abs(text_angle) > 3 and positioned:
