@@ -660,38 +660,66 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
         )
 
         if use_vertical and clean_text.strip():
-            from yomeru.core.typesetting.stages.rendering.text_layout import measure_line_height as mlh
-            flat = clean_text.replace(" ", "")
-            vert_pad = max(3, scan_padding)
+            vert_pad = max(4, scan_padding)
             usable_w = bubble_w - vert_pad * 2
             usable_h = bubble_h - vert_pad * 2
-            vert_size = min(usable_w - 4, usable_h // max(len(flat), 1) - 2)
-            vert_size = max(10, min(40, vert_size))
 
+            vert_words = clean_text.strip().split()
+            flat = "".join(vert_words)
+            total_word_gaps = max(0, len(vert_words) - 1)
+
+            # Font size = what fits the width
+            vert_size = min(usable_w - 4, 40)
+            vert_size = max(10, vert_size)
+
+            # Fixed line_spacing between characters
+            # Free text needs more gap due to outline adding visual weight
+            line_spacing = max(4, vert_size // 4) if is_free else max(3, vert_size // 6)
+            word_extra = vert_size // 3  # extra gap between words
+
+            # Measure actual per-char heights using getbbox
             vert_font = _get_font(style, vert_size)
-            char_h = mlh(vert_font, vert_size)
-            chars_per_col = max(1, usable_h // char_h)
+            char_heights = []
+            for ch in flat:
+                bb = vert_font.getbbox(ch)
+                char_heights.append(bb[3] - bb[1] if bb else vert_size)
+
+            total_h = sum(char_heights) + line_spacing * (len(flat) - 1) + word_extra * total_word_gaps
+
+            # Shrink font if total exceeds 80% of usable height
+            max_fill = int(usable_h * 0.80)
+            while total_h > max_fill and vert_size > 10:
+                vert_size -= 1
+                vert_font = _get_font(style, vert_size)
+                line_spacing = max(3, vert_size // 6)
+                word_extra = vert_size // 3
+                char_heights = []
+                for ch in flat:
+                    bb = vert_font.getbbox(ch)
+                    char_heights.append(bb[3] - bb[1] if bb else vert_size)
+                total_h = sum(char_heights) + line_spacing * (len(flat) - 1) + word_extra * total_word_gaps
 
             from yomeru.core.typesetting.stages.rendering.scanline import PositionedLine
-            cols = [flat[i:i + chars_per_col] for i in range(0, len(flat), chars_per_col)]
             positioned_lines = []
 
-            # Center the text block vertically and horizontally in the bubble
-            total_text_h = min(len(flat), chars_per_col) * char_h
-            start_y = bubble_bbox[1] + vert_pad + (usable_h - total_text_h) // 2
-            n_cols = len(cols)
-            total_cols_w = n_cols * vert_size + (n_cols - 1) * 2
-            start_x = bubble_bbox[0] + vert_pad + (usable_w - total_cols_w) // 2
+            # Center block vertically
+            start_y = bubble_bbox[1] + vert_pad + (usable_h - total_h) // 2
+            col_x = bubble_bbox[0] + vert_pad + (usable_w - vert_size) // 2
 
-            for col_idx, col in enumerate(cols):
-                col_x = start_x + col_idx * (vert_size + 2)
-                if col_x + vert_size > bubble_bbox[2] - vert_pad:
-                    break
-                for row_idx, ch in enumerate(col):
-                    cy = start_y + row_idx * char_h
-                    cw = int(vert_font.getlength(ch))
-                    cx = col_x + (vert_size - cw) // 2
-                    positioned_lines.append(PositionedLine(text=ch, x=cx, y=cy, width=vert_size))
+            cy = start_y
+            char_idx = 0
+            for word_idx, word in enumerate(vert_words):
+                for ch in word:
+                    bb = vert_font.getbbox(ch)
+                    ch_w = bb[2] - bb[0] if bb else vert_size
+                    cx = col_x + (vert_size - ch_w) // 2
+                    # Compensate for bbox top offset: draw at cy - bb[1]
+                    draw_y = cy - (bb[1] if bb else 0)
+                    positioned_lines.append(PositionedLine(text=ch, x=cx, y=draw_y, width=vert_size))
+                    cy += char_heights[char_idx] + line_spacing
+                    char_idx += 1
+                if word_idx < len(vert_words) - 1:
+                    cy += word_extra
 
             if positioned_lines:
                 best_layout = (vert_size, vert_font, positioned_lines)
@@ -716,13 +744,23 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
                     if v_fill > 0.95:
                         continue
 
-                    if 0.4 <= v_fill <= 0.85:
+                    # Dynamic v_fill targets based on bubble aspect ratio
+                    # Tall bubbles: accept lower fill (compact centered text)
+                    # Normal bubbles: standard fill
+                    if is_vertical_bubble:
+                        min_fill = 0.20  # tall bubbles: text can be compact
+                        max_fill = 0.70
+                    else:
+                        min_fill = 0.35
+                        max_fill = 0.85
+
+                    if min_fill <= v_fill <= max_fill:
                         best_layout = (try_size, font, positioned)
                         break
                     elif best_layout is None:
                         best_layout = (try_size, font, positioned)
 
-                if best_layout and 0.4 <= (len(best_layout[2]) * measure_line_height(best_layout[1], best_layout[0])) / max(1, bubble_h - scan_padding * 2) <= 0.85:
+                if best_layout and min_fill <= (len(best_layout[2]) * measure_line_height(best_layout[1], best_layout[0])) / max(1, bubble_h - scan_padding * 2) <= max_fill:
                     break
 
         # FALLBACK: if scanline failed, use simple bbox centered rendering
@@ -765,6 +803,10 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
 
         for idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, layout_lang_code) in enumerate(all_layouts):
             if size >= target_size * 0.7 or target_size <= size:
+                continue
+
+            # Skip vertical layouts (single-char-per-line) — they were sized intentionally
+            if positioned and all(len(pl.text) == 1 for pl in positioned):
                 continue
 
             try:
