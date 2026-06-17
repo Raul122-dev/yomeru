@@ -1352,8 +1352,58 @@ Production version reuses the same resolved layouts (no duplicate computation).
 
 **Known limitations / future work:**
 - Only resolves the first collision per pair then moves to next pair; complex multi-way overlaps may need multiple iterations
-- Nudge amount is `overlap + 4px gap`; could be tuned per font size
+- Nudge amount is `overlap + MIN_GAP`; MIN_GAP is proportional to average font size
 - Does not re-wrap text after nudging (shifts entire lines); for extreme cases, re-layout with constrained width might produce better results
+
+#### Vertical text layout
+
+For very narrow vertical bubbles with short text, the scanline renderer stacks characters vertically (one per line, top-to-bottom):
+
+**Trigger conditions (ALL must be true):**
+- `is_short_text`: ≤3 words AND ≤12 chars
+- `vert_potential_font > horiz_max_font * 1.5` (vertical gives ≥50% larger font)
+- `vert_potential_font >= 12` (minimum legible size)
+- `bubble_h > bubble_w * 1.8` (sufficiently vertical bubble)
+
+**Layout algorithm:**
+1. Font size = `min(usable_width - 4, 40)`
+2. Per-char spacing uses `getbbox()` for actual glyph height (not ascent)
+3. `line_spacing`: 3px for bubbles, `max(4, size//4)` for free text
+4. Word separation: `font_size // 3` extra gap
+5. Shrinks font until total_h ≤ 80% of usable_h
+6. Block centered vertically and horizontally in bubble
+
+**Font consistency exception:** Vertical layouts are excluded from page-level font normalization (detected by `all(len(pl.text)==1 for pl in positioned)`).
+
+**Pending issue:** R10 in runs/2f2b70440598 p06 ("Nnnh!" 45×92px) should trigger vertical but doesn't — needs investigation of containing bubble detection.
+
+#### Layout engine v2 features
+
+- **Resolution-relative font floor:** `MIN_FONT = max(8, image_max_side // 150)` — scales with image resolution
+- **Page font consistency:** Computes median font size, re-layouts bubbles that are <70% of median (excludes vertical layouts)
+- **Balanced wrapping (Knuth-Plass):** DP-based word wrap minimizing raggedness, preferred over greedy
+- **Aggressive hyphenation:** In narrow bubbles (`box_w < 150`), pyphen allows 4-char words with `left=2, right=2`
+
+#### Free text rendering
+
+All `text_free` / `sfx` regions use:
+- **Black text + white outline** (universally readable on any background)
+- **Bold font** (forced regardless of tone/style)
+- **Outline width:** `max(4, font_size // 4)` — thick for legibility
+- **Letter spacing:** `max(1, size // 10)` px between chars
+- **Bbox expansion:** horizontal expansion into uniform surroundings (variance < 50)
+- **Angle replication:** `detect_text_angle()` with centroid line-fitting
+
+#### Symbol fallback font
+
+Characters in Unicode symbol ranges (U+2600–27BF, U+1F300–1FAFF, etc.) that the primary comic font doesn't support are rendered with DejaVu Sans Bold as fallback. Detection via `_is_symbol_char()`, rendering via `_render_text_with_fallback()`.
+
+#### Inpainting (updated)
+
+- **text_bubble:** Otsu threshold → edge-component removal → OpenCV inpainting
+- **text_free:** Full bbox mask → always LaMa (full page context)
+- **LaMa optimization:** Images > 2048px max side are downscaled before inference, result upscaled and composited back (8x faster for large scans)
+- **Skip support:** Dialogues with `skip: true` are excluded from inpainting
 
 ### Font system
 
