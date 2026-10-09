@@ -47,16 +47,16 @@ Everything yomeru writes lives in one folder:
 
 ---
 
-## Supported models
+## Models
 
-Model is a free text field — any [LiteLLM-compatible](https://docs.litellm.ai/docs/providers) model string works:
+yomeru talks to models through two protocols. Add a **connection** in Settings for each place you get models from:
 
-| Provider | Example model strings |
-|---|---|
-| Ollama (local) | `ollama/qwen2.5vl` · `ollama/llama3.2-vision` · `ollama/minicpm-v` |
-| Anthropic | `claude-sonnet-4-5` · `claude-opus-4-5` |
-| OpenAI | `gpt-4o` · `gpt-4o-mini` |
-| Google | `gemini/gemini-1.5-flash` · `gemini/gemini-2.0-flash` |
+| Protocol | Works with | Base URL example |
+|---|---|---|
+| OpenAI-compatible | OpenAI, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, Groq, Google (OpenAI endpoint) | `https://openrouter.ai/api/v1` · `http://localhost:11434/v1` |
+| Anthropic-compatible | Anthropic, or any proxy that speaks the Messages API | `https://api.anthropic.com` |
+
+The analysis model must accept images. Settings can be saved as **presets**, and every run keeps a copy of the settings it was created with.
 
 ---
 
