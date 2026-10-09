@@ -15,18 +15,19 @@ from PIL import Image
 def client(tmp_path, monkeypatch):
     # Point every data path at a temp dir before the app is imported
     import yomeru.core.paths as paths
-    import yomeru.core.config as cfg
     import yomeru.core.runs as runs
+    import yomeru.core.settings as settings
 
     monkeypatch.setattr(paths, "DATA_DIR", tmp_path)
-    for mod in (paths, cfg, runs):
-        if hasattr(mod, "RUNS_DIR"):
-            monkeypatch.setattr(mod, "RUNS_DIR", tmp_path / "runs")
-    for mod in (paths, cfg):
-        monkeypatch.setattr(mod, "CONFIG_FILE", tmp_path / "config.json")
+    monkeypatch.setattr(runs, "RUNS_DIR", tmp_path / "runs")
+    monkeypatch.setattr(settings, "CONFIG_FILE", tmp_path / "config.json")
     (tmp_path / "runs").mkdir()
     from yomeru.app import app
-    return TestClient(app)
+    c = TestClient(app)
+    c.post("/api/config/connections", json={"name": "Local", "protocol": "openai",
+                                            "base_url": "http://127.0.0.1:9/v1"})
+    c.patch("/api/config/settings", json={"analysis_model": {"model": "test-model"}})
+    return c
 
 
 def _png(color=255) -> bytes:
@@ -37,7 +38,7 @@ def _png(color=255) -> bytes:
 
 def _create(client, names):
     files = [("files", (n, _png(), "image/png")) for n in names]
-    r = client.post("/api/runs", data={"name": "t", "model": "m", "auto_start": "false"}, files=files)
+    r = client.post("/api/runs", data={"name": "t", "auto_start": "false"}, files=files)
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
@@ -60,7 +61,7 @@ def test_upload_order_is_kept_and_duplicates_survive(client):
 
 def test_upload_rejects_non_images(client):
     files = [("files", ("x.sh", b"rm -rf /", "text/plain"))]
-    r = client.post("/api/runs", data={"name": "t", "model": "m", "auto_start": "false"}, files=files)
+    r = client.post("/api/runs", data={"name": "t", "auto_start": "false"}, files=files)
     assert r.status_code == 400
 
 
@@ -82,15 +83,18 @@ def test_file_routes_reject_traversal(client):
 
 def test_api_keys_are_masked_and_preserved(client):
     secret = "sk-test-1234567890abcdef"
-    client.patch("/api/config/providers/openai", json={"api_key": secret})
-    got = client.get("/api/config").json()["providers"]["openai"]["api_key"]
-    assert secret not in json.dumps(client.get("/api/config").json())
-    assert got.endswith("cdef")
-    # UI echoes the mask back, or sends only base_url → key must survive
-    client.patch("/api/config/providers/openai", json={"api_key": got})
-    client.patch("/api/config/providers/openai", json={"base_url": "http://x"})
-    from yomeru.core.config import config
-    assert config.get_provider("openai")["api_key"] == secret
+    cfg = client.post("/api/config/connections",
+                      json={"name": "OpenAI", "protocol": "openai", "api_key": secret}).json()
+    cid = next(c["id"] for c in cfg["connections"] if c["name"] == "OpenAI")
+    body = client.get("/api/config").json()
+    assert secret not in json.dumps(body)
+    masked = next(c for c in body["connections"] if c["id"] == cid)["api_key"]
+    assert masked.endswith("cdef")
+    # UI echoes the mask back, or omits the key → stored key must survive
+    client.put(f"/api/config/connections/{cid}", json={"name": "OpenAI", "api_key": masked})
+    client.put(f"/api/config/connections/{cid}", json={"name": "OpenAI 2", "base_url": "http://x"})
+    from yomeru.core.settings import store
+    assert store.load().connection(cid).api_key == secret
 
 
 def test_corrupt_config_is_backed_up_not_wiped(client, tmp_path):

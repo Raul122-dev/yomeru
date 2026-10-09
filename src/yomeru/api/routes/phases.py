@@ -1203,84 +1203,46 @@ def _validate_phase(phase: str) -> None:
         raise HTTPException(400, detail=f"Invalid phase: '{phase}'. Must be one of {PHASE_ORDER}")
 
 
-def _build_phase_options(run: Run, phase: str, overrides: dict) -> dict:
-    """Build phase options from run meta + request overrides."""
+def _phase_options(run: Run, phase: str) -> dict:
+    """Options for one phase, from the run's settings snapshot."""
+    from yomeru.core.settings import run_settings
     meta = run.meta()
-    options = {}
-
+    st = run_settings(meta)
+    lang = st.language
     if phase == "detection":
-        options["backend"] = meta.get("detector_backend", "auto")
-        options["threshold"] = meta.get("detector_threshold", 0.4)
+        return {"backend": st.detection.backend, "threshold": st.detection.threshold}
+    if phase == "analysis":
+        return {
+            "model": st.analysis_model.model_dump(),
+            "comic_format": lang.comic_format,
+            "source_language": lang.source,
+            "target_language": lang.target,
+            "ui_language": meta.get("ui_language", lang.target),
+            "global_context": meta.get("global_context", ""),
+        }
+    if phase == "matching":
+        m = st.matching
+        return {"ocr_weight": m.ocr_weight, "spatial_weight": m.spatial_weight,
+                "position_weight": m.position_weight, "match_min_score": m.min_score}
+    if phase == "inpainting":
+        return {"inpainter_backend": st.inpainting.backend}
+    if phase == "rendering":
+        return {"source_language": lang.source, "target_language": lang.target,
+                "use_translation": st.rendering.use_translation}
+    return {}
 
-    elif phase == "analysis":
-        from yomeru.core.config import build_litellm_model
-        provider = meta.get("provider", "")
-        model = meta.get("model", "")
-        if provider and model:
-            litellm_model, api_base = build_litellm_model(provider, model)
-            options["model"] = litellm_model
-            options["api_base"] = api_base
-        options["comic_format"] = meta.get("comic_format", "auto")
-        options["source_language"] = meta.get("source_language", "auto")
-        options["target_language"] = meta.get("target_language", "Spanish")
-        options["ui_language"] = meta.get("ui_language", "English")
-        options["global_context"] = meta.get("global_context", "")
 
-    elif phase == "matching":
-        pass  # uses defaults
-
-    elif phase == "inpainting":
-        options["inpainter_backend"] = meta.get("inpainter_backend", "auto")
-
-    elif phase == "rendering":
-        options["source_language"] = meta.get("source_language", "auto")
-        options["use_translation"] = True
-
-    # Apply overrides
+def _build_phase_options(run: Run, phase: str, overrides: dict) -> dict:
+    """Build phase options from the run snapshot + request overrides."""
+    options = _phase_options(run, phase)
     options.update(overrides)
     return options
 
 
 def _build_all_options(run: Run, overrides: dict) -> dict:
     """Build options dict keyed by phase name for run-all."""
-    meta = run.meta()
-    options = {}
-
-    # Detection options
-    options["detection"] = {
-        "backend": meta.get("detector_backend", "auto"),
-        "threshold": meta.get("detector_threshold", 0.4),
-    }
-
-    # Analysis options
-    from yomeru.core.config import build_litellm_model
-    provider = meta.get("provider", "")
-    model = meta.get("model", "")
-    analysis_opts = {
-        "comic_format": meta.get("comic_format", "auto"),
-        "source_language": meta.get("source_language", "auto"),
-        "target_language": meta.get("target_language", "Spanish"),
-        "ui_language": meta.get("ui_language", "English"),
-        "global_context": meta.get("global_context", ""),
-    }
-    if provider and model:
-        litellm_model, api_base = build_litellm_model(provider, model)
-        analysis_opts["model"] = litellm_model
-        analysis_opts["api_base"] = api_base
-    options["analysis"] = analysis_opts
-
-    # Inpainting
-    options["inpainting"] = {"inpainter_backend": meta.get("inpainter_backend", "auto")}
-
-    # Rendering
-    options["rendering"] = {
-        "source_language": meta.get("source_language", "auto"),
-        "use_translation": True,
-    }
-
-    # Apply overrides (can override per-phase or globally)
+    options = {p: _phase_options(run, p) for p in PHASE_ORDER}
     for key, val in overrides.items():
         if key in PHASE_ORDER and isinstance(val, dict):
             options.setdefault(key, {}).update(val)
-
     return options

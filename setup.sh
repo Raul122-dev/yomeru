@@ -16,10 +16,10 @@ fi
 
 if [ "$1" = "--core" ]; then
   echo -e "${CYAN}installing core dependencies${RESET}"
-  uv sync
+  uv sync --no-default-groups
 else
   echo -e "${CYAN}installing all dependencies (torch included, this takes a while)${RESET}"
-  uv sync --extra typesetting
+  uv sync
 fi
 
 [ ! -f .env ] && cp .env.example .env && echo -e "${CYAN}created${RESET} .env"

@@ -1,86 +1,56 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ChevronDown, ChevronUp } from "lucide-react";
-import { createRun, getTypesetCapabilities } from "../lib/api";
-import { getConfig, getFormats } from "../lib/api";
-import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "../lib/languages";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { createRun, getConfig } from "../lib/api";
+import type { PipelineSettings } from "../lib/types";
 import { Button } from "../components/ui/button";
 import { Input, Select } from "../components/ui/input";
 import { Card } from "../components/ui/card";
 import { ImageSorter } from "../components/ImageSorter";
+import { PipelineSettingsForm } from "../features/settings/PipelineSettingsForm";
 import { cn } from "../lib/utils";
 
 export default function NewRun() {
   const nav = useNavigate();
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState("");
-  const [model, setModel] = useState("");
-  const [provider, setProvider] = useState("");
-  const [format, setFormat] = useState("auto");
-  // language
-  const [sourceLang, setSourceLang] = useState("auto");
-  const [targetLang, setTargetLang] = useState("Spanish");
-  // context
   const [globalCtx, setGlobalCtx] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  // submit
+  const [presetId, setPresetId] = useState("");
+  const [settings, setSettings] = useState<PipelineSettings | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [runMode, setRunMode] = useState<"full" | "manual">("full");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [detectorBackend, setDetectorBackend] = useState("auto");
-  const [detectorThreshold, setDetectorThreshold] = useState(0.4);
-  const [runMode, setRunMode] = useState<"full" | "manual">("full");
 
   const { data: cfg } = useQuery({ queryKey: ["config"], queryFn: getConfig });
-  const { data: formats = [] } = useQuery({
-    queryKey: ["formats"],
-    queryFn: getFormats,
-  });
-  const { data: capabilities } = useQuery({
-    queryKey: ["typeset-capabilities"],
-    queryFn: getTypesetCapabilities,
-    staleTime: Infinity,
-  });
 
-  // Inherit settings from config
-  useEffect(() => {
-    if (!cfg) return;
-    setFormat(cfg.defaults.format || "auto");
-    setSourceLang(cfg.defaults.source_language || "auto");
-    setTargetLang(cfg.defaults.target_language || "Spanish");
-    if (cfg.defaults.model) setModel(cfg.defaults.model);
-    if (cfg.defaults.provider) setProvider(cfg.defaults.provider);
-  }, [cfg]);
+  // Base = defaults or the chosen preset; the form edits a copy for this run only
+  const base = useMemo(
+    () => (presetId ? cfg?.presets.find((p) => p.id === presetId)?.settings : cfg?.settings) ?? null,
+    [cfg, presetId],
+  );
+  useEffect(() => setSettings(base), [base]);
+
+  const modelLabel = settings
+    ? `${cfg?.connections.find((c) => c.id === settings.analysis_model.connection_id)?.name ?? "?"} · ${settings.analysis_model.model || "no model"}`
+    : "";
 
   const submit = async () => {
-    if (!files.length) {
-      setError("Select at least one page");
-      return;
-    }
-    if (!name.trim()) {
-      setError("Give the run a name");
-      return;
-    }
-    if (!model.trim()) {
-      setError("No model configured — set one in Settings");
-      return;
-    }
+    if (!files.length) return setError("Select at least one page");
+    if (!name.trim()) return setError("Give the run a name");
+    if (!settings?.analysis_model.connection_id || !settings.analysis_model.model)
+      return setError("No analysis model selected — set one in Settings or below");
     setLoading(true);
     setError("");
     try {
       const form = new FormData();
       form.append("name", name);
-      form.append("model", model);
-      form.append("provider", provider || "custom");
-      form.append("comic_format", format);
-      form.append("source_language", sourceLang);
-      form.append("target_language", targetLang);
       form.append("global_context", globalCtx);
-      form.append("ui_language", cfg?.defaults.target_language ?? "Spanish");
       for (const f of files) form.append("files", f);
       const run = await createRun(form, {
-        detector_backend: detectorBackend,
-        detector_threshold: detectorThreshold,
+        preset_id: presetId || undefined,
+        settings,
         auto_start: runMode === "full",
       });
       nav(`/runs/${run.id}`);
@@ -135,55 +105,17 @@ export default function NewRun() {
 
       {/* Run options */}
       <Card className="mb-4">
-        <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
-          Options
-        </h2>
-
         <div className="flex flex-col gap-4">
-          {/* Language pair */}
-          <div className="flex items-center gap-2">
-            <Select
-              label="source language"
-              value={sourceLang}
-              onChange={(e) => setSourceLang(e.target.value)}
-            >
-              {SOURCE_LANGUAGES.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </Select>
-            <ArrowRight
-              size={16}
-              className="mt-5 shrink-0 text-[hsl(var(--text-muted))]"
-            />
-            <Select
-              label="translate to"
-              value={targetLang}
-              onChange={(e) => setTargetLang(e.target.value)}
-            >
-              {TARGET_LANGUAGES.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          {/* Format */}
-          <Select
-            label="manga format"
-            value={format}
-            onChange={(e) => setFormat(e.target.value)}
-          >
-            {formats.map((f) => (
-              <option key={f.key} value={f.key}>
-                {f.name}
-              </option>
+          <Select label="settings" value={presetId} onChange={(e) => setPresetId(e.target.value)}>
+            <option value="">Defaults</option>
+            {cfg?.presets.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </Select>
+          <p className="-mt-2 font-mono text-xs text-[hsl(var(--text-muted))]">
+            {modelLabel} · {settings?.language.source} → {settings?.language.target} · {settings?.language.comic_format}
+          </p>
 
-          {/* Run mode */}
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
               execution mode
@@ -191,16 +123,8 @@ export default function NewRun() {
             <div className="flex gap-2">
               {(
                 [
-                  {
-                    key: "full",
-                    label: "Auto (all phases)",
-                    desc: "Runs all 5 phases sequentially",
-                  },
-                  {
-                    key: "manual",
-                    label: "Step by step",
-                    desc: "You trigger each phase manually — edit between phases",
-                  },
+                  { key: "full", label: "Auto (all phases)", desc: "Runs all 5 phases sequentially" },
+                  { key: "manual", label: "Step by step", desc: "You trigger each phase and can edit between phases" },
                 ] as const
               ).map((m) => (
                 <button
@@ -218,103 +142,20 @@ export default function NewRun() {
                 </button>
               ))}
             </div>
-            {runMode === "manual" && (
-              <p className="mt-1.5 text-[10px] text-[hsl(var(--text-muted))]">
-                Starts in pending state. Trigger phases one by one from the run
-                view — lets you review and edit results between phases.
-              </p>
-            )}
           </div>
 
-          {/* Advanced */}
-          <div>
-            <button
-              onClick={() => setShowAdvanced((a) => !a)}
-              className="flex items-center gap-1.5 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] transition-colors"
-            >
-              {showAdvanced ? (
-                <ChevronUp size={12} />
-              ) : (
-                <ChevronDown size={12} />
-              )}
-              detection settings
-            </button>
-
-            {showAdvanced && (
-              <div className="mt-3 rounded-md border border-[hsl(var(--border))] p-3 space-y-3">
-                {/* Detector backend */}
-                <div>
-                  <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
-                    text detector
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      {
-                        key: "auto",
-                        label: "Auto",
-                        note: "CTD if available, else ogkalu",
-                      },
-                      ...(capabilities?.detectors ?? [
-                        {
-                          key: "ogkalu",
-                          label: "ogkalu RT-DETR",
-                          available: true,
-                          note: "",
-                        },
-                      ]),
-                    ].map((d) => {
-                      const available =
-                        (d as { available?: boolean }).available !== false;
-                      return (
-                        <button
-                          key={d.key}
-                          onClick={() =>
-                            available && setDetectorBackend(d.key)
-                          }
-                          disabled={!available}
-                          title={(d as { note?: string }).note}
-                          className={cn(
-                            "rounded border px-2.5 py-1 text-[11px] transition-colors",
-                            detectorBackend === d.key
-                              ? "border-[hsl(var(--accent2))] bg-[hsl(var(--accent2)/.08)] text-[hsl(var(--accent2))]"
-                              : available
-                                ? "border-[hsl(var(--border))] hover:border-[hsl(var(--border-strong))]"
-                                : "cursor-not-allowed border-[hsl(var(--border))] opacity-40",
-                          )}
-                        >
-                          {d.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Threshold */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-[10px] text-[hsl(var(--text-muted))]">
-                    <span>confidence threshold</span>
-                    <span className="font-mono">
-                      {detectorThreshold.toFixed(2)}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.2}
-                    max={0.9}
-                    step={0.05}
-                    value={detectorThreshold}
-                    onChange={(e) =>
-                      setDetectorThreshold(parseFloat(e.target.value))
-                    }
-                    className="w-full h-1 accent-[hsl(var(--accent2))] cursor-pointer"
-                  />
-                  <p className="text-[9px] text-[hsl(var(--text-muted))]">
-                    Lower = more regions detected (possible false positives)
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setShowSettings((a) => !a)}
+            className="flex items-center gap-1.5 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] transition-colors"
+          >
+            {showSettings ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            adjust settings for this run only
+          </button>
+          {showSettings && settings && (
+            <div className="rounded-md border border-[hsl(var(--border))] p-3">
+              <PipelineSettingsForm value={settings} onChange={setSettings} />
+            </div>
+          )}
         </div>
       </Card>
 

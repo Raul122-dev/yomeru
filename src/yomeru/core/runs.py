@@ -13,9 +13,12 @@ import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from yomeru.core.config import RUNS_DIR
+if TYPE_CHECKING:
+    from yomeru.core.settings import PipelineSettings
+
+from yomeru.core.paths import RUNS_DIR
 
 RunStatus = Literal["pending", "running", "done", "failed"]
 
@@ -33,42 +36,34 @@ class Run:
     def create(
         cls,
         name: str,
-        model: str,
-        comic_format: str,
-        provider: str = "",
-        source_language: str = "auto",
-        target_language: str = "Spanish",
+        settings: "PipelineSettings",
         global_context: str = "",
-        detector_backend: str = "auto",
-        detector_threshold: float = 0.4,
-        inpainter_backend: str = "auto",
-        ui_language: str = "English",
-        execution_mode: str = "sequential",
+        preset_id: str | None = None,
     ) -> "Run":
+        """Create a run with a frozen copy of the effective settings."""
+        from yomeru.core.settings import store
         run_id = uuid.uuid4().hex[:12]
         run = cls(run_id)
         run.dir.mkdir(parents=True, exist_ok=True)
         (run.dir / "pages").mkdir()
         (run.dir / "output").mkdir()
 
-        phase_status = {p: "pending" for p in PHASES}
-
+        conn = store.load().connection(settings.analysis_model.connection_id)
+        lang = settings.language
         run._write_meta({
             "id": run_id,
             "name": name,
-            "model": model,
-            "provider": provider,
-            "comic_format": comic_format,
-            "source_language": source_language,
-            "target_language": target_language,
+            "settings": settings.model_dump(),
+            "preset_id": preset_id,
             "global_context": global_context,
-            "detector_backend": detector_backend,
-            "detector_threshold": detector_threshold,
-            "inpainter_backend": inpainter_backend,
-            "ui_language": ui_language,
-            "execution_mode": execution_mode,
+            # Denormalised for listing/search in the UI
+            "model": settings.analysis_model.model,
+            "connection_name": conn.name if conn else "",
+            "comic_format": lang.comic_format,
+            "source_language": lang.source,
+            "target_language": lang.target,
             "status": "pending",
-            "phase_status": phase_status,
+            "phase_status": {p: "pending" for p in PHASES},
             "total_pages": 0,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "finished_at": None,

@@ -1,248 +1,155 @@
+"""Settings API: connections, global pipeline settings, presets."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
+from typing import Any
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from yomeru.core.config import config
+from yomeru.core import llm
 from yomeru.core.models import COMIC_FORMATS
+from yomeru.core.settings import (
+    AppConfig,
+    Connection,
+    PipelineSettings,
+    Preset,
+    Protocol,
+    _deep_merge,
+    is_unchanged_secret,
+    new_connection_id,
+    public_config,
+    store,
+)
 
 router = APIRouter(prefix="/config", tags=["config"])
 
 
-class ProviderUpdate(BaseModel):
-    api_key: str | None = None
-    base_url: str | None = None
-
-
-MASK = "••••"
-
-
-def _mask(key: str | None) -> str:
-    """Never send stored secrets back to the browser; show only the tail."""
-    if not key:
-        return ""
-    return MASK + key[-4:] if len(key) > 8 else MASK
-
-
-def _is_unchanged_secret(value: str | None) -> bool:
-    """None (field not sent) or the masked placeholder the UI echoes back."""
-    return value is None or value.startswith(MASK)
-
-
-class DefaultsUpdate(BaseModel):
-    model: str | None = None
-    format: str | None = None
-    provider: str | None = None
-    source_language: str | None = None
-    target_language: str | None = None
-
-
-class TranslationUpdate(BaseModel):
-    enabled: bool | None = None
-    model: str | None = None
-    provider: str | None = None
-    base_url: str | None = None
-    api_key: str | None = None
-
-
-class PhasesUpdate(BaseModel):
-    detection: dict | None = None
-    matching: dict | None = None
-    inpainting: dict | None = None
-    rendering: dict | None = None
-
-
 @router.get("")
 def get_config():
-    import copy
-    cfg = copy.deepcopy(config.load())
-    for prov in cfg.get("providers", {}).values():
-        if isinstance(prov, dict) and "api_key" in prov:
-            prov["api_key"] = _mask(prov["api_key"])
-    if isinstance(cfg.get("translation"), dict) and "api_key" in cfg["translation"]:
-        cfg["translation"]["api_key"] = _mask(cfg["translation"]["api_key"])
-    return cfg
+    return public_config(store.load())
 
 
-@router.patch("/providers/{provider}")
-def update_provider(provider: str, body: ProviderUpdate):
-    cfg = config.load()
-    if provider not in cfg["providers"]:
-        cfg["providers"][provider] = {}
-    prov = cfg["providers"][provider]
-    if not _is_unchanged_secret(body.api_key):
-        prov["api_key"] = body.api_key
-    if body.base_url is not None:
-        prov["base_url"] = body.base_url
-    config.save(cfg)
-    return {**prov, "api_key": _mask(prov.get("api_key"))}
+# ── connections ──────────────────────────────────────────────────────────────
+
+class ConnectionIn(BaseModel):
+    name: str
+    protocol: Protocol = "openai"
+    base_url: str = ""
+    api_key: str | None = None  # None / masked value → keep the stored key
 
 
-@router.patch("/defaults")
-def update_defaults(body: DefaultsUpdate):
-    cfg = config.load()
-    defaults = cfg.setdefault("defaults", {})
-    if body.model is not None:
-        defaults["model"] = body.model
-    if body.format is not None:
-        defaults["format"] = body.format
-    if body.provider is not None:
-        defaults["provider"] = body.provider
-    if body.source_language is not None:
-        defaults["source_language"] = body.source_language
-    if body.target_language is not None:
-        defaults["target_language"] = body.target_language
-    config.save(cfg)
-    return defaults
+def _conn_or_404(cfg: AppConfig, cid: str) -> Connection:
+    conn = cfg.connection(cid)
+    if conn is None:
+        raise HTTPException(404, f"connection {cid!r} not found")
+    return conn
 
 
-@router.patch("/translation")
-def update_translation(body: TranslationUpdate):
-    """Update translation model settings."""
-    cfg = config.load()
-    trans = cfg.setdefault("translation", {})
-    if body.enabled is not None:
-        trans["enabled"] = body.enabled
-    if body.model is not None:
-        trans["model"] = body.model
-    if body.provider is not None:
-        trans["provider"] = body.provider
-    if body.base_url is not None:
-        trans["base_url"] = body.base_url
-    if not _is_unchanged_secret(body.api_key):
-        trans["api_key"] = body.api_key
-    config.save(cfg)
-    return {**trans, "api_key": _mask(trans.get("api_key"))}
+@router.post("/connections", status_code=201)
+def create_connection(body: ConnectionIn):
+    def fn(cfg: AppConfig):
+        cid = new_connection_id(body.name, {c.id for c in cfg.connections})
+        cfg.connections.append(Connection(
+            id=cid, name=body.name, protocol=body.protocol, base_url=body.base_url,
+            api_key="" if is_unchanged_secret(body.api_key) else (body.api_key or ""),
+        ))
+        # First connection becomes the default for analysis
+        if not cfg.settings.analysis_model.connection_id:
+            cfg.settings.analysis_model.connection_id = cid
+    return public_config(store.update(fn))
 
 
-@router.patch("/phases")
-def update_phases(body: PhasesUpdate):
-    """Update phase-specific settings."""
-    cfg = config.load()
-    phases = cfg.setdefault("phases", {})
-    if body.detection is not None:
-        phases.setdefault("detection", {}).update(body.detection)
-    if body.matching is not None:
-        phases.setdefault("matching", {}).update(body.matching)
-    if body.inpainting is not None:
-        phases.setdefault("inpainting", {}).update(body.inpainting)
-    if body.rendering is not None:
-        phases.setdefault("rendering", {}).update(body.rendering)
-    config.save(cfg)
-    return phases
-    return cfg["defaults"]
+@router.put("/connections/{cid}")
+def update_connection(cid: str, body: ConnectionIn):
+    def fn(cfg: AppConfig):
+        conn = _conn_or_404(cfg, cid)
+        conn.name, conn.protocol, conn.base_url = body.name, body.protocol, body.base_url
+        if not is_unchanged_secret(body.api_key):
+            conn.api_key = body.api_key or ""
+    return public_config(store.update(fn))
 
 
-@router.get("/providers")
-def list_providers():
-    """Which providers are configured and ready."""
-    cfg = config.load()
-    meta = {
-        "anthropic": {"label": "Anthropic",       "needs": "api_key"},
-        "openai":    {"label": "OpenAI",           "needs": "api_key"},
-        "google":    {"label": "Google",           "needs": "api_key"},
-        "custom":    {"label": "Custom endpoint",  "needs": "base_url"},
-    }
-    result = []
-    for key, m in meta.items():
-        prov = cfg["providers"].get(key, {})
-        ready = bool(prov.get(m["needs"], "").strip())
-        result.append({"key": key, "label": m["label"], "ready": ready, "needs": m["needs"]})
-    return result
+@router.delete("/connections/{cid}")
+def delete_connection(cid: str):
+    def fn(cfg: AppConfig):
+        _conn_or_404(cfg, cid)
+        cfg.connections = [c for c in cfg.connections if c.id != cid]
+        for ref in (cfg.settings.analysis_model, cfg.settings.translation_model):
+            if ref.connection_id == cid:
+                ref.connection_id = ""
+    return public_config(store.update(fn))
 
 
-@router.get("/models/local")
-async def list_local_models():
-    """Query the configured custom endpoint for available models."""
-    base_url = config.get_custom_base_url()
-    if not base_url:
-        raise HTTPException(400, "no custom endpoint configured — set base_url in Settings")
-    return await _fetch_models(base_url)
-
-
-@router.get("/models/test-connection")
-async def test_connection():
-    """Test that the custom endpoint is reachable and responds."""
-    base_url = config.get_custom_base_url()
-    if not base_url:
-        return {"ok": False, "error": "no base_url configured"}
-
-    base_url = base_url.rstrip("/")
+@router.get("/connections/{cid}/models")
+def connection_models(cid: str):
+    conn = _conn_or_404(store.load(), cid)
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            # Try common health/model endpoints
-            for url in [f"{base_url}/api/tags", f"{base_url}/v1/models", f"{base_url}/health"]:
-                try:
-                    r = await client.get(url)
-                    if r.status_code == 200:
-                        return {"ok": True, "endpoint": url, "status": r.status_code}
-                except Exception:
-                    continue
-        return {"ok": False, "error": f"endpoint not responding at {base_url}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return llm.list_models(conn)
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
 
 
-async def _fetch_models(base_url: str) -> list[dict]:
-    """Fetch models from an OpenAI-compatible or Ollama endpoint."""
-    base_url = base_url.rstrip("/")
-    for url in [f"{base_url}/api/tags", f"{base_url}/v1/models"]:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(url)
-                if r.status_code != 200:
-                    continue
-                data = r.json()
-                # Ollama format
-                if "models" in data:
-                    return [
-                        {"id": m["name"], "name": m["name"], "vision": _is_vision_model(m["name"])}
-                        for m in data["models"]
-                    ]
-                # OpenAI format (OpenRouter, LM Studio, etc.)
-                if "data" in data:
-                    return [
-                        {"id": m["id"], "name": m.get("name", m["id"]), "vision": _is_vision_model(m["id"])}
-                        for m in data["data"]
-                    ]
-        except Exception:
-            continue
-
-    raise HTTPException(502, f"cannot reach {base_url} — check the url in Settings")
+@router.post("/connections/{cid}/test")
+def connection_test(cid: str):
+    return llm.test_connection(_conn_or_404(store.load(), cid))
 
 
-def _is_vision_model(model_id: str) -> bool | None:
-    """
-    Heuristic check for vision support based on model name.
-    Returns True/False for known models, None for unknown.
-    """
-    model_lower = model_id.lower()
+@router.post("/connections/test")
+def connection_test_unsaved(body: ConnectionIn):
+    """Test a connection before saving it."""
+    conn = Connection(name=body.name, protocol=body.protocol, base_url=body.base_url,
+                      api_key=body.api_key or "")
+    return llm.test_connection(conn)
 
-    # Known vision models (patterns)
-    vision_patterns = [
-        "vision", "vl", "image", "-v", "4o", "gpt-4-turbo",
-        "gemini", "claude-3", "claude-sonnet", "claude-opus",
-        "llava", "qwen-vl", "qwen2-vl", "minicpm-v",
-        "internvl", "cogvlm", "pixtral", "molmo",
-    ]
-    # Known non-vision models
-    no_vision_patterns = [
-        "embed", "whisper", "tts", "dall-e", "codestral",
-        "mistral-small", "mistral-7b", "mixtral",
-    ]
 
-    for p in no_vision_patterns:
-        if p in model_lower:
-            return False
-    for p in vision_patterns:
-        if p in model_lower:
-            return True
-    return None  # unknown
+# ── global pipeline settings ─────────────────────────────────────────────────
 
+@router.patch("/settings")
+def update_settings(patch: dict[str, Any]):
+    """Deep-merge a partial PipelineSettings into the global settings."""
+    def fn(cfg: AppConfig):
+        merged = _deep_merge(cfg.settings.model_dump(), patch)
+        cfg.settings = PipelineSettings.model_validate(merged)
+    try:
+        return public_config(store.update(fn))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+# ── presets ──────────────────────────────────────────────────────────────────
+
+class PresetIn(BaseModel):
+    name: str
+    settings: PipelineSettings | None = None  # None → snapshot of the current global settings
+
+
+@router.post("/presets", status_code=201)
+def create_preset(body: PresetIn):
+    def fn(cfg: AppConfig):
+        cfg.presets.append(Preset(name=body.name, settings=body.settings or cfg.settings))
+    return public_config(store.update(fn))
+
+
+@router.put("/presets/{pid}")
+def update_preset(pid: str, body: PresetIn):
+    def fn(cfg: AppConfig):
+        preset = next((p for p in cfg.presets if p.id == pid), None)
+        if preset is None:
+            raise HTTPException(404, f"preset {pid!r} not found")
+        preset.name = body.name
+        if body.settings is not None:
+            preset.settings = body.settings
+    return public_config(store.update(fn))
+
+
+@router.delete("/presets/{pid}")
+def delete_preset(pid: str):
+    def fn(cfg: AppConfig):
+        cfg.presets = [p for p in cfg.presets if p.id != pid]
+    return public_config(store.update(fn))
+
+
+# ── environment ──────────────────────────────────────────────────────────────
 
 @router.get("/capabilities")
 def get_capabilities():
@@ -256,19 +163,11 @@ def get_capabilities():
     except ImportError:
         torch_ok, device = False, "cpu"
     detectors = [
-        {
-            "key": "ogkalu",
-            "label": "ogkalu RT-DETR",
-            "available": torch_ok,
-            "note": "HuggingFace model, downloads on first use.",
-        },
-        {
-            "key": "ctd",
-            "label": "CTD (Comic Text Detector)",
-            "available": torch_ok,
-            "downloaded": CTDDetector.is_downloaded(),
-            "note": "Pixel-level masks. Weights download on first use.",
-        },
+        {"key": "ogkalu", "label": "ogkalu RT-DETR", "available": torch_ok,
+         "note": "HuggingFace model, downloads on first use."},
+        {"key": "ctd", "label": "CTD (Comic Text Detector)", "available": torch_ok,
+         "downloaded": CTDDetector.is_downloaded(),
+         "note": "Pixel-level masks. Weights download on first use."},
     ]
     return {
         "ready": torch_ok,

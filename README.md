@@ -13,7 +13,7 @@ Requires [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you). Nod
 ```bash
 git clone https://github.com/Raul122-dev/yomeru
 cd yomeru
-bash setup.sh          # full install (torch, detection, OCR, LaMa)
+bash setup.sh          # full install (torch, detection, OCR, LaMa) — same as `uv sync`
 # bash setup.sh --core # analysis only, no torch
 bash start.sh
 # → http://localhost:7788/ui

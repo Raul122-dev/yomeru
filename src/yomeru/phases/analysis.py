@@ -29,18 +29,16 @@ def run(
     """
     Run VLM analysis on pages.
 
-    Options:
-        model: str              (litellm model string)
-        api_base: str | None    (custom endpoint)
-        provider: str           (for building litellm model)
+    Options (from the run's settings snapshot, see core/settings.py):
+        model: ModelRef dict    (connection_id + model)
     """
     from yomeru.core.analyzer import analyze_page
     from yomeru.core.models import ContextObject, PageAnalysis
     from yomeru.core.logger import PipelineLogger
 
     meta = run.meta()
-    model = options.get("model", meta.get("model", ""))
-    api_base = options.get("api_base")
+    from yomeru.core.settings import ModelRef
+    model = ModelRef.model_validate(options.get("model") or {})
     comic_format = options.get("comic_format", meta.get("comic_format", "auto"))
     source_language = options.get("source_language", meta.get("source_language", "auto"))
     target_language = options.get("target_language", meta.get("target_language", "Spanish"))
@@ -56,10 +54,10 @@ def run(
     pages = all_pages if not page_scope else [(i, p) for i, p in all_pages if i in page_scope]
 
     total = len(pages)
-    log = PipelineLogger(total=total, model=model, comic_format=comic_format)
+    log = PipelineLogger(total=total, model=model.model, comic_format=comic_format)
     log.run_start()
     on_progress({"type": "phase_progress", "phase": "analysis", "total": total, "processed": 0})
-    print(f"\n[analysis] {total} pages, model={model}", file=sys.stderr)
+    print(f"\n[analysis] {total} pages, model={model.connection_id}/{model.model}", file=sys.stderr)
 
     ctx = ContextObject()
     analyses: list[PageAnalysis] = []
@@ -94,7 +92,6 @@ def run(
                 previous_context=prev_context,
                 model=model,
                 comic_format=comic_format,
-                api_base=api_base,
                 on_token=on_token,
                 source_language=source_language,
                 target_language=target_language,

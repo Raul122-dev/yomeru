@@ -59,47 +59,52 @@ export interface PhaseStartPayload {
 }
 
 export interface CreateRunOpts {
-  detector_backend?: string;
-  detector_threshold?: number;
   auto_start?: boolean;
+  preset_id?: string;
+  /** Partial PipelineSettings applied on top of global → preset */
+  settings?: DeepPartial<PipelineSettings>;
+}
+
+export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
+
+export type Protocol = "openai" | "anthropic";
+
+export interface Connection {
+  id: string;
+  name: string;
+  protocol: Protocol;
+  base_url: string;
+  /** Masked (••••abcd); send it back unchanged to keep the stored key */
+  api_key: string;
+  has_key: boolean;
+}
+
+export interface ModelRef {
+  connection_id: string;
+  model: string;
+}
+
+export interface PipelineSettings {
+  analysis_model: ModelRef;
+  translation_model: ModelRef;
+  language: { source: string; target: string; comic_format: string };
+  detection: { backend: "auto" | "ogkalu" | "ctd"; threshold: number };
+  matching: { ocr_weight: number; spatial_weight: number; position_weight: number; min_score: number };
+  inpainting: { backend: "auto" | "lama" | "opencv" };
+  rendering: { use_translation: boolean };
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  settings: PipelineSettings;
 }
 
 export interface AppConfig {
-  providers: Record<string, { api_key?: string; base_url?: string }>;
-  defaults: {
-    model: string;
-    format: string;
-    provider: string;
-    source_language: string;
-    target_language: string;
-  };
-  translation: {
-    enabled: boolean;
-    model: string;
-    provider: string;
-    base_url: string;
-    api_key: string;
-  };
-  phases: {
-    detection: { backend: string; threshold: number };
-    matching: {
-      backend: string;
-      ocr_weight: number;
-      spatial_weight: number;
-      position_weight: number;
-      min_score: number;
-    };
-    inpainting: { backend: string };
-    rendering: {
-      backend: string;
-      use_translation: boolean;
-      skip_sfx: boolean;
-      skip_narration: boolean;
-      padding: number;
-      min_font_size: number;
-      max_font_size: number;
-    };
-  };
+  schema_version: number;
+  connections: Connection[];
+  settings: PipelineSettings;
+  presets: Preset[];
 }
 
 export interface ModelInfo {
@@ -108,11 +113,6 @@ export interface ModelInfo {
   vision: boolean | null;
 }
 
-export interface ProviderInfo {
-  key: string;
-  label: string;
-  ready: boolean;
-}
 
 export interface TypesetStatus {
   status: "not_started" | "done";

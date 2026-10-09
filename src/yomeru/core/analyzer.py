@@ -9,6 +9,7 @@ from typing import Callable
 
 from json_repair import repair_json
 from yomeru.core.models import DEFAULT_FORMAT, PageAnalysis, format_context_str
+from yomeru.core.settings import ModelRef
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
@@ -271,9 +272,8 @@ def analyze_page(
     image_path: Path,
     page_number: int,
     previous_context: str | None = None,
-    model: str = "",
+    model: "ModelRef | None" = None,
     comic_format: str = DEFAULT_FORMAT,
-    api_base: str | None = None,
     on_token: Callable[[str], None] | None = None,
     # language options
     source_language: str = "auto",
@@ -289,12 +289,8 @@ def analyze_page(
     # If set, load saved/refined detections instead of running detector
     saved_detections_dir: Path | None = None,
 ) -> PageAnalysis:
-    if not model:
-        raise ValueError("model is required — set it in Settings or when creating the run")
-
-    import litellm
-    litellm.suppress_debug_info = True
-    os.environ.setdefault("LITELLM_LOG", "ERROR")
+    from yomeru.core.llm import resolve_model, stream_vision
+    rm = resolve_model(model or ModelRef())
 
     # ── detection-first: annotate image before sending to VLM ─────────────────
     detection_context = ""
@@ -354,41 +350,13 @@ def analyze_page(
         image_size=(model_w, model_h),
     ) + detection_context
 
-    print(f"  → litellm  model={model!r}  api_base={api_base!r}  lang={source_language}"
-          + (f" → {target_language}" if target_language else " → English")
-          + (f"  ui={ui_language}" if ui_language.lower() != "english" else ""),
+    print(f"  → model {rm.label}  lang={source_language}"
+          + (f" → {target_language}" if target_language else " → English"),
           file=sys.stderr)
 
-    stream = litellm.completion(
-        model=model,
-        max_tokens=3000,
-        stream=True,
-        api_base=api_base or None,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": [
-                {"type": "text", "text": user_text},
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-            ]},
-        ],
-    )
-
-    chunks: list[str] = []
-    for chunk in stream:
-        try:
-            choices = getattr(chunk, "choices", None)
-            if not choices: continue
-            delta = getattr(choices[0], "delta", None)
-            token: str = getattr(delta, "content", None) or ""
-        except (IndexError, AttributeError):
-            continue
-        if token:
-            chunks.append(token)
-            if on_token: on_token(token)
-
-    raw = "".join(chunks)
+    raw = stream_vision(rm, system_prompt, user_text, b64, mime, on_token=on_token)
     if not raw.strip():
-        raise ValueError(f"empty response from model '{model}'")
+        raise ValueError(f"empty response from {rm.label}")
 
     # detect model refusals before trying to parse
     refusal_phrases = [

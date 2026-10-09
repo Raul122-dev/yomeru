@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 
 import re
 
-from yomeru.core.config import config
+from yomeru.core.settings import resolve_settings
 from yomeru.core.paths import IMAGE_EXTS, list_page_files, safe_child
 from yomeru.core.runs import Run
 from yomeru.phases.runner import run_all
@@ -65,31 +65,25 @@ def get_context(run_id: str):
 @router.post("", status_code=201)
 async def create_run(
     name: Annotated[str, Form()],
-    model: Annotated[str, Form()],
-    provider: Annotated[str, Form()] = "custom",
-    comic_format: Annotated[str, Form()] = "auto",
-    source_language: Annotated[str, Form()] = "auto",
-    target_language: Annotated[str, Form()] = "Spanish",
     global_context: Annotated[str, Form()] = "",
-    ui_language: Annotated[str, Form()] = "English",
-    detector_backend: Annotated[str, Form()] = "auto",
-    detector_threshold: Annotated[float, Form()] = 0.4,
-    # auto_start=True: detect+analyze immediately (backwards compat)
-    # auto_start=False: create run in pending state, user controls phases
+    preset_id: Annotated[str | None, Form()] = None,
+    # JSON object, partial PipelineSettings applied on top of global → preset
+    settings: Annotated[str, Form()] = "{}",
+    # auto_start=True: run all phases; False: user triggers each phase
     auto_start: Annotated[bool, Form()] = True,
     files: list[UploadFile] = File(...),
 ):
     if not files: raise HTTPException(400, "no files uploaded")
+    try:
+        overrides = json.loads(settings or "{}")
+        effective = resolve_settings(preset_id or None, overrides)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(400, f"invalid settings: {e}")
+    if not effective.analysis_model.is_set():
+        raise HTTPException(400, "no analysis model selected — configure one in Settings")
 
-    run = Run.create(
-        name=name, model=model, comic_format=comic_format, provider=provider,
-        source_language=source_language,
-        target_language=target_language,
-        global_context=global_context,
-        ui_language=ui_language,
-        detector_backend=detector_backend,
-        detector_threshold=detector_threshold,
-    )
+    run = Run.create(name=name, settings=effective, global_context=global_context,
+                     preset_id=preset_id or None)
 
     # Keep the order the UI sent (the user's drag-sorted order) and never trust
     # the client filename as a path: store as NNN_<basename>.

@@ -5,13 +5,17 @@ import type {
   DetectionRegion,
   FontInfo,
   MatchEvent,
+  Connection,
   ModelInfo,
   OrphanedRegion,
+  PipelineSettings,
+  Preset,
+  Protocol,
+  DeepPartial,
   PhaseName,
   PhaseStartPayload,
   PhaseStatus,
   PhaseStatusResponse,
-  ProviderInfo,
   RenderEvent,
   Run,
   StageLog,
@@ -26,13 +30,17 @@ export type {
   DetectionRegion,
   FontInfo,
   MatchEvent,
+  Connection,
   ModelInfo,
   OrphanedRegion,
+  PipelineSettings,
+  Preset,
+  Protocol,
+  DeepPartial,
   PhaseName,
   PhaseStartPayload,
   PhaseStatus,
   PhaseStatusResponse,
-  ProviderInfo,
   RenderEvent,
   Run,
   StageLog,
@@ -44,9 +52,23 @@ const B = "/api";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(B + path, init);
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    const text = await r.text();
+    let msg = text;
+    try {
+      const d = JSON.parse(text).detail;
+      msg = typeof d === "string" ? d : JSON.stringify(d);
+    } catch { /* plain text */ }
+    throw new Error(msg || `${r.status} ${r.statusText}`);
+  }
   return r.json();
 }
+
+const json = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
 
 // ── runs ──────────────────────────────────────────────────────────────────────
 
@@ -128,20 +150,10 @@ export const getContext = (id: str) =>
   req<Record<string, unknown>>(`/runs/${id}/context`);
 
 export const createRun = (form: FormData, opts: CreateRunOpts = {}) => {
-  if (opts.detector_backend)
-    form.append("detector_backend", opts.detector_backend);
-  if (opts.detector_threshold != null)
-    form.append("detector_threshold", String(opts.detector_threshold));
-  if (opts.auto_start !== undefined)
-    form.append("auto_start", String(opts.auto_start));
-  if (opts.auto_start === false) form.append("auto_start", "false");
-  return fetch(B + "/runs", { method: "POST", body: form }).then((r) => {
-    if (!r.ok)
-      return r.text().then((t) => {
-        throw new Error(t);
-      });
-    return r.json() as Promise<Run>;
-  });
+  if (opts.auto_start !== undefined) form.append("auto_start", String(opts.auto_start));
+  if (opts.preset_id) form.append("preset_id", opts.preset_id);
+  if (opts.settings) form.append("settings", JSON.stringify(opts.settings));
+  return req<Run>("/runs", { method: "POST", body: form });
 };
 
 // ── config ────────────────────────────────────────────────────────────────────
@@ -150,64 +162,40 @@ export const getFormats = () =>
   req<{ key: string; name: string; reading_order: string; origin: string }[]>(
     "/config/formats",
   );
-export const getLocalModels = () =>
-  req<ModelInfo[]>("/config/models/local");
 
-export const testConnection = () =>
-  req<{ ok: boolean; error?: string; endpoint?: string }>("/config/models/test-connection");
-
-export const updateProvider = (
-  provider: string,
-  body: { api_key?: string; base_url?: string },
-) =>
-  req(`/config/providers/${provider}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-export const updateDefaults = (body: {
-  model?: string;
-  format?: string;
-  source_language?: string;
-  target_language?: string;
-  provider?: string;
-}) =>
-  req("/config/defaults", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-export const updateTranslation = (body: {
-  enabled?: boolean;
-  model?: string;
-  provider?: string;
-  base_url?: string;
+export interface ConnectionInput {
+  name: string;
+  protocol: Protocol;
+  base_url: string;
+  /** Omit or send the masked value to keep the stored key */
   api_key?: string;
-}) =>
-  req("/config/translation", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+}
+export const createConnection = (c: ConnectionInput) =>
+  req<AppConfig>("/config/connections", json("POST", c));
+export const updateConnection = (id: string, c: ConnectionInput) =>
+  req<AppConfig>(`/config/connections/${id}`, json("PUT", c));
+export const deleteConnection = (id: string) =>
+  req<AppConfig>(`/config/connections/${id}`, { method: "DELETE" });
+export const getConnectionModels = (id: string) =>
+  req<ModelInfo[]>(`/config/connections/${id}/models`);
+export const testConnection = (id: string) =>
+  req<{ ok: boolean; models?: number; error?: string }>(`/config/connections/${id}/test`, { method: "POST" });
+export const testConnectionDraft = (c: ConnectionInput) =>
+  req<{ ok: boolean; models?: number; error?: string }>("/config/connections/test", json("POST", c));
 
-export const updatePhases = (body: {
-  detection?: Record<string, unknown>;
-  matching?: Record<string, unknown>;
-  inpainting?: Record<string, unknown>;
-  rendering?: Record<string, unknown>;
-}) =>
-  req("/config/phases", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+export const updateSettings = (patch: DeepPartial<PipelineSettings>) =>
+  req<AppConfig>("/config/settings", json("PATCH", patch));
+
+export const createPreset = (name: string, settings?: PipelineSettings) =>
+  req<AppConfig>("/config/presets", json("POST", { name, settings }));
+export const updatePreset = (p: Preset) =>
+  req<AppConfig>(`/config/presets/${p.id}`, json("PUT", { name: p.name, settings: p.settings }));
+export const deletePreset = (id: string) =>
+  req<AppConfig>(`/config/presets/${id}`, { method: "DELETE" });
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 type str = string;
 
-export const getProviders = () => req<ProviderInfo[]>("/config/providers");
 
 export const getAnalyses = (id: str) => req<unknown[]>(`/runs/${id}/analyses`);
 export const pageImageUrl = (id: str, filename: str) =>
