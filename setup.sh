@@ -25,4 +25,4 @@ fi
 [ ! -f .env ] && cp .env.example .env && echo -e "${CYAN}created${RESET} .env"
 
 echo -e "\n${GREEN}done!${RESET} run ${BOLD}bash start.sh${RESET}"
-echo "model weights download automatically the first time each phase needs them.\n"
+echo -e "model weights download automatically the first time each phase needs them.\n"
