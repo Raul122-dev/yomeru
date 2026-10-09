@@ -1,11 +1,10 @@
 """
 LaMa deep learning inpainting backend.
 
-Uses `simple-lama-inpainting` package which handles model download
-and inference automatically. Best for text_free/sfx regions where
-content-aware fill is needed.
-
-Install: pip install simple-lama-inpainting
+Runs the big-lama TorchScript checkpoint directly with torch (the same model
+simple-lama-inpainting ships, without its pillow<10 / numpy<2 pins).
+Weights are downloaded on first use into data/models/lama/.
+Best for text_free/sfx regions where content-aware fill is needed.
 """
 from __future__ import annotations
 import sys
@@ -18,7 +17,7 @@ _lama_instance: Any = None
 
 
 class LamaInpainter:
-    """LaMa deep learning inpainter via simple-lama-inpainting."""
+    """LaMa deep learning inpainter (big-lama TorchScript)."""
 
     @property
     def name(self) -> str:
@@ -27,7 +26,7 @@ class LamaInpainter:
     @classmethod
     def is_available(cls) -> bool:
         try:
-            from simple_lama_inpainting import SimpleLama  # noqa: F401
+            import torch  # noqa: F401
             return True
         except ImportError:
             return False
@@ -43,14 +42,40 @@ def _get_lama() -> Any:
     if _lama_instance is not None:
         return _lama_instance
     try:
-        from simple_lama_inpainting import SimpleLama
+        from yomeru.core.weights import ensure_weight
+        path = ensure_weight("lama")
         print("  [inpaint] loading LaMa model…", file=sys.stderr)
-        _lama_instance = SimpleLama()
+        _lama_instance = _Lama(path)
         print("  [inpaint] LaMa ready", file=sys.stderr)
         return _lama_instance
     except Exception as e:
         print(f"  [inpaint] LaMa load error: {e}", file=sys.stderr)
         return None
+
+
+class _Lama:
+    """Minimal big-lama TorchScript runner: pads to a multiple of 8, crops back."""
+
+    def __init__(self, path) -> None:
+        import torch
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = torch.jit.load(str(path), map_location=self.device)
+        self.model.eval()
+
+    def __call__(self, image: Image.Image, mask: Image.Image) -> Image.Image:
+        import torch
+        img = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+        msk = (np.asarray(mask.convert("L"), dtype=np.float32) > 0).astype(np.float32)
+        h, w = msk.shape
+        ph, pw = (-h) % 8, (-w) % 8
+        img = np.pad(img, ((0, ph), (0, pw), (0, 0)), mode="symmetric")
+        msk = np.pad(msk, ((0, ph), (0, pw)), mode="symmetric")
+        t_img = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).to(self.device)
+        t_msk = torch.from_numpy(msk)[None, None].to(self.device)
+        with torch.inference_mode():
+            out = self.model(t_img, t_msk)[0].permute(1, 2, 0).cpu().numpy()
+        out = np.clip(out[:h, :w] * 255, 0, 255).astype(np.uint8)
+        return Image.fromarray(out)
 
 
 MAX_LAMA_SIDE = 2048  # Downscale images larger than this for LaMa inference

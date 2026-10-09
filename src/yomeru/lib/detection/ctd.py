@@ -3,8 +3,7 @@ CTD (Comic Text Detector) detection backend.
 
 Model: comictextdetector.pt (dmMaze / zyddnys)
 - Provides pixel-level segmentation masks (useful for irregular bubble shapes)
-- Requires manual download to: models/ctd/comictextdetector.pt
-  Source: https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.2.1
+- Weights are downloaded on first use into data/models/ctd/ (see core/weights.py)
 
 See SPEC.md for the full input/output contract.
 """
@@ -18,7 +17,9 @@ from PIL import Image
 
 from . import TextRegion
 
-_MODEL_PATH = Path(__file__).parent.parent.parent.parent.parent / "models" / "ctd" / "comictextdetector.pt"
+from yomeru.core.weights import WEIGHTS, ensure_weight
+
+_MODEL_PATH = WEIGHTS["ctd"].path
 
 
 class CTDDetector:
@@ -36,16 +37,20 @@ class CTDDetector:
 
     @classmethod
     def is_available(cls) -> bool:
+        """CTD can always be used: its weights download on first use."""
+        return True
+
+    @classmethod
+    def is_downloaded(cls) -> bool:
         return cls.DEFAULT_MODEL_PATH.exists()
 
     def _load(self) -> None:
         if self._model is not None:
             return
-        if not self._model_path.exists():
-            raise FileNotFoundError(
-                f"comictextdetector.pt not found at {self._model_path}\n"
-                "Download from: https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.2.1"
-            )
+        if self._model_path == self.DEFAULT_MODEL_PATH:
+            ensure_weight("ctd")
+        elif not self._model_path.exists():
+            raise FileNotFoundError(f"comictextdetector.pt not found at {self._model_path}")
         import torch
         print("  [detector] loading CTD…", file=sys.stderr)
 

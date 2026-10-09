@@ -9,9 +9,6 @@ build/
 # ui (pre-built static IS committed — see src/yomeru/static/)
 ui/node_modules/
 
-# data — never commit user data
+# data — runs, config (API keys) and downloaded model weights
 .env
-~/.yomeru/
-
-# model weights
-src/yomeru/models/
+/data/

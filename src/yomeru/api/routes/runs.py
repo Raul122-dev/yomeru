@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from yomeru.core.config import config, DATA_DIR
+from yomeru.core.config import config
 from yomeru.core.runs import Run
 from yomeru.phases.runner import run_all
 from yomeru.api.ws import make_emitter

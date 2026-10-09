@@ -83,7 +83,7 @@ def build_detector(backend: str = "auto") -> Any:
     Return a cached detector instance.
 
     backend: "auto" | "ogkalu" | "ctd"
-      - "auto"   → CTD if model present, else ogkalu
+      - "auto"   → CTD if its weights are already downloaded, else ogkalu
       - "ogkalu" → RT-DETR-v2 via HuggingFace (no local model required)
       - "ctd"    → Comic Text Detector (requires models/ctd/comictextdetector.pt)
     """
@@ -92,7 +92,7 @@ def build_detector(backend: str = "auto") -> Any:
     from .ctd import CTDDetector
 
     if backend == "auto":
-        backend = "ctd" if CTDDetector.is_available() else "ogkalu"
+        backend = "ctd" if CTDDetector.is_downloaded() else "ogkalu"
         print(f"  [detector] auto → {backend}", file=sys.stderr)
 
     if backend in _cache:

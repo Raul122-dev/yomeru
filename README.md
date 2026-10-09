@@ -1,27 +1,27 @@
 # yomeru
 
-Context builder for manga/manhwa. Extracts narrative flow, characters, and dialogue from comic pages using local or cloud vision models.
+AI-assisted manga/manhwa translation and typesetting. One workflow from raw pages to translated pages:
+
+**detection → analysis (vision LLM) → matching → inpainting → rendering**, with an editor for every phase.
 
 ---
 
-## Install (Linux / macOS)
+## Install (Linux / macOS / WSL)
 
-**Option A — git clone (recommended)**
+Requires [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you). Node is only needed for UI development.
+
 ```bash
-git clone https://github.com/your-user/yomeru
+git clone https://github.com/Raul122-dev/yomeru
 cd yomeru
-bash setup.sh
+bash setup.sh          # full install (torch, detection, OCR, LaMa)
+# bash setup.sh --core # analysis only, no torch
 bash start.sh
 # → http://localhost:7788/ui
 ```
 
-**Option B — pip install**
-```bash
-pip install git+https://github.com/your-user/yomeru
-yomeru
-```
+Model weights (detector, OCR, LaMa) are **not** bundled — each one downloads automatically the first time a phase needs it, into `data/models/`.
 
-Both options require only **Python 3.12+**. Node/npm is never needed by end users.
+By default the server binds to `127.0.0.1` (local only). Set `HOST`/`PORT` in `.env` to change it.
 
 ---
 
@@ -33,26 +33,17 @@ Both options require only **Python 3.12+**. Node/npm is never needed by end user
 
 ---
 
-## Configuration
+## Data
 
-Everything is configurable from the **Settings** page. Alternatively edit `~/.yomeru/config.json`:
+Everything yomeru writes lives in one folder:
 
-```json
-{
-  "providers": {
-    "anthropic": { "api_key": "sk-ant-..." },
-    "openai":    { "api_key": "sk-..." },
-    "google":    { "api_key": "AIza..." },
-    "ollama":    { "base_url": "http://localhost:11434" }
-  },
-  "defaults": {
-    "model": "ollama/qwen2.5vl",
-    "format": "auto"
-  }
-}
-```
+| Path | Content |
+|---|---|
+| `data/runs/<id>/` | one folder per run (pages, phase outputs, edits) |
+| `data/config.json` | settings and provider API keys |
+| `data/models/` | downloaded model weights (HuggingFace, EasyOCR, CTD, LaMa) |
 
-Data (runs, context files) is stored in `~/.yomeru/runs/`.
+`data/` is created inside the repo and is git-ignored. Override with `YOMERU_DATA=/some/path`. When installed with pip (no repo checkout), it defaults to `~/.yomeru`.
 
 ---
 
@@ -83,7 +74,7 @@ Model is a free text field — any [LiteLLM-compatible](https://docs.litellm.ai/
 
 ## For contributors (hot reload)
 
-Requires Node 18+:
+Requires Node 20+:
 ```bash
 bash dev.sh
 # ui      → http://localhost:3000/ui  (vite HMR)
@@ -103,11 +94,12 @@ This writes the build to `src/yomeru/static/` — commit it so end users get the
 ```
 yomeru/
 ├── setup.sh / start.sh / dev.sh
-├── pyproject.toml              ← pip install . / pip install -e .
+├── pyproject.toml              ← uv sync [--extra typesetting]
+├── data/                       ← runs, config, model weights (git-ignored)
 ├── src/yomeru/                 ← Python package
 │   ├── __main__.py             ← entry point (python -m yomeru)
 │   ├── app.py                  ← FastAPI app, serves UI at /ui
-│   ├── phases/                 ← 🆕 Unified phase orchestration
+│   ├── phases/                 ← phase orchestration
 │   │   ├── __init__.py         ← PhaseResult, registry, types
 │   │   ├── runner.py           ← RunExecutor (locks, deps, run-all)
 │   │   ├── detection.py        ← Phase 1: text region detection
@@ -121,13 +113,15 @@ yomeru/
 │   │   ├── inpainting/         ← LaMa, OpenCV inpainters
 │   │   └── rendering/          ← PIL text renderer
 │   ├── core/
+│   │   ├── paths.py            ← data dir layout
+│   │   ├── weights.py          ← download-on-first-use weights
 │   │   ├── config.py           ← JSON config store
 │   │   ├── runs.py             ← Run model + phase status
 │   │   ├── models.py           ← data models (dialogues, scenes, etc.)
 │   │   └── analyzer.py         ← VLM prompt building + LLM calls
 │   ├── api/
-│   │   ├── routes/phases.py    ← 🆕 unified phase API
-│   │   ├── routes/runs.py      ← run CRUD + legacy phase triggers
+│   │   ├── routes/phases.py    ← phase API
+│   │   ├── routes/runs.py      ← run CRUD, uploads
 │   │   ├── routes/config.py    ← provider config
 │   │   └── ws.py               ← WebSocket progress handler
 │   ├── prompts/                ← system/format prompt templates
@@ -135,7 +129,7 @@ yomeru/
 └── ui/                          ← React/Vite/TS source (dev only)
     └── src/
         ├── pages/              ← Dashboard, NewRun, RunDetail, Settings
-        ├── hooks/              ← usePhaseRunner, useRunData
-        ├── components/         ← PhaseBar, phase views, editors
+        ├── hooks/              ← usePhaseRunner, useRunDetailData
+        ├── features/           ← PhaseBar, phase views, editors
         └── lib/api.ts          ← API client (phases + legacy)
 ```

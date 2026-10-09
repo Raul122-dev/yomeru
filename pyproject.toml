@@ -5,8 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yomeru"
 version = "0.1.0"
-description = "Manga/manhwa context builder"
-requires-python = ">=3.12"
+description = "AI-assisted manga/manhwa translation and typesetting pipeline"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -16,7 +17,31 @@ dependencies = [
     "Pillow>=10.0.0",
     "json-repair>=0.30.0",
     "pydantic>=2.0.0",
+    "numpy>=1.26,<2",
+    "opencv-python-headless>=4.8",
+    "pyphen>=0.14",
 ]
+
+[project.optional-dependencies]
+# Detection, OCR and LaMa inpainting. Model weights download on first use.
+typesetting = [
+    "torch>=2.7",
+    "torchvision>=0.22",
+    "transformers>=4.45",
+    "scipy>=1.11",
+    "easyocr>=1.7",
+    "manga-ocr>=0.1.14",
+]
+
+# CUDA 12.8 wheels (Blackwell / RTX 50xx and older). CPU-only users can drop this.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
 
 [project.scripts]
 yomeru = "yomeru.__main__:main"
@@ -29,5 +54,4 @@ yomeru = [
     "static/**/*",
     "prompts/**/*",
     "assets/**/*",
-    "models/**/*",
 ]

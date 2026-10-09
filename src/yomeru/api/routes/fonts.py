@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File as FastAPIFile
 
 router = APIRouter(prefix="/fonts", tags=["fonts"])
 
-FONTS_DIR = Path(__file__).parent.parent.parent / "assets" / "fonts"
+from yomeru.core.paths import FONTS_DIR
 SUPPORTED_FORMATS = {".ttf", ".otf", ".ttc"}
 
 

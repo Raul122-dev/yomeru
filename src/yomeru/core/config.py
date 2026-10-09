@@ -5,17 +5,12 @@ from pathlib import Path
 from typing import Any
 
 
-# ── paths ──────────────────────────────────────────────────────────────────────
-DATA_DIR   = Path(os.environ.get("YOMERU_DATA", Path.home() / ".yomeru"))
-RUNS_DIR   = DATA_DIR / "runs"
-CONFIG_FILE = DATA_DIR / "config.json"
-STATIC_DIR = Path(__file__).parent.parent / "static"
+from yomeru.core.paths import (  # noqa: F401  (re-exported)
+    CONFIG_FILE, DATA_DIR, MODELS_DIR, RUNS_DIR, STATIC_DIR, ensure_dirs,
+)
+
 PORT = int(os.environ.get("PORT", 7788))
-
-
-def ensure_dirs() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+HOST = os.environ.get("HOST", "127.0.0.1")
 
 
 # ── provider schema ────────────────────────────────────────────────────────────

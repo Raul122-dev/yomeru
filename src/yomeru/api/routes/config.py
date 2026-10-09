@@ -221,39 +221,37 @@ def _is_vision_model(model_id: str) -> bool | None:
 
 @router.get("/capabilities")
 def get_capabilities():
-    """Return system capabilities (available detectors, inpainters, device)."""
-    status_file = Path(__file__).parent.parent.parent / "typesetting_status.json"
-    if not status_file.exists():
-        return {
-            "ready": False,
-            "message": "Run setup_typesetting.py first",
-            "detectors": [],
-            "device": "cpu",
-        }
-    status = json.loads(status_file.read_text())
-    from yomeru.core.typesetting.stages.detection.ctd import CTDDetector
-    from yomeru.core.typesetting.stages.inpainting import lama_available
+    """Return what the installed environment can actually run."""
+    from yomeru.lib.detection.ctd import CTDDetector
+    from yomeru.lib.inpainting import lama_available
+    try:
+        import torch
+        torch_ok = True
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        torch_ok, device = False, "cpu"
     detectors = [
         {
             "key": "ogkalu",
             "label": "ogkalu RT-DETR",
-            "available": True,
+            "available": torch_ok,
             "note": "HuggingFace model, downloads on first use.",
         },
         {
             "key": "ctd",
             "label": "CTD (Comic Text Detector)",
-            "available": CTDDetector.is_available(),
-            "note": "Pixel-level masks for better inpainting.",
+            "available": torch_ok,
+            "downloaded": CTDDetector.is_downloaded(),
+            "note": "Pixel-level masks. Weights download on first use.",
         },
     ]
     return {
-        "ready": status.get("torch", False),
-        "device": status.get("device", "cpu"),
+        "ready": torch_ok,
+        "device": device,
         "detectors": detectors,
         "inpainter": "lama" if lama_available() else "opencv",
         "lama_ready": lama_available(),
-        "message": None if status.get("torch", False) else "Run setup first",
+        "message": None if torch_ok else "Typesetting extras missing: uv sync --extra typesetting",
     }
 
 

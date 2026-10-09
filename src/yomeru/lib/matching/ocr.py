@@ -16,7 +16,13 @@ def _get_easyocr(lang_code: tuple):
     """Lazy-load EasyOCR reader (cached per language set)."""
     import easyocr
     print(f"  [ocr] loading EasyOCR for {lang_code}…", file=sys.stderr)
-    return easyocr.Reader(list(lang_code), gpu=_has_gpu())
+    from yomeru.core.paths import MODELS_DIR
+    store = MODELS_DIR / "easyocr"
+    store.mkdir(parents=True, exist_ok=True)
+    return easyocr.Reader(
+        list(lang_code), gpu=_has_gpu(),
+        model_storage_directory=str(store), user_network_directory=str(store / "user_network"),
+    )
 
 
 def ocr_easyocr(image: Image.Image, lang_codes: tuple = ("en",)) -> str:
