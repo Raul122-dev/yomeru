@@ -171,7 +171,8 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
 
     # Load image
     pages_dir = run.pages_dir()
-    page_files = sorted(pages_dir.glob("*.jpg")) + sorted(pages_dir.glob("*.png"))
+    from yomeru.core.paths import list_page_files
+    page_files = list_page_files(pages_dir)
     img_path = page_files[page_num - 1] if page_num <= len(page_files) else None
     if not img_path or not img_path.exists():
         raise HTTPException(404, f"Page image not found for page {page_num}")
@@ -331,7 +332,8 @@ def get_mask_debug(run_id: str, page_num: int):
         raise HTTPException(404, f"No render log for page {page_num}")
 
     pages_dir = run.pages_dir()
-    all_pages = sorted(p for p in pages_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"})
+    from yomeru.core.paths import list_page_files
+    all_pages = list_page_files(pages_dir)
     if page_num < 1 or page_num > len(all_pages):
         raise HTTPException(404, f"Page {page_num} not found")
 
@@ -467,7 +469,8 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
 
     # Load ORIGINAL page image (for bubble contour detection — has visible borders)
     pages_dir = run.pages_dir()
-    all_pages = sorted(p for p in pages_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"})
+    from yomeru.core.paths import list_page_files
+    all_pages = list_page_files(pages_dir)
     if page_num < 1 or page_num > len(all_pages):
         raise HTTPException(404, f"Page {page_num} not found")
     original_img = Image.open(all_pages[page_num - 1]).convert("RGB")
@@ -478,17 +481,8 @@ def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
         raise HTTPException(404, "No render log for this page")
     log = json.loads(log_path.read_text())
 
-    # Prefer refined matches if available
-    refined_matches_path = debug_dir / f"p{page_num:02d}_matches_refined.json"
-    if refined_matches_path.exists():
-        try:
-            from yomeru.phases.rendering import _build_matches_from_refined
-            refined = json.loads(refined_matches_path.read_text())
-            matches = _build_matches_from_refined(refined, log.get("s3_matching", {}))
-        except (json.JSONDecodeError, KeyError):
-            matches = log.get("s3_matching", {}).get("matches", [])
-    else:
-        matches = log.get("s3_matching", {}).get("matches", [])
+    from yomeru.core.matches import effective_matches
+    matches = effective_matches(log, debug_dir, page_num)
 
     # Load analyses for dialogue text (merged with user edits)
     analyses_file = run.active_analyses_file()

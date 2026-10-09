@@ -55,3 +55,8 @@ yomeru = [
     "prompts/**/*",
     "assets/**/*",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

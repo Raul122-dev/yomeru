@@ -14,8 +14,23 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 
 class ProviderUpdate(BaseModel):
-    api_key: str = ""
-    base_url: str = ""
+    api_key: str | None = None
+    base_url: str | None = None
+
+
+MASK = "••••"
+
+
+def _mask(key: str | None) -> str:
+    """Never send stored secrets back to the browser; show only the tail."""
+    if not key:
+        return ""
+    return MASK + key[-4:] if len(key) > 8 else MASK
+
+
+def _is_unchanged_secret(value: str | None) -> bool:
+    """None (field not sent) or the masked placeholder the UI echoes back."""
+    return value is None or value.startswith(MASK)
 
 
 class DefaultsUpdate(BaseModel):
@@ -43,7 +58,14 @@ class PhasesUpdate(BaseModel):
 
 @router.get("")
 def get_config():
-    return config.load()
+    import copy
+    cfg = copy.deepcopy(config.load())
+    for prov in cfg.get("providers", {}).values():
+        if isinstance(prov, dict) and "api_key" in prov:
+            prov["api_key"] = _mask(prov["api_key"])
+    if isinstance(cfg.get("translation"), dict) and "api_key" in cfg["translation"]:
+        cfg["translation"]["api_key"] = _mask(cfg["translation"]["api_key"])
+    return cfg
 
 
 @router.patch("/providers/{provider}")
@@ -51,10 +73,13 @@ def update_provider(provider: str, body: ProviderUpdate):
     cfg = config.load()
     if provider not in cfg["providers"]:
         cfg["providers"][provider] = {}
-    cfg["providers"][provider]["api_key"] = body.api_key
-    cfg["providers"][provider]["base_url"] = body.base_url
+    prov = cfg["providers"][provider]
+    if not _is_unchanged_secret(body.api_key):
+        prov["api_key"] = body.api_key
+    if body.base_url is not None:
+        prov["base_url"] = body.base_url
     config.save(cfg)
-    return cfg["providers"][provider]
+    return {**prov, "api_key": _mask(prov.get("api_key"))}
 
 
 @router.patch("/defaults")
@@ -88,10 +113,10 @@ def update_translation(body: TranslationUpdate):
         trans["provider"] = body.provider
     if body.base_url is not None:
         trans["base_url"] = body.base_url
-    if body.api_key is not None:
+    if not _is_unchanged_secret(body.api_key):
         trans["api_key"] = body.api_key
     config.save(cfg)
-    return trans
+    return {**trans, "api_key": _mask(trans.get("api_key"))}
 
 
 @router.patch("/phases")

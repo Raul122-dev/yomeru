@@ -111,8 +111,9 @@ export function MatchingEditor({
   const dispH = (originalH || 600) * scale;
 
   // Build editable matches from stage log
-  const s2 = stageLog.s2_detection;
-  const s3 = stageLog.s3_matching;
+  // Fallback render logs (page never matched) have no s2/s3 sections
+  const s2 = stageLog.s2_detection ?? { regions: [] };
+  const s3 = stageLog.s3_matching ?? { matches: [], orphaned: [] };
 
   const [matches, setMatches] = useState<EditableMatch[]>(() =>
     (s3.matches ?? []).map((m) => ({

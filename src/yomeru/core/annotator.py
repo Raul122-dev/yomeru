@@ -97,6 +97,14 @@ def save_detections(
     fname = "page_detections_refined.json" if refined else "page_detections.json"
     det_file = output_dir / fname
 
+    # The refined file replaces the original as a whole when it exists, so the
+    # first refinement must start from every page's original detections —
+    # otherwise all other pages silently lose their regions.
+    if refined and not det_file.exists():
+        base = output_dir / "page_detections.json"
+        if base.exists():
+            det_file.write_text(base.read_text())
+
     if det_file.exists():
         try:
             all_dets: list[dict] = json.loads(det_file.read_text())

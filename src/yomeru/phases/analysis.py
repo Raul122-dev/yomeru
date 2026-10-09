@@ -134,7 +134,10 @@ def run(
         ctx.chunk_summaries.append(ctx.compress_chunk(current_chunk))
 
     # Save results (merge with existing when using page_scope)
-    _save_analyses(analyses, output_dir, all_pages, source_language, is_scoped=bool(page_scope))
+    # Only the pages analysed in THIS run are new; `analyses` also carries the
+    # untouched pages loaded above to rebuild context.
+    fresh = [a for a in analyses if not page_scope or a.page_number in page_scope]
+    _save_analyses(fresh, output_dir, all_pages, source_language, is_scoped=bool(page_scope))
     _save_context(ctx, output_dir)
 
     done = sum(1 for r in results if r.success)
@@ -171,7 +174,8 @@ def get_status(run: Run) -> dict:
 
 
 def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    pages = sorted(p for p in folder.iterdir() if p.suffix.lower() in SUPPORTED)
+    from yomeru.core.paths import list_page_files
+    pages = list_page_files(folder)
     if not pages:
         raise FileNotFoundError(f"No images found in {folder}")
     return [(i, p) for i, p in enumerate(pages, 1)]
@@ -260,6 +264,19 @@ def _save_analyses(
             (output_dir / "edits.json").write_text(
                 json.dumps(edits, indent=2, ensure_ascii=False)
             )
+
+    # A refined analyses file shadows page_analyses.json as a whole: put the
+    # fresh results for the re-analysed pages into it so downstream sees them.
+    refined_f = output_dir / "page_analyses_refined.json"
+    if refined_f.exists():
+        fresh_nums = {e["page_number"] for e in new_entries}
+        try:
+            refined = json.loads(refined_f.read_text())
+        except json.JSONDecodeError:
+            refined = []
+        refined = [e for e in refined if e.get("page_number") not in fresh_nums] + new_entries
+        refined.sort(key=lambda x: x.get("page_number", 0))
+        refined_f.write_text(json.dumps(refined, indent=2, ensure_ascii=False))
 
 
 def _save_context(ctx, output_dir: Path) -> None:

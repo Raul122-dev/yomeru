@@ -1,9 +1,10 @@
 /**
  * MaskEditor — paint/erase the inpainting mask directly on the page.
  *
- * Shows the original page with the current mask overlaid in magenta.
- * User can paint (add mask) or erase (remove mask) with a brush.
- * Save → PUT /runs/{id}/typeset/masks/{page}  (sends base64 PNG)
+ * Shows the original page with the current mask (auto + previous edits)
+ * overlaid in magenta. Paint adds to it, erase removes from it.
+ * Save → PUT /runs/{id}/typeset/masks/{page} with an RGBA *delta* PNG:
+ *   transparent = keep auto mask · white = add · black = remove
  * Re-inpaint → POST /runs/{id}/typeset/stages/inpainting/{page}
  *
  * Keyboard shortcuts:
@@ -14,7 +15,7 @@
  *   Ctrl+S — save mask
  *   R — toggle inpainted reference overlay
  */
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { Stage, Layer, Image as KonvaImage, Line } from "react-konva";
 import useImage from "use-image";
 import type Konva from "konva";
@@ -83,6 +84,33 @@ export function MaskEditor({
     `p${String(pageNum).padStart(2, "0")}_s4_inpainted.jpg`,
   );
   const [inpaintedImg] = useImage(inpaintedUrl, "anonymous");
+  const pad = String(pageNum).padStart(2, "0");
+  const [maskNonce, setMaskNonce] = useState(() => Date.now());
+  const [currentMaskImg] = useImage(
+    `${debugImageUrl(runId, `p${pad}_mask_current.png`)}?v=${maskNonce}`,
+    "anonymous",
+  );
+  const [prevDeltaImg] = useImage(
+    `${debugImageUrl(runId, `p${pad}_mask_refined.png`)}?v=${maskNonce}`,
+    "anonymous",
+  );
+  // White-on-black mask → magenta-on-transparent overlay
+  const maskOverlay = useMemo(() => {
+    if (!currentMaskImg) return null;
+    const c = document.createElement("canvas");
+    c.width = currentMaskImg.width;
+    c.height = currentMaskImg.height;
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(currentMaskImg, 0, 0);
+    const data = ctx.getImageData(0, 0, c.width, c.height);
+    const px = data.data;
+    for (let i = 0; i < px.length; i += 4) {
+      const on = px[i] > 127;
+      px[i] = 255; px[i + 1] = 0; px[i + 2] = 255; px[i + 3] = on ? 255 : 0;
+    }
+    ctx.putImageData(data, 0, 0);
+    return c;
+  }, [currentMaskImg]);
 
   const s4 = stageLog.s4_inpainting;
   const hasMask = !s4?.skipped && (s4?.mask_pixels ?? 0) > 0;
@@ -118,17 +146,24 @@ export function MaskEditor({
   const { progress: rerunProgress, start: startRerun } = useScopedPhaseRunner({
     runId,
     phase: "inpainting",
-    onComplete: () => onSaved?.(),
+    onComplete: () => {
+      setStrokes([]);
+      setMaskNonce(Date.now());
+      onSaved?.();
+    },
     onError: (msg) => setError(msg),
   });
   const isInpainting = rerunProgress.status === "running";
 
   // ── keyboard shortcuts ────────────────────────────────────────────────────
 
+  const saveRef = useRef<() => void>(() => {});
+  const dirtyRef = useRef(false);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in inputs
-      if ((e.target as HTMLElement).tagName === "INPUT") return;
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
 
       if (e.key === "b" || e.key === "B") {
         e.preventDefault();
@@ -147,7 +182,7 @@ export function MaskEditor({
         setStrokes((prev) => prev.slice(0, -1));
       } else if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (isDirty) handleSave();
+        if (dirtyRef.current) saveRef.current();
       } else if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         setShowReference((v) => !v);
@@ -155,7 +190,7 @@ export function MaskEditor({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isDirty]);
+  }, []);
 
   // ── drawing ────────────────────────────────────────────────────────────────
 
@@ -220,14 +255,13 @@ export function MaskEditor({
     canvas.width = originalW;
     canvas.height = originalH;
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, originalW, originalH);
+    // Start from the previously saved delta so earlier edits are kept
+    if (prevDeltaImg) ctx.drawImage(prevDeltaImg, 0, 0, originalW, originalH);
 
     for (const stroke of [...strokes, ...(current ? [current] : [])]) {
       if (stroke.points.length < 1) continue;
-      ctx.globalCompositeOperation =
-        stroke.mode === "paint" ? "source-over" : "destination-out";
-      ctx.strokeStyle = "white";
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = stroke.mode === "paint" ? "white" : "black";
       ctx.lineWidth = stroke.size;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -240,7 +274,7 @@ export function MaskEditor({
     }
 
     return canvas.toDataURL("image/png");
-  }, [strokes, current, originalW, originalH]);
+  }, [strokes, current, originalW, originalH, prevDeltaImg]);
 
   // ── save / re-inpaint ──────────────────────────────────────────────────────
 
@@ -249,7 +283,8 @@ export function MaskEditor({
     setError(null);
     try {
       const dataUrl = exportMask();
-      await saveMask(runId, pageNum, dataUrl);
+      const r = await saveMask(runId, pageNum, dataUrl);
+      if (!r.ok) throw new Error(`save failed (${r.status})`);
       setIsDirty(false);
       onSaved?.();
     } catch (e: unknown) {
@@ -264,7 +299,8 @@ export function MaskEditor({
     try {
       if (isDirty) {
         const dataUrl = exportMask();
-        await saveMask(runId, pageNum, dataUrl);
+        const r = await saveMask(runId, pageNum, dataUrl);
+        if (!r.ok) throw new Error(`save failed (${r.status})`);
         setIsDirty(false);
       }
       await startRerun([pageNum]);
@@ -272,6 +308,9 @@ export function MaskEditor({
       setError(String(e));
     }
   };
+
+  saveRef.current = () => void handleSave();
+  dirtyRef.current = isDirty;
 
   const toKonvaPoints = (pts: MaskPoint[]) =>
     pts.flatMap((p) => [p.x * scale, p.y * scale]);
@@ -361,6 +400,7 @@ export function MaskEditor({
             onMouseDown={onMouseDown}
             onMouseMove={onMouseMove}
             onMouseUp={onMouseUp}
+            onMouseLeave={onMouseUp}
           >
             {/* background image */}
             <Layer>
@@ -383,7 +423,10 @@ export function MaskEditor({
 
             {/* mask strokes overlay — magenta for visibility */}
             {!showReference && (
-              <Layer listening={false}>
+              <Layer listening={false} opacity={opacity}>
+                {maskOverlay && (
+                  <KonvaImage image={maskOverlay} width={dispW} height={dispH} />
+                )}
                 {[...strokes, ...(current ? [current] : [])].map((stroke, i) => {
                   const pts = toKonvaPoints(stroke.points);
                   if (pts.length < 2) return null;
@@ -395,7 +438,6 @@ export function MaskEditor({
                       strokeWidth={stroke.size * scale}
                       lineCap="round"
                       lineJoin="round"
-                      opacity={stroke.mode === "paint" ? opacity : 1}
                       globalCompositeOperation={
                         stroke.mode === "erase"
                           ? "destination-out"

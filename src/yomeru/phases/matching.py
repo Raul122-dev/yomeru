@@ -311,7 +311,8 @@ def _load_analyses(run: Run) -> list[dict]:
 
 
 def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    pages = sorted(p for p in folder.iterdir() if p.suffix.lower() in SUPPORTED)
+    from yomeru.core.paths import list_page_files
+    pages = list_page_files(folder)
     return [(i, p) for i, p in enumerate(pages, 1)]
 
 
@@ -613,12 +614,27 @@ def _text_containment_score(needle: str, haystack: str) -> float:
 
 def _save_match_log(matches, dialogues, page_dets, orphaned, debug_dir, page_num, img_w, img_h):
     """Save matching results to render_log.json."""
+    # Fallback matches carry the dialogue's (often null) region_id; resolve the
+    # real detection id from the matched geometry so the editor shows it.
+    def _real_region_id(reg) -> int | None:
+        best, best_iou = None, 0.5
+        for r in page_dets.values():
+            ix = max(0, min(reg.x2, r["x2"]) - max(reg.x1, r["x1"]))
+            iy = max(0, min(reg.y2, r["y2"]) - max(reg.y1, r["y1"]))
+            inter = ix * iy
+            union = (reg.x2 - reg.x1) * (reg.y2 - reg.y1) + (r["x2"] - r["x1"]) * (r["y2"] - r["y1"]) - inter
+            iou = inter / union if union > 0 else 0
+            if iou > best_iou:
+                best, best_iou = r["id"], iou
+        return best
+
     match_events = []
     for i, m in matches.items():
         dlg = dialogues[i]
+        real_id = _real_region_id(m.region)
         match_events.append({
             "dialogue_index": i,
-            "region_id": dlg.get("region_id"),
+            "region_id": real_id if real_id is not None else dlg.get("region_id"),
             "match_type": "direct" if m.total_score == 1.0 else "fallback",
             "region": {
                 "x1": m.region.x1, "y1": m.region.y1,

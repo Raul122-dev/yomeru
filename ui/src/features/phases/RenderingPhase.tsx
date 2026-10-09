@@ -254,6 +254,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                 </div>
 
                 <RenderEditor
+                  key={selectedEntry.page}
                   runId={runId}
                   pageNum={selectedEntry.page}
                   stageLog={selectedEntry.log}

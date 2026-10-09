@@ -16,6 +16,8 @@ from fastapi.responses import FileResponse
 
 from yomeru.core.runs import Run
 
+from yomeru.core.paths import safe_child
+
 router = APIRouter(prefix="/runs", tags=["outputs"])
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -64,8 +66,11 @@ def list_debug_images(run_id: str):
 def get_debug_image(run_id: str, filename: str):
     """Serve a debug image file."""
     run = _get_run(run_id)
-    path = run.output_dir() / "typeset" / "debug" / filename
-    if not path.exists():
+    try:
+        path = safe_child(run.output_dir() / "typeset" / "debug", filename)
+    except ValueError:
+        raise HTTPException(400, "invalid filename")
+    if not path.is_file():
         raise HTTPException(404, "debug image not found")
     return FileResponse(path)
 
@@ -93,7 +98,10 @@ def get_render_log(run_id: str, page_num: int):
 def get_typeset_page(run_id: str, filename: str):
     """Serve a final typeset page image."""
     run = _get_run(run_id)
-    path = run.output_dir() / "typeset" / filename
-    if not path.exists():
+    try:
+        path = safe_child(run.output_dir() / "typeset", filename)
+    except ValueError:
+        raise HTTPException(400, "invalid filename")
+    if not path.is_file():
         raise HTTPException(404, "typeset image not found")
     return FileResponse(path)

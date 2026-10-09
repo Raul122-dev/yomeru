@@ -142,7 +142,8 @@ def get_status(run: Run) -> dict:
 
 def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
     """Returns list of (page_number, path) sorted."""
-    pages = sorted(p for p in folder.iterdir() if p.suffix.lower() in SUPPORTED)
+    from yomeru.core.paths import list_page_files
+    pages = list_page_files(folder)
     if not pages:
         raise FileNotFoundError(f"No images found in {folder}")
     return [(i, p) for i, p in enumerate(pages, 1)]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import sys
 import os
 from pathlib import Path
 from typing import Any
@@ -110,11 +111,19 @@ class ConfigStore:
                         if k not in data[section]:
                             data[section][k] = v
             return data
-        except Exception:
-            return json.loads(json.dumps(_DEFAULTS))
+        except json.JSONDecodeError:
+            # Keep the broken file instead of letting the next save() wipe the
+            # user's keys with defaults.
+            import time
+            backup = CONFIG_FILE.with_name(f"config.corrupt-{int(time.time())}.json")
+            CONFIG_FILE.replace(backup)
+            print(f"  [config] config.json was invalid JSON, moved to {backup.name}", file=sys.stderr)
+            return self.load()
 
     def save(self, data: dict) -> None:
-        CONFIG_FILE.write_text(json.dumps(data, indent=2))
+        tmp = CONFIG_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=2))
+        tmp.replace(CONFIG_FILE)
 
     def get_provider(self, provider: str) -> dict:
         return self.load()["providers"].get(provider, {})

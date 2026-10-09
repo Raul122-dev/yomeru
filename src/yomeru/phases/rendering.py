@@ -98,18 +98,8 @@ def run(
 
             log = json.loads(log_path.read_text())
 
-            # Prefer manually refined matches over auto-generated ones
-            refined_matches_path = debug_dir / f"p{page_num:02d}_matches_refined.json"
-            if refined_matches_path.exists():
-                try:
-                    refined = json.loads(refined_matches_path.read_text())
-                    matches_data = _build_matches_from_refined(
-                        refined, log.get("s3_matching", {})
-                    )
-                except (json.JSONDecodeError, KeyError):
-                    matches_data = log.get("s3_matching", {}).get("matches", [])
-            else:
-                matches_data = log.get("s3_matching", {}).get("matches", [])
+            from yomeru.core.matches import effective_matches
+            matches_data = effective_matches(log, debug_dir, page_num)
             dialogues = analysis.get("dialogues", [])
             source_lang = analysis.get("source_language", source_language)
 
@@ -223,7 +213,8 @@ def _load_analyses(run: Run) -> list[dict]:
 
 
 def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    pages = sorted(p for p in folder.iterdir() if p.suffix.lower() in SUPPORTED)
+    from yomeru.core.paths import list_page_files
+    pages = list_page_files(folder)
     return [(i, p) for i, p in enumerate(pages, 1)]
 
 
@@ -301,65 +292,3 @@ def _expand_free_text_bbox(
     return (new_x1, new_y1, new_x2, new_y2)
 
 
-def _build_matches_from_refined(refined: list[dict], s3_data: dict) -> list[dict]:
-    """
-    Build a matches list from manually refined match overrides.
-
-    The refined file contains user-corrected dialogue→region assignments.
-    We merge them with the original auto-generated matches, preferring manual ones.
-    """
-    # Index original matches by dialogue_index for fallback
-    original_matches = {m["dialogue_index"]: m for m in s3_data.get("matches", [])}
-
-    # Index all detected regions by id for bbox lookup
-    regions_by_id = {}
-    for region in s3_data.get("regions", []):
-        regions_by_id[region.get("id") or region.get("region_id")] = region
-
-    # Also extract regions from original matches
-    for m in s3_data.get("matches", []):
-        rid = m.get("region_id")
-        if rid is not None and rid not in regions_by_id:
-            regions_by_id[rid] = m.get("region", {})
-
-    result = []
-    refined_indices = set()
-
-    for override in refined:
-        dlg_i = override.get("dialogue_index")
-        if dlg_i is None:
-            continue
-        refined_indices.add(dlg_i)
-
-        region_id = override.get("region_id")
-        # Try to find region geometry from detection data or original matches
-        region = None
-        if region_id is not None:
-            region = regions_by_id.get(region_id)
-            if region and "bbox" in region and "x1" not in region:
-                bbox = region["bbox"]
-                region = {"x1": bbox[0], "y1": bbox[1], "x2": bbox[2], "y2": bbox[3],
-                          "label": region.get("label", "text_bubble"), "score": 1.0}
-
-        if not region:
-            # Fall back to original match's region
-            orig = original_matches.get(dlg_i)
-            if orig:
-                region = orig.get("region", {})
-
-        if region and "x1" in region:
-            result.append({
-                "dialogue_index": dlg_i,
-                "region_id": region_id,
-                "match_type": override.get("match_type", "manual"),
-                "region": region,
-                "scores": {"spatial": 1.0, "text": 1.0, "position": 1.0, "total": 1.0},
-                "dialogue_text": override.get("dialogue_text", ""),
-            })
-
-    # Keep original matches that weren't overridden
-    for dlg_i, m in original_matches.items():
-        if dlg_i not in refined_indices:
-            result.append(m)
-
-    return result

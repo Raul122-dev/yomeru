@@ -327,6 +327,7 @@ export function InpaintingPhase({ runId, pages }: InpaintingPhaseProps) {
                 </div>
 
                 <MaskEditor
+                  key={selectedEntry.page}
                   runId={runId}
                   pageNum={selectedEntry.page}
                   filename={selectedEntry.filename}

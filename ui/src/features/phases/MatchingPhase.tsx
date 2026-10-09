@@ -289,6 +289,7 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
                 </div>
 
                 <MatchingEditor
+                  key={selectedEntry.page}
                   runId={runId}
                   pageNum={selectedEntry.page}
                   filename={selectedEntry.filename}

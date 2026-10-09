@@ -7,7 +7,10 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+import re
+
 from yomeru.core.config import config
+from yomeru.core.paths import IMAGE_EXTS, list_page_files, safe_child
 from yomeru.core.runs import Run
 from yomeru.phases.runner import run_all
 from yomeru.api.ws import make_emitter
@@ -33,8 +36,11 @@ def get_run(run_id: str):
 def get_page_image(run_id: str, filename: str):
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
-    path = run.pages_dir() / filename
-    if not path.exists(): raise HTTPException(404, "image not found")
+    try:
+        path = safe_child(run.pages_dir(), filename)
+    except ValueError:
+        raise HTTPException(400, "invalid filename")
+    if not path.is_file(): raise HTTPException(404, "image not found")
     return FileResponse(path)
 
 
@@ -42,8 +48,7 @@ def get_page_image(run_id: str, filename: str):
 def list_pages(run_id: str):
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
-    supported = {".jpg", ".jpeg", ".png", ".webp"}
-    files = sorted(p for p in run.pages_dir().iterdir() if p.suffix.lower() in supported)
+    files = list_page_files(run.pages_dir())
     return [{"page": i + 1, "filename": p.name} for i, p in enumerate(files)]
 
 
@@ -86,12 +91,24 @@ async def create_run(
         detector_threshold=detector_threshold,
     )
 
-    for f in sorted(files, key=lambda x: x.filename or ""):
-        dest = run.pages_dir() / (f.filename or "page.jpg")
+    # Keep the order the UI sent (the user's drag-sorted order) and never trust
+    # the client filename as a path: store as NNN_<basename>.
+    saved = 0
+    for f in files:
+        base = Path(f.filename or "page.jpg").name
+        stem, ext = Path(base).stem, Path(base).suffix.lower()
+        if ext not in IMAGE_EXTS:
+            continue
+        stem = re.sub(r"[^\w.-]+", "_", stem).strip("._") or "page"
+        saved += 1
+        dest = safe_child(run.pages_dir(), f"{saved:03d}_{stem[:80]}{ext}")
         with open(dest, "wb") as out:
             shutil.copyfileobj(f.file, out)
+    if not saved:
+        run.delete()
+        raise HTTPException(400, "no supported images (jpg, jpeg, png, webp)")
 
-    run.update(total_pages=len(files))
+    run.update(total_pages=saved)
 
     if auto_start:
         import threading

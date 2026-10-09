@@ -458,6 +458,7 @@ export function AnalysisPhase({
               style={{ height: "calc(100vh - 280px)", minHeight: "550px" }}
             >
               <PageDetail
+                key={(selectedAnalysis as any).page_number}
                 runId={runId}
                 analysis={selectedAnalysis as unknown as Parameters<typeof PageDetail>[0]["analysis"]}
                 filename={selectedFilename}

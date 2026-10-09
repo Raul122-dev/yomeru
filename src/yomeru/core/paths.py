@@ -10,6 +10,7 @@ one data directory:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +46,31 @@ FONTS_DIR = PACKAGE_DIR / "assets" / "fonts"
 # instead of scattering across ~/.cache. Explicit env vars from the user win.
 os.environ.setdefault("HF_HOME", str(MODELS_DIR / "huggingface"))
 os.environ.setdefault("TORCH_HOME", str(MODELS_DIR / "torch"))
+
+
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def _natural_key(p: Path) -> list:
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", p.name)]
+
+
+def list_page_files(folder: Path) -> list[Path]:
+    """Page images of a run in reading order (natural sort: 2.jpg before 10.jpg).
+
+    New uploads are stored as NNN_<name>, so upload order == reading order.
+    """
+    if not folder.is_dir():
+        return []
+    return sorted((p for p in folder.iterdir() if p.suffix.lower() in IMAGE_EXTS), key=_natural_key)
+
+
+def safe_child(base: Path, name: str) -> Path:
+    """Resolve base/name and refuse anything that escapes base."""
+    target = (base / name).resolve()
+    if not target.is_relative_to(base.resolve()):
+        raise ValueError(f"path escapes {base}: {name!r}")
+    return target
 
 
 def ensure_dirs() -> None:
