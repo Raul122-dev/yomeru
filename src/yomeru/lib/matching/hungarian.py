@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 from . import MatchResult
 import re
 import sys
-from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image

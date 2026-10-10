@@ -20,9 +20,7 @@ matching as many as possible from the top.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 
-import numpy as np
 from PIL import Image
 
 from ..detection import TextRegion

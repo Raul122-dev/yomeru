@@ -2,7 +2,6 @@ from __future__ import annotations
 import os
 import sys
 import time
-from typing import Callable
 
 # YOMERU_DEBUG=0 silent, 1 progress, 2 verbose (default 1)
 DEBUG = int(os.environ.get("YOMERU_DEBUG", "2"))

@@ -1,14 +1,13 @@
 from __future__ import annotations
 import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from yomeru.core.config import STATIC_DIR, PORT, ensure_dirs
+from yomeru.core.config import STATIC_DIR, ensure_dirs
 from yomeru.api.routes import (
     runs,
     config as config_router,
@@ -22,6 +21,10 @@ from yomeru.api.routes import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_dirs()
+    from yomeru.phases.runner import recover_interrupted_runs
+    n = recover_interrupted_runs()
+    if n:
+        print(f"  [startup] reset {n} run(s) left 'running' by a previous stop", file=sys.stderr)
     yield
 
 

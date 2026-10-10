@@ -7,19 +7,23 @@ Yomeru is a manga/comic translation pipeline: **detection → analysis → match
 - **Backend**: FastAPI (`src/yomeru/app.py`) on port 7788
 - **Frontend**: React/Vite (`ui/`) on port 3000 (dev) or served from `src/yomeru/static/`
 - **Pipeline**: `src/yomeru/phases/` — one module per phase
-- **Rendering engine**: Scanline-based (`src/yomeru/api/routes/phases.py` — `get_scanline_preview`)
+- **Rendering engine**: Scanline-based (`src/yomeru/lib/rendering/scanline_engine.py` — `render_page`)
 
 ## Key Files
 
 | Purpose | File |
 |---------|------|
-| Scanline renderer (PRIMARY) | `src/yomeru/api/routes/phases.py` (get_scanline_preview) |
-| Text layout engine | `src/yomeru/core/typesetting/stages/rendering/pil.py` |
-| Text wrapping | `src/yomeru/core/typesetting/stages/rendering/text_layout.py` |
+| Scanline renderer (PRIMARY) | `src/yomeru/lib/rendering/scanline_engine.py` (render_page) |
+| Bubble contour + scanlines | `src/yomeru/lib/rendering/scanline.py` |
+| Fonts + text drawing | `src/yomeru/lib/rendering/pil.py` |
+| Text wrapping | `src/yomeru/lib/rendering/text_layout.py` |
+| Settings schema + migrations | `src/yomeru/core/settings.py` |
+| Model calls (OpenAI/Anthropic) | `src/yomeru/core/llm.py` |
+| Job control (409, cancel, recovery) | `src/yomeru/phases/runner.py` |
+| GPU lock | `src/yomeru/core/gpu.py` |
 | Inpainting masks | `src/yomeru/lib/inpainting/__init__.py` |
 | LaMa backend | `src/yomeru/lib/inpainting/lama.py` |
 | VLM prompts | `src/yomeru/prompts/system.md` |
-| Phase runner | `src/yomeru/phases/runner.py` |
 | Run model | `src/yomeru/core/runs.py` |
 | Rendering phase (orchestrator) | `src/yomeru/phases/rendering.py` |
 
@@ -30,10 +34,11 @@ Yomeru is a manga/comic translation pipeline: **detection → analysis → match
 bash dev.sh
 
 # Backend only
-python3 -m uvicorn yomeru.app:app --host 0.0.0.0 --port 7788 --reload
+uv run uvicorn yomeru.app:app --app-dir src --port 7788 --reload
 
-# Compile check (Python)
-python3 -m compileall src/yomeru/
+# Tests + lint (Python)
+uv run pytest -q
+uv run ruff check --select F src/
 
 # Type check (Frontend)
 cd ui && npx tsc --noEmit

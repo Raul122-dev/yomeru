@@ -1,19 +1,20 @@
-"""
-RunExecutor — Central orchestrator for phase execution.
+"""Phase execution: one job per run at a time.
 
-Responsibilities:
-  - Per-run locking (prevent concurrent phase execution)
-  - Dependency validation (ensure required phases are done)
-  - Atomic meta.json status updates
-  - Sequential execution mode (run-all)
-  - Progress event normalization and dispatch
+A job is accepted synchronously by `start_job()` — it takes the run's lock and
+validates dependencies *before* the HTTP response, so conflicts surface as a
+409/400 instead of a silent failure inside a background thread. The work then
+runs in a daemon thread that releases the lock when it ends.
+
+Cancellation is cooperative: phases call `progress()`/emit between pages and
+the emitter raises `Cancelled` once a cancel was requested.
 """
 from __future__ import annotations
 
-import asyncio
+import sys
 import threading
 import traceback
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from yomeru.core.runs import Run
 from yomeru.phases import (
@@ -21,42 +22,100 @@ from yomeru.phases import (
     PHASE_ORDER,
     PhaseName,
     PhaseResult,
-    PhaseStatus,
     ProgressCallback,
-    ProgressEvent,
     null_progress,
 )
 
+COMPLETE = ("done", "partial")
+# Rendering takes the GPU lock per page itself, so previews can interleave.
+GPU_PHASES = ("detection", "matching", "inpainting")
+
 
 class PhaseError(Exception):
-    """Raised when a phase cannot be started."""
-    pass
+    """A phase cannot be started (busy, unmet dependencies, unknown phase)."""
+
+    def __init__(self, message: str, code: str = "invalid"):
+        super().__init__(message)
+        self.code = code  # "busy" | "dependencies" | "invalid"
 
 
-# Per-run locks to prevent concurrent execution
-_run_locks: dict[str, threading.Lock] = {}
-_locks_lock = threading.Lock()
+class Cancelled(BaseException):
+    """BaseException so per-page `except Exception` blocks inside phases don't swallow it."""
 
 
-def _get_lock(run_id: str) -> threading.Lock:
-    with _locks_lock:
-        if run_id not in _run_locks:
-            _run_locks[run_id] = threading.Lock()
-        return _run_locks[run_id]
+class _Job:
+    def __init__(self, run_id: str, label: str):
+        self.run_id = run_id
+        self.label = label
+        self.cancel = threading.Event()
+
+
+_guard = threading.Lock()
+_jobs: dict[str, _Job] = {}
+
+
+def active_job(run_id: str) -> str | None:
+    with _guard:
+        job = _jobs.get(run_id)
+        return job.label if job else None
+
+
+def request_cancel(run_id: str) -> bool:
+    with _guard:
+        job = _jobs.get(run_id)
+    if job is None:
+        return False
+    job.cancel.set()
+    return True
 
 
 def check_dependencies(run: Run, phase: PhaseName) -> list[str]:
-    """
-    Check if phase dependencies are satisfied.
-    Returns list of error messages (empty = OK).
-    """
-    meta = run.meta()
-    errors = []
-    for dep in PHASE_DEPS[phase]:
-        dep_status = meta.get("phase_status", {}).get(dep, "pending")
-        if dep_status not in ("done", "partial"):
-            errors.append(f"Phase '{dep}' must be completed first (current: {dep_status})")
-    return errors
+    status = run.meta().get("phase_status", {})
+    return [
+        f"Phase '{dep}' must be completed first (current: {status.get(dep, 'pending')})"
+        for dep in PHASE_DEPS[phase]
+        if status.get(dep, "pending") not in COMPLETE
+    ]
+
+
+def start_job(
+    run: Run,
+    label: str,
+    work: Callable[[Callable[[dict], None], threading.Event], Any],
+    on_progress: ProgressCallback = null_progress,
+    first_phase: PhaseName | None = None,
+) -> None:
+    """Reserve the run and launch `work(emit, cancel_event)` in a thread."""
+    if first_phase is not None:
+        if first_phase not in PHASE_ORDER:
+            raise PhaseError(f"Unknown phase: {first_phase}")
+        errors = check_dependencies(run, first_phase)
+        if errors:
+            raise PhaseError("; ".join(errors), "dependencies")
+
+    job = _Job(run.id, label)
+    with _guard:
+        if run.id in _jobs:
+            raise PhaseError(f"'{_jobs[run.id].label}' is already running on this run", "busy")
+        _jobs[run.id] = job
+
+    def emit(event: dict) -> None:
+        on_progress(event)
+        if job.cancel.is_set() and event.get("type") in ("page_start", "page_done", "page_error"):
+            raise Cancelled()
+
+    def target() -> None:
+        try:
+            work(emit, job.cancel)
+        except Cancelled:
+            pass  # run_phase already recorded the cancellation
+        except Exception:  # never let a worker die silently
+            traceback.print_exc(file=sys.stderr)
+        finally:
+            with _guard:
+                _jobs.pop(run.id, None)
+
+    threading.Thread(target=target, name=f"yomeru-{run.id}-{label}", daemon=True).start()
 
 
 def run_phase(
@@ -66,95 +125,64 @@ def run_phase(
     on_progress: ProgressCallback = null_progress,
     page_scope: list[int] | None = None,
 ) -> PhaseResult:
-    """
-    Execute a single phase for a run.
+    """Execute one phase synchronously (caller holds the run's job)."""
+    is_scoped = bool(page_scope)
+    errors = check_dependencies(run, phase)
+    if errors:
+        msg = "; ".join(errors)
+        on_progress({"type": "phase_error", "phase": phase, "error": msg, "scoped": is_scoped})
+        return PhaseResult(phase=phase, status="failed", error=msg)
 
-    Args:
-        run: The run to execute the phase for
-        phase: Which phase to run
-        options: Phase-specific options (model, thresholds, etc.)
-        on_progress: Callback for progress events
-        page_scope: If set, only process these page numbers (1-based).
-                    Scoped runs don't overwrite global phase status if the phase
-                    was already "done" — they keep it as-is on success.
-
-    Returns:
-        PhaseResult with status and per-page results.
-    """
-    lock = _get_lock(run.id)
-    if not lock.acquire(blocking=False):
-        raise PhaseError(f"Run '{run.id}' already has a phase in progress")
-
-    is_scoped = page_scope is not None and len(page_scope) > 0
+    prev_status = run.get_phase_status(phase)
+    run.set_phase_status(phase, "running")
+    run.update(error=None)
+    on_progress({"type": "phase_start", "phase": phase, "scoped": is_scoped})
 
     try:
-        # Check dependencies
-        dep_errors = check_dependencies(run, phase)
-        if dep_errors:
-            raise PhaseError("; ".join(dep_errors))
-
-        # Update status to running
-        run.set_phase_status(phase, "running")
-        on_progress({"type": "phase_start", "phase": phase, "scoped": is_scoped})
-
-        # Import and run the phase module
-        phase_fn = _get_phase_fn(phase)
-        result = phase_fn(
-            run=run,
-            options=options or {},
-            on_progress=on_progress,
-            page_scope=page_scope,
-        )
-
-        # Update status based on result.
-        # For scoped runs: don't promote to "done" if only a subset was processed.
-        # Keep the previous status if it was already "done" and the scoped run succeeded.
-        if is_scoped:
-            meta = run.meta()
-            prev_status = meta.get("phase_status", {}).get(phase, "pending")
-            if result.status == "done" and prev_status == "done":
-                # Scoped success on an already-done phase: keep "done"
-                run.set_phase_status(phase, "done")
-            elif result.status == "failed":
-                run.set_phase_status(phase, "partial")
-            else:
-                # Scoped success on a non-done phase: mark partial
-                run.set_phase_status(phase, prev_status if prev_status == "done" else "done")
+        fn = _get_phase_fn(phase)
+        kwargs = dict(run=run, options=options or {}, on_progress=on_progress, page_scope=page_scope)
+        if phase in GPU_PHASES:
+            from yomeru.core.gpu import gpu_lock
+            with gpu_lock():
+                result = fn(**kwargs)
         else:
-            run.set_phase_status(phase, result.status)
-
-        if result.error:
-            run.update(error=result.error)
-
-        on_progress({
-            "type": "phase_done",
-            "phase": phase,
-            "status": result.status,
-            "processed": result.processed_pages,
-            "failed": result.failed_pages,
-            "scoped": is_scoped,
-        })
-
-        return result
-
-    except PhaseError:
+            result = fn(**kwargs)
+    except Cancelled:
+        # Keep what was there before; a cancelled full run is not "done"
+        status = prev_status if (is_scoped and prev_status in COMPLETE) else "cancelled"
+        run.set_phase_status(phase, status)
+        on_progress({"type": "phase_cancelled", "phase": phase, "status": status, "scoped": is_scoped})
         raise
     except Exception as e:
-        error_msg = f"{type(e).__name__}: {e}"
-        if is_scoped:
-            # Scoped failure shouldn't mark the whole phase as failed
-            run.set_phase_status(phase, "partial")
+        msg = f"{type(e).__name__}: {e}"
+        traceback.print_exc(file=sys.stderr)
+        status = "partial" if (is_scoped and prev_status in COMPLETE) else "failed"
+        run.set_phase_status(phase, status)
+        run.update(error=msg)
+        on_progress({"type": "phase_error", "phase": phase, "error": msg, "scoped": is_scoped})
+        return PhaseResult(phase=phase, status="failed", error=msg)
+
+    if is_scoped:
+        # Re-running some pages of a phase that was complete keeps it complete;
+        # a failure on those pages degrades it to partial. A phase that never
+        # completed only becomes done after a full run.
+        if prev_status in COMPLETE:
+            status = prev_status if result.status == "done" else "partial"
         else:
-            run.set_phase_status(phase, "failed")
-        run.update(error=error_msg)
-        on_progress({"type": "phase_error", "phase": phase, "error": error_msg, "scoped": is_scoped})
-        return PhaseResult(
-            phase=phase,
-            status="failed",
-            error=error_msg,
-        )
-    finally:
-        lock.release()
+            status = "partial" if result.status != "failed" else "failed"
+    else:
+        status = result.status
+    run.set_phase_status(phase, status)
+    if result.error:
+        run.update(error=result.error)
+
+    stale = run.mark_downstream_stale(phase) if result.processed_pages else []
+    on_progress({
+        "type": "phase_done", "phase": phase, "status": status,
+        "processed": result.processed_pages, "failed": result.failed_pages,
+        "scoped": is_scoped, "stale": stale,
+    })
+    return result
 
 
 def run_all(
@@ -163,62 +191,56 @@ def run_all(
     on_progress: ProgressCallback = null_progress,
     start_from: PhaseName | None = None,
 ) -> dict[PhaseName, PhaseResult]:
-    """
-    Run all phases sequentially.
-
-    Args:
-        run: The run to execute
-        options: Shared options (phase-specific options keyed by phase name)
-        on_progress: Progress callback
-        start_from: Skip phases before this one (for resuming)
-
-    Returns:
-        Dict of phase → result
-    """
+    """Run phases sequentially from `start_from` (caller holds the run's job)."""
     opts = options or {}
     results: dict[PhaseName, PhaseResult] = {}
-
-    phases_to_run = PHASE_ORDER
-    if start_from:
-        idx = PHASE_ORDER.index(start_from)
-        phases_to_run = PHASE_ORDER[idx:]
+    phases = PHASE_ORDER[PHASE_ORDER.index(start_from):] if start_from else PHASE_ORDER
 
     run.update(status="running")
-
-    for phase in phases_to_run:
-        phase_opts = opts.get(phase, {})
-        # Merge global options
-        for k, v in opts.items():
-            if k not in PHASE_ORDER and k not in phase_opts:
-                phase_opts[k] = v
-
-        result = run_phase(run, phase, options=phase_opts, on_progress=on_progress)
-        results[phase] = result
-
-        if result.status == "failed":
-            run.update(status="failed")
-            return results
-
+    try:
+        for phase in phases:
+            result = run_phase(run, phase, options=dict(opts.get(phase, {})), on_progress=on_progress)
+            results[phase] = result
+            if result.status == "failed":
+                run.update(status="failed")
+                return results
+    except Cancelled:
+        run.update(status="cancelled")
+        return results
     run.update(status="done")
     return results
 
 
+def recover_interrupted_runs() -> int:
+    """At startup no job can be running: reset states left by a crash/restart."""
+    from yomeru.core.paths import RUNS_DIR
+    fixed = 0
+    for meta_file in RUNS_DIR.glob("*/meta.json"):
+        run = Run(meta_file.parent.name)
+        try:
+            meta = run.meta()
+        except Exception:
+            continue
+        hung = [p for p, s in meta.get("phase_status", {}).items() if s == "running"]
+        for p in hung:
+            run.set_phase_status(p, "failed")
+        if hung or meta.get("status") == "running":
+            run.update(status="failed", error="Interrupted: the server stopped while this was running")
+            fixed += 1
+    return fixed
+
+
 def _get_phase_fn(phase: PhaseName):
-    """Lazy import of phase execution functions."""
     if phase == "detection":
         from yomeru.phases.detection import run
-        return run
     elif phase == "analysis":
         from yomeru.phases.analysis import run
-        return run
     elif phase == "matching":
         from yomeru.phases.matching import run
-        return run
     elif phase == "inpainting":
         from yomeru.phases.inpainting import run
-        return run
     elif phase == "rendering":
         from yomeru.phases.rendering import run
-        return run
     else:
         raise PhaseError(f"Unknown phase: {phase}")
+    return run

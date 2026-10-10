@@ -2,7 +2,7 @@
 Inpainting stage — public interface.
 
 Usage:
-    from yomeru.core.typesetting.stages.inpainting import build_inpainter, build_text_mask
+    from yomeru.lib.inpainting import build_inpainter, build_text_mask
 
     inpainter = build_inpainter("auto")      # or "lama" / "opencv"
     clean_img = inpainter.inpaint(image, mask)

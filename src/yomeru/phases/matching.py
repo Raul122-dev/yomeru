@@ -35,7 +35,6 @@ def run(
         position_weight: float = 0.2
         match_min_score: float = 0.05
     """
-    from yomeru.lib.detection import TextRegion
     from yomeru.lib.matching import build_matcher, MatchResult
 
     meta = run.meta()

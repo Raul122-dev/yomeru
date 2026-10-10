@@ -10,7 +10,6 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 from yomeru.core.runs import Run
 from yomeru.phases import PageResult, PhaseResult, ProgressCallback, null_progress

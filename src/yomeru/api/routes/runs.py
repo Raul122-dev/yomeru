@@ -105,16 +105,11 @@ async def create_run(
     run.update(total_pages=saved)
 
     if auto_start:
-        import threading
         from yomeru.api.routes.phases import _build_all_options
-
+        from yomeru.phases.runner import start_job
         options = _build_all_options(run, {})
-
-        def worker():
-            emit = make_emitter(run.id)
-            run_all(run, options=options, on_progress=emit)
-
-        threading.Thread(target=worker, daemon=True).start()
+        start_job(run, "all", lambda emit, _c: run_all(run, options=options, on_progress=emit),
+                  on_progress=make_emitter(run.id))
 
     return run.meta()
 

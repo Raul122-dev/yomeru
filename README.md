@@ -94,14 +94,14 @@ This writes the build to `src/yomeru/static/` — commit it so end users get the
 ```
 yomeru/
 ├── setup.sh / start.sh / dev.sh
-├── pyproject.toml              ← uv sync [--extra typesetting]
+├── pyproject.toml              ← uv sync  (core only: --no-default-groups)
 ├── data/                       ← runs, config, model weights (git-ignored)
 ├── src/yomeru/                 ← Python package
 │   ├── __main__.py             ← entry point (python -m yomeru)
 │   ├── app.py                  ← FastAPI app, serves UI at /ui
 │   ├── phases/                 ← phase orchestration
 │   │   ├── __init__.py         ← PhaseResult, registry, types
-│   │   ├── runner.py           ← RunExecutor (locks, deps, run-all)
+│   │   ├── runner.py           ← jobs: one per run, 409 on conflict, cancel, recovery
 │   │   ├── detection.py        ← Phase 1: text region detection
 │   │   ├── analysis.py         ← Phase 2: VLM analysis
 │   │   ├── matching.py         ← Phase 3: region↔dialogue matching
@@ -111,19 +111,21 @@ yomeru/
 │   │   ├── detection/          ← CTD, Ogkalu detectors
 │   │   ├── matching/           ← Hungarian matcher + OCR
 │   │   ├── inpainting/         ← LaMa, OpenCV inpainters
-│   │   └── rendering/          ← PIL text renderer
+│   │   └── rendering/          ← scanline engine, layout, fonts
 │   ├── core/
 │   │   ├── paths.py            ← data dir layout
 │   │   ├── weights.py          ← download-on-first-use weights
-│   │   ├── config.py           ← JSON config store
+│   │   ├── settings.py         ← settings schema, presets, migrations
+│   │   ├── llm.py              ← OpenAI/Anthropic-compatible model calls
+│   │   ├── gpu.py              ← one GPU job at a time
 │   │   ├── runs.py             ← Run model + phase status
 │   │   ├── models.py           ← data models (dialogues, scenes, etc.)
 │   │   └── analyzer.py         ← VLM prompt building + LLM calls
 │   ├── api/
 │   │   ├── routes/phases.py    ← phase API
 │   │   ├── routes/runs.py      ← run CRUD, uploads
-│   │   ├── routes/config.py    ← provider config
-│   │   └── ws.py               ← WebSocket progress handler
+│   │   ├── routes/config.py    ← connections, settings, presets
+│   │   └── ws.py               ← WebSocket fan-out (thread-safe, replay)
 │   ├── prompts/                ← system/format prompt templates
 │   └── static/                 ← pre-built React UI (committed)
 └── ui/                          ← React/Vite/TS source (dev only)

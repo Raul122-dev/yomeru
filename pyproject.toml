@@ -60,6 +60,7 @@ yomeru = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.17.0",
 ]
 # Keeps the typesetting stack installed on every plain `uv sync` / `uv add`
 # in a dev checkout. `uv sync --no-default-groups` gives the core-only install.

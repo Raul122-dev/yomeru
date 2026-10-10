@@ -2,7 +2,7 @@
 Detection stage — public interface.
 
 Usage:
-    from yomeru.core.typesetting.stages.detection import build_detector, TextRegion
+    from yomeru.lib.detection import build_detector, TextRegion
 
     detector = build_detector("ogkalu")        # or "ctd" / "auto"
     regions  = detector.detect(image, threshold=0.5)

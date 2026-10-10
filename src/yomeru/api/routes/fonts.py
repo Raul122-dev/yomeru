@@ -22,7 +22,7 @@ def _ensure_fonts_dir():
 def _clear_font_cache():
     """Clear the renderer font cache so new fonts are picked up."""
     try:
-        from yomeru.core.typesetting.stages.rendering.pil import _font_cache
+        from yomeru.lib.rendering.pil import _font_cache
         _font_cache.clear()
     except Exception:
         pass

@@ -11,7 +11,6 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 from yomeru.core.runs import Run
@@ -154,23 +153,22 @@ def run(
             ok_count = sum(1 for e in render_events if e["status"] == "ok")
             skip_count = sum(1 for e in render_events if e["status"] == "skip")
 
-            # Generate scanline production (the primary render engine)
-            from yomeru.api.routes.phases import get_scanline_preview
-            try:
-                get_scanline_preview(run.id, page_num, force=1)
-            except Exception as scan_err:
-                print(f"  [render] scanline generation warning: {scan_err}", file=sys.stderr)
+            # Scanline engine renders the page; a failure here fails the page
+            # (it used to be logged as a warning and the page counted as done).
+            from yomeru.core.gpu import gpu_lock
+            from yomeru.lib.rendering.scanline_engine import render_page
+            with gpu_lock():
+                rendered = render_page(run, page_num)
+            scanline_prod = rendered.production_path
 
-            # Copy scanline production as the final typeset output
-            scanline_prod = debug_dir / f"p{page_num:02d}_scanline_production.jpg"
+            import shutil
             out_path = typeset_dir / page_path.name
-            if scanline_prod.exists():
-                import shutil
-                if out_path.suffix.lower() in (".jpg", ".jpeg"):
-                    shutil.copy2(str(scanline_prod), str(out_path))
-                else:
-                    Image.open(scanline_prod).save(str(out_path))
-                shutil.copy2(str(scanline_prod), str(debug_dir / f"p{page_num:02d}_s5_final.jpg"))
+            if out_path.suffix.lower() in (".jpg", ".jpeg"):
+                shutil.copy2(str(scanline_prod), str(out_path))
+            else:
+                with Image.open(scanline_prod) as im:
+                    im.save(str(out_path))
+            shutil.copy2(str(scanline_prod), str(debug_dir / f"p{page_num:02d}_s5_final.jpg"))
 
             # Update render log
             log["s5_rendering"] = {"ok": ok_count, "skipped": skip_count, "renders": render_events}
@@ -218,77 +216,4 @@ def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
     return [(i, p) for i, p in enumerate(pages, 1)]
 
 
-def _expand_free_text_bbox(
-    image: Image.Image,
-    bbox: tuple[int, int, int, int],
-    max_expand: int = 80,
-    variance_threshold: float = 50.0,
-) -> tuple[int, int, int, int]:
-    """
-    Expand a text_free bbox into surrounding homogeneous area.
-
-    Checks strips of pixels outside the bbox in each direction.
-    If the strip has low color variance (uniform background like a sign),
-    expand the bbox in that direction.
-
-    Only expands where the background is clearly uniform (not into detailed art).
-    """
-    arr = np.array(image)
-    img_h, img_w = arr.shape[:2]
-    x1, y1, x2, y2 = bbox
-
-    def strip_std(strip: np.ndarray) -> float:
-        """Compute std of a strip (lower = more uniform)."""
-        if strip.size == 0:
-            return 999.0
-        return float(strip.astype(np.float32).std())
-
-    # Try expanding LEFT
-    new_x1 = x1
-    for step in range(4, max_expand + 1, 4):
-        check_x = max(0, x1 - step)
-        strip = arr[y1:y2, check_x:check_x + 4]
-        if strip.size > 0 and strip_std(strip) < variance_threshold:
-            new_x1 = check_x
-        else:
-            break
-
-    # Try expanding RIGHT
-    new_x2 = x2
-    for step in range(4, max_expand + 1, 4):
-        check_end = min(img_w, x2 + step)
-        check_start = check_end - 4
-        if check_start < x2:
-            check_start = x2
-        strip = arr[y1:y2, check_start:check_end]
-        if strip.size > 0 and strip_std(strip) < variance_threshold:
-            new_x2 = check_end
-        else:
-            break
-
-    # Try expanding UP (less aggressive)
-    new_y1 = y1
-    for step in range(4, max_expand // 2 + 1, 4):
-        check_y = max(0, y1 - step)
-        strip = arr[check_y:check_y + 4, x1:x2]
-        if strip.size > 0 and strip_std(strip) < variance_threshold:
-            new_y1 = check_y
-        else:
-            break
-
-    # Try expanding DOWN
-    new_y2 = y2
-    for step in range(4, max_expand // 2 + 1, 4):
-        check_end = min(img_h, y2 + step)
-        check_start = check_end - 4
-        if check_start < y2:
-            check_start = y2
-        strip = arr[check_start:check_end, x1:x2]
-        if strip.size > 0 and strip_std(strip) < variance_threshold:
-            new_y2 = check_end
-        else:
-            break
-
-    return (new_x1, new_y1, new_x2, new_y2)
-
-
+from yomeru.lib.rendering.scanline_engine import _expand_free_text_bbox  # noqa: E402,F401  (compat)

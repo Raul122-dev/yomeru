@@ -12,7 +12,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -22,39 +21,6 @@ class AnnotatedPage:
     annotated_image: Image.Image
     regions: list[dict]           # {id, x1, y1, x2, y2, label, score}
     original_size: tuple[int, int]
-
-
-def annotate_page(
-    image: Image.Image,
-    detector_backend: str = "auto",
-    detector_threshold: float = 0.4,
-) -> AnnotatedPage:
-    """Run detector on image and draw numbered boxes. Returns AnnotatedPage."""
-    from yomeru.core.typesetting.detector import build_detector
-
-    detector = build_detector(detector_backend)
-    try:
-        regions = detector.detect(image, threshold=detector_threshold)  # type: ignore[call-arg]
-    except TypeError:
-        regions = detector.detect(image)
-
-    print(f"  [annotator] {len(regions)} regions detected", file=sys.stderr)
-    annotated = _draw_numbered_boxes(image.copy(), regions)
-
-    region_dicts = [
-        {
-            "id": i + 1,
-            "x1": r.x1, "y1": r.y1, "x2": r.x2, "y2": r.y2,
-            "label": r.label,
-            "score": round(float(r.score), 3),
-        }
-        for i, r in enumerate(regions)
-    ]
-    return AnnotatedPage(
-        annotated_image=annotated,
-        regions=region_dicts,
-        original_size=image.size,
-    )
 
 
 def annotate_from_detections(

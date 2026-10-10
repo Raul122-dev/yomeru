@@ -2,7 +2,7 @@
 Matching stage — public interface.
 
 Usage:
-    from yomeru.core.typesetting.stages.matching import build_matcher, MatchResult
+    from yomeru.lib.matching import build_matcher, MatchResult
 
     matcher = build_matcher("hungarian")
     matches = matcher.match(

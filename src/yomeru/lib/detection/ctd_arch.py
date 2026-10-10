@@ -10,7 +10,6 @@ Parameters from cfg:
 Source: dmMaze/comic-text-detector checkpoint format.
 """
 from __future__ import annotations
-import math
 import torch
 import torch.nn as nn
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,21 +91,32 @@ class Run:
         return json.loads((self.dir / "meta.json").read_text())
 
     def update(self, **kwargs: Any) -> None:
-        m = self.meta()
-        m.update(kwargs)
-        self._write_meta(m)
+        with _meta_lock(self.id):
+            m = self.meta()
+            m.update(kwargs)
+            self._write_meta(m)
 
     def set_phase_status(self, phase: str, status: str) -> None:
         """Atomically update a single phase's status."""
-        m = self.meta()
-        if "phase_status" not in m:
-            m["phase_status"] = {p: "pending" for p in PHASES}
-        m["phase_status"][phase] = status
-        # Also update legacy fields for backwards compat
-        m[f"{phase}_status"] = status
-        if phase in ("matching", "inpainting", "rendering"):
-            m[f"typeset_{phase}_status"] = status
-        self._write_meta(m)
+        with _meta_lock(self.id):
+            m = self.meta()
+            if "phase_status" not in m:
+                m["phase_status"] = {p: "pending" for p in PHASES}
+            m["phase_status"][phase] = status
+            self._write_meta(m)
+
+    def mark_downstream_stale(self, phase: str) -> list[str]:
+        """After `phase` re-runs, later phases that were done are now outdated."""
+        later = PHASES[PHASES.index(phase) + 1:]
+        with _meta_lock(self.id):
+            m = self.meta()
+            ps = m.setdefault("phase_status", {p: "pending" for p in PHASES})
+            changed = [p for p in later if ps.get(p) in ("done", "partial")]
+            for p in changed:
+                ps[p] = "stale"
+            if changed:
+                self._write_meta(m)
+        return changed
 
     def get_phase_status(self, phase: str) -> str:
         m = self.meta()
@@ -157,7 +169,18 @@ class Run:
 
     def _write_meta(self, data: dict) -> None:
         # Atomic write: write to temp file then rename to prevent race conditions
+        # Atomic: unique temp file per writer, then rename
         meta_path = self.dir / "meta.json"
-        tmp_path = self.dir / "meta.json.tmp"
+        tmp_path = self.dir / f"meta.json.{uuid.uuid4().hex[:8]}.tmp"
         tmp_path.write_text(json.dumps(data, indent=2))
         tmp_path.replace(meta_path)
+
+
+_meta_locks: dict[str, threading.RLock] = {}
+_meta_locks_guard = threading.Lock()
+
+
+def _meta_lock(run_id: str) -> threading.RLock:
+    """Serialises read-modify-write of one run's meta.json across threads."""
+    with _meta_locks_guard:
+        return _meta_locks.setdefault(run_id, threading.RLock())

@@ -1,14 +1,13 @@
 from __future__ import annotations
 import base64
 import json
-import os
 import re
 import sys
 from pathlib import Path
 from typing import Callable
 
 from json_repair import repair_json
-from yomeru.core.models import DEFAULT_FORMAT, PageAnalysis, format_context_str
+from yomeru.core.models import DEFAULT_FORMAT, PageAnalysis
 from yomeru.core.settings import ModelRef
 
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
@@ -121,7 +120,7 @@ def _build_detection_context(regions: list[dict], image_size: tuple[int, int]) -
     # Assemble context
     parts: list[str] = [
         f"\n\n## Detected text regions ({n} total)",
-        f"The image has colored numbered boxes drawn on detected regions.",
+        "The image has colored numbered boxes drawn on detected regions.",
         f"- ★ = text region (MUST have a dialogue entry) — {len(text_regions)} regions",
         f"- ○ = bubble container (may or may not contain text) — {len(bubble_regions)} regions",
         "",
@@ -281,11 +280,6 @@ def analyze_page(
     ui_language: str = "English",
     global_context: str = "",
     page_context: str = "",
-    # detection-first options
-    output_dir: Path | None = None,
-    detector_backend: str = "auto",
-    detector_threshold: float = 0.4,
-    on_detect_done: Callable[[dict], None] | None = None,
     # If set, load saved/refined detections instead of running detector
     saved_detections_dir: Path | None = None,
 ) -> PageAnalysis:
@@ -315,26 +309,6 @@ def analyze_page(
             print(f"  [analyzer] WARNING: failed to load saved detections: {e}", file=sys.stderr)
             b64, mime, model_w, model_h = _prepare_image(image_path)
 
-    elif output_dir is not None:
-        # Legacy / run-all mode: run detector + save detections
-        try:
-            from PIL import Image as _PIL_DET
-            from yomeru.core.annotator import annotate_page, save_detections
-            raw_img = _PIL_DET.open(image_path).convert("RGB")
-            annotated = annotate_page(raw_img, detector_backend, detector_threshold)
-            save_detections(annotated.regions, output_dir, page_number, annotated.original_size)
-            n = len(annotated.regions)
-            if on_detect_done:
-                on_detect_done({"type": "page_detect_done", "page": page_number, "regions": n})
-            print(f"  [analyzer] p{page_number}: {n} regions annotated", file=sys.stderr)
-            detection_context = _build_detection_context(annotated.regions, raw_img.size)
-            b64, mime, model_w, model_h = _prepare_image_from_pil(annotated.annotated_image)
-        except Exception as e:
-            import traceback as _tb
-            print(f"  [analyzer] WARNING: detection step failed (backend={detector_backend}): {e}", file=sys.stderr)
-            print(_tb.format_exc(), file=sys.stderr)
-            print("  [analyzer] falling back to original image (no region annotations)", file=sys.stderr)
-            b64, mime, model_w, model_h = _prepare_image(image_path)
     else:
         b64, mime, model_w, model_h = _prepare_image(image_path)
     system_prompt = _get_system_prompt()
@@ -382,7 +356,7 @@ def analyze_page(
     result = PageAnalysis(**data)
 
     # Post-validate: warn if detection was run but model returned no region_ids
-    if output_dir is not None and result.dialogues:
+    if saved_detections_dir is not None and result.dialogues:
         assigned = sum(1 for d in result.dialogues if d.region_id is not None)
         total = len(result.dialogues)
         if assigned == 0:
