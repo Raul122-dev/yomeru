@@ -38,6 +38,7 @@ def annotate_from_detections(
     # create proxy objects that match the interface _draw_numbered_boxes expects
     class _RegionProxy:
         def __init__(self, d: dict):
+            self.id = d["id"]
             self.x1 = d["x1"]; self.y1 = d["y1"]
             self.x2 = d["x2"]; self.y2 = d["y2"]
             self.label = d.get("label", "bubble")
@@ -193,7 +194,10 @@ def _draw_numbered_boxes(image: Image.Image, regions: list) -> Image.Image:
     overlap_colors = _assign_overlap_colors(regions, overlaps)
 
     for i, region in enumerate(regions):
-        num = i + 1
+        # The badge MUST be the region id: the prompt lists regions by id and the
+        # VLM answers with region_id. Index+1 only matched while ids were 1..n in
+        # file order — edited detections (deleted/added boxes) broke it.
+        num = getattr(region, "id", i + 1)
         # Use overlap color if assigned, otherwise default by label
         if i in overlap_colors:
             r, g, b = overlap_colors[i]

@@ -141,13 +141,18 @@ def run(
 
             # ── Step 3: Fallback Hungarian for unresolved ────────────────────
             if unresolved:
-                candidate_regions = [
-                    _region_from_det(det, img_w, img_h)
-                    for det in page_dets.values()
-                    if det.get("label") in ("text_bubble", "text_free")
+                # Only regions no dialogue has claimed yet (by detection id).
+                # The old filter compared id() of freshly built objects and never
+                # excluded anything, so a region could be assigned twice.
+                claimed_bboxes = {(m.region.x1, m.region.y1, m.region.x2, m.region.y2) for m in matches.values()}
+                candidates = [
+                    r for r in (
+                        _region_from_det(det, img_w, img_h)
+                        for det_id, det in page_dets.items()
+                        if det.get("label") in ("text_bubble", "text_free") and det_id not in used_region_ids
+                    )
+                    if (r.x1, r.y1, r.x2, r.y2) not in claimed_bboxes
                 ]
-                used = {id(m.region) for m in matches.values()}
-                candidates = [r for r in candidate_regions if id(r) not in used] or candidate_regions
 
                 fallback_dlgs = [dialogues[i] for i in unresolved]
                 fallback_hints = [
