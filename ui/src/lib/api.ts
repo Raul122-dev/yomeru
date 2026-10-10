@@ -111,6 +111,9 @@ export const startAllPhases = (runId: string, options?: object) =>
     body: JSON.stringify({ options: options || {} }),
   });
 
+export const cancelRun = (runId: string) =>
+  req<{ status: string }>(`/phases/${runId}/cancel`, { method: "POST" });
+
 export const reanalyzeWithCorrections = (
   runId: string,
   pageNumber: number,
@@ -200,6 +203,9 @@ type str = string;
 export const getAnalyses = (id: str) => req<unknown[]>(`/runs/${id}/analyses`);
 export const pageImageUrl = (id: str, filename: str) =>
   `/api/runs/${id}/pages/${filename}`;
+/** Small cached JPEG for strips/grids (full images only in viewers/editors). */
+export const pageThumbUrl = (id: str, filename: str, w = 280) =>
+  `/api/runs/${id}/thumbs/${encodeURIComponent(filename)}?w=${w}`;
 
 // ── annotations ───────────────────────────────────────────────────────────────
 export const getAnnotations = (id: str) =>

@@ -24,9 +24,9 @@ export function Switch({
       )}
     >
       <div className="min-w-0">
-        <span className="text-[11px] text-[hsl(var(--text))]">{label}</span>
+        <span className="text-xs text-[hsl(var(--text))]">{label}</span>
         {hint && (
-          <p className="text-[10px] text-[hsl(var(--text-muted))] leading-snug">
+          <p className="text-xs text-[hsl(var(--text-muted))] leading-snug">
             {hint}
           </p>
         )}

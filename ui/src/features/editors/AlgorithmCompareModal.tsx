@@ -122,15 +122,15 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                       {data.matches.map((m) => (
                         <tr key={m.dialogue_index} className="hover:bg-[hsl(var(--bg-subtle))]">
                           <td className="px-3 py-2">
-                            <div className="font-mono text-[10px] text-[hsl(var(--text-muted))]">D{m.dialogue_index}</div>
+                            <div className="font-mono text-xs text-[hsl(var(--text-muted))]">D{m.dialogue_index}</div>
                             <div className="truncate max-w-[180px]" title={m.dialogue_text}>{m.dialogue_text}</div>
-                            {m.speaker && <div className="text-[10px] text-[hsl(var(--accent2))]">{m.speaker}</div>}
+                            {m.speaker && <div className="text-xs text-[hsl(var(--accent2))]">{m.speaker}</div>}
                           </td>
                           <td className="px-3 py-2">
                             <span className="font-mono">R{m.region_id}</span>
-                            <span className="ml-1 text-[10px] text-[hsl(var(--text-muted))]">{m.region_label}</span>
+                            <span className="ml-1 text-xs text-[hsl(var(--text-muted))]">{m.region_label}</span>
                             {m.ocr_text && (
-                              <div className="mt-0.5 text-[10px] text-[hsl(var(--text-muted))] italic truncate max-w-[120px]" title={m.ocr_text}>
+                              <div className="mt-0.5 text-xs text-[hsl(var(--text-muted))] italic truncate max-w-[120px]" title={m.ocr_text}>
                                 OCR: {m.ocr_text}
                               </div>
                             )}
@@ -154,7 +154,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                               <span className="flex flex-col items-center">
                                 <XCircle size={14} className="text-yellow-500" />
                                 {m.vlm_region_id != null && (
-                                  <span className="text-[9px] text-[hsl(var(--text-muted))]">VLM: R{m.vlm_region_id}</span>
+                                  <span className="text-xs text-[hsl(var(--text-muted))]">VLM: R{m.vlm_region_id}</span>
                                 )}
                               </span>
                             )}
@@ -177,7 +177,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                       <div key={u.dialogue_index} className="flex items-center gap-2 rounded border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs">
                         <span className="font-mono text-[hsl(var(--text-muted))]">D{u.dialogue_index}</span>
                         <span className="truncate">{u.dialogue_text}</span>
-                        {u.speaker && <span className="ml-auto text-[10px] text-[hsl(var(--accent2))]">{u.speaker}</span>}
+                        {u.speaker && <span className="ml-auto text-xs text-[hsl(var(--accent2))]">{u.speaker}</span>}
                       </div>
                     ))}
                   </div>
@@ -197,7 +197,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                       className="w-full h-auto"
                     />
                   </div>
-                  <p className="text-[10px] text-[hsl(var(--text-muted))] text-center">
+                  <p className="text-xs text-[hsl(var(--text-muted))] text-center">
                     Blue = algorithm matched · Red = unmatched regions
                   </p>
                 </div>
@@ -226,7 +226,7 @@ function StatCard({ label, value, total, variant }: { label: string; value: numb
   return (
     <div className="rounded border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] px-3 py-2 text-center">
       <div className={cn("text-lg font-bold font-mono", color)}>{value}</div>
-      <div className="text-[10px] text-[hsl(var(--text-muted))]">
+      <div className="text-xs text-[hsl(var(--text-muted))]">
         {label}{total != null ? ` / ${total}` : ""}
       </div>
     </div>

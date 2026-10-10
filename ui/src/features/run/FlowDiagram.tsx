@@ -99,7 +99,7 @@ function PageNode({ data }: { data: PageNodeData }) {
         )}
 
         {/* page badge */}
-        <div className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white">
+        <div className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-xs text-white">
           {String(pageNumber).padStart(2, "0")}
         </div>
 
@@ -121,7 +121,7 @@ function PageNode({ data }: { data: PageNodeData }) {
       {/* info */}
       <div className="p-2">
         {status === "processing" && (
-          <div className="font-mono text-[9px] leading-relaxed text-[hsl(var(--accent2))]">
+          <div className="font-mono text-xs leading-relaxed text-[hsl(var(--accent2))]">
             {tokenBuffer ? (
               <>
                 <span className="opacity-70">{tokenBuffer.slice(-120)}</span>
@@ -135,28 +135,28 @@ function PageNode({ data }: { data: PageNodeData }) {
         {status === "done" && (
           <div className="space-y-0.5">
             {mood && (
-              <p className="text-[10px] font-medium text-[hsl(var(--accent2))]">
+              <p className="text-xs font-medium text-[hsl(var(--accent2))]">
                 {mood}
               </p>
             )}
             {summary && (
-              <p className="line-clamp-2 text-[9px] leading-relaxed text-[hsl(var(--text-muted))]">
+              <p className="line-clamp-2 text-xs leading-relaxed text-[hsl(var(--text-muted))]">
                 {summary}
               </p>
             )}
-            <div className="flex gap-2 pt-0.5 text-[9px] text-[hsl(var(--text-muted))]">
+            <div className="flex gap-2 pt-0.5 text-xs text-[hsl(var(--text-muted))]">
               {dialogues !== undefined && <span>{dialogues} dialogues</span>}
               {characters !== undefined && <span>· {characters} chars</span>}
             </div>
           </div>
         )}
         {status === "error" && (
-          <p className="text-[9px] text-[hsl(var(--danger))] line-clamp-2">
+          <p className="text-xs text-[hsl(var(--danger))] line-clamp-2">
             {error || "failed"}
           </p>
         )}
         {status === "pending" && (
-          <p className="text-[9px] text-[hsl(var(--text-muted))]">waiting…</p>
+          <p className="text-xs text-[hsl(var(--text-muted))]">waiting…</p>
         )}
       </div>
 
@@ -245,7 +245,8 @@ export interface FlowDiagramProps {
   runId: string;
   pages: { page: number; filename: string }[]; // from GET /runs/:id/pages
   analyses: Record<string, unknown>[]; // from GET /runs/:id/analyses (may be partial)
-  events: Record<string, unknown>[]; // live WebSocket events
+  events: Record<string, unknown>[]; // live WebSocket events (no tokens)
+  tokens?: Record<number, string>;    // streamed model text per page
   onPageSelect: (page: number, filename: string) => void;
 }
 
@@ -254,6 +255,7 @@ export function FlowDiagram({
   pages,
   analyses,
   events,
+  tokens = {},
   onPageSelect,
 }: FlowDiagramProps) {
   const analysesMap = useMemo(
@@ -274,76 +276,51 @@ export function FlowDiagram({
     setEdges(makeEdges(pages));
   }, [pages, analysesMap]);
 
-  // apply live events
-  useEffect(() => {
-    if (events.length === 0) return;
-    const ev = events[events.length - 1];
-    const type = ev.type as string;
-    const page = ev.page as number | undefined;
-    if (!page) return;
+  // Live state derived from the whole event list + token buffers, so events
+  // that arrive in the same render batch are never dropped.
+  const live = useMemo(() => {
+    const st: Record<number, Partial<PageNodeData>> = {};
+    for (const ev of events) {
+      const page = ev.page as number | undefined;
+      if (!page) continue;
+      const type = ev.type as string;
+      if (type === "page_start") st[page] = { status: "processing" };
+      else if (type === "page_done")
+        st[page] = { status: "done", mood: ev.mood as string, dialogues: ev.dialogues as number,
+                     characters: ev.characters as number, summary: ev.summary as string };
+      else if (type === "page_error") st[page] = { status: "error", error: ev.error as string };
+    }
+    return st;
+  }, [events]);
 
+  useEffect(() => {
     setNodes((prev) =>
       prev.map((n) => {
-        if (n.id !== `p${page}`) return n;
+        const page = Number(n.id.slice(1));
+        const patch = live[page];
+        if (!patch && !tokens[page]) return n;
         const d = n.data as PageNodeData;
-        if (type === "page_start") {
-          return {
-            ...n,
-            data: { ...d, status: "processing" as PageStatus, tokenBuffer: "" },
-          };
-        }
-        if (type === "token") {
-          const buf = ((d.tokenBuffer ?? "") + (ev.token as string)).slice(
-            -300,
-          );
-          return { ...n, data: { ...d, tokenBuffer: buf } };
-        }
-        if (type === "page_done") {
-          return {
-            ...n,
-            data: {
-              ...d,
-              status: "done" as PageStatus,
-              tokenBuffer: "",
-              mood: ev.mood as string,
-              dialogues: ev.dialogues as number,
-              characters: ev.characters as number,
-              summary: ev.summary as string,
-            },
-          };
-        }
-        if (type === "page_error") {
-          return {
-            ...n,
-            data: {
-              ...d,
-              status: "error" as PageStatus,
-              tokenBuffer: "",
-              error: ev.error as string,
-            },
-          };
-        }
-        return n;
+        return {
+          ...n,
+          data: {
+            ...d,
+            ...patch,
+            tokenBuffer: patch?.status === "processing" ? (tokens[page] ?? "").slice(-300) : "",
+          },
+        };
       }),
     );
-
-    // animate edge after page completes
-    if (type === "page_done") {
-      setEdges((prev) =>
-        prev.map((e) =>
-          e.id === `e${page}`
-            ? {
-                ...e,
-                animated: false,
-                style: { stroke: "hsl(var(--accent2))", strokeWidth: 1.5 },
-              }
-            : e.id === `e${page + 1}`
-              ? { ...e, animated: true }
-              : e,
-        ),
-      );
-    }
-  }, [events]);
+    setEdges((prev) =>
+      prev.map((e) => {
+        const page = Number(e.id.slice(1));
+        if (live[page]?.status === "done")
+          return { ...e, animated: false, style: { stroke: "hsl(var(--accent2))", strokeWidth: 1.5 } };
+        if (live[page - 1]?.status === "done" && live[page]?.status === "processing")
+          return { ...e, animated: true };
+        return e;
+      }),
+    );
+  }, [live, tokens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (pages.length === 0)
     return (
@@ -353,7 +330,7 @@ export function FlowDiagram({
     );
 
   return (
-    <div className="h-[500px] w-full rounded-lg border border-[hsl(var(--border))] overflow-hidden bg-[hsl(var(--bg))]">
+    <div className="h-[460px] w-full overflow-hidden rounded-[var(--radius-md)] border border-[hsl(var(--border))] bg-[hsl(var(--bg))]">
       <style>{`
         .react-flow__node { padding: 0 !important; }
         .react-flow__controls button { background: hsl(var(--bg-surface)); border-color: hsl(var(--border)); color: hsl(var(--text)); }
@@ -383,7 +360,7 @@ export function FlowDiagram({
         <MiniMap
           nodeColor={(n) => {
             const s = (n.data as PageNodeData).status;
-            if (s === "done") return "hsl(var(--success))";
+            if (s === "done") return "hsl(var(--text) / .55)";
             if (s === "error") return "hsl(var(--danger))";
             if (s === "processing") return "hsl(var(--accent2))";
             return "hsl(var(--border))";

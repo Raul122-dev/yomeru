@@ -118,7 +118,7 @@ function Thumbnail({
       />
 
       {/* page number badge */}
-      <div className="absolute left-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded bg-black/70 px-1.5 text-[10px] font-mono text-white">
+      <div className="absolute left-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded bg-black/70 px-1.5 text-xs font-mono text-white">
         {String(index + 1).padStart(2, "0")}
       </div>
 
@@ -156,7 +156,7 @@ function Thumbnail({
 
       {/* filename */}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1.5 pt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-        <p className="text-[9px] text-white truncate">{item.file.name}</p>
+        <p className="text-xs text-white truncate">{item.file.name}</p>
       </div>
     </div>
   );
@@ -171,7 +171,7 @@ function AddMoreCard({ onFiles }: { onFiles: (files: File[]) => void }) {
       className="flex aspect-[3/4] flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[hsl(var(--border-strong))] bg-[hsl(var(--bg-subtle))] transition-colors hover:border-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.05)]"
     >
       <Plus size={20} className="text-[hsl(var(--text-muted))]" />
-      <span className="text-[10px] text-[hsl(var(--text-muted))]">
+      <span className="text-xs text-[hsl(var(--text-muted))]">
         add pages
       </span>
       <input

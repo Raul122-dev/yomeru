@@ -72,7 +72,7 @@ export function FontsCard() {
       </h2>
       <p className="mb-4 text-xs text-[hsl(var(--text-muted))] leading-relaxed">
         Upload fonts via drag-and-drop below, or copy them manually to{" "}
-        <code className="font-mono text-[11px] bg-[hsl(var(--bg-subtle))] px-1 rounded">
+        <code className="font-mono text-xs bg-[hsl(var(--bg-subtle))] px-1 rounded">
           backend/assets/fonts/
         </code>
         . Name files exactly as shown in the slots below — the renderer picks
@@ -95,16 +95,16 @@ export function FontsCard() {
                 )}
               />
               <div className="min-w-0 flex-1">
-                <p className="font-mono text-[11px] text-[hsl(var(--text))] truncate">
+                <p className="font-mono text-xs text-[hsl(var(--text))] truncate">
                   {slot.name}
                 </p>
-                <p className="text-[10px] text-[hsl(var(--text-muted))]">
+                <p className="text-xs text-[hsl(var(--text-muted))]">
                   {slot.style} — {slot.note}
                 </p>
               </div>
               <span
                 className={cn(
-                  "text-[10px] shrink-0",
+                  "text-xs shrink-0",
                   installed
                     ? "text-[hsl(var(--success))]"
                     : "text-[hsl(var(--text-muted)/.5)]",
@@ -120,7 +120,7 @@ export function FontsCard() {
       {/* installed fonts (including any extra ones) */}
       {fonts.length > 0 && (
         <div className="mb-4 space-y-1">
-          <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))] mb-2">
+          <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))] mb-2">
             installed ({fonts.length})
           </p>
           {fonts.map((f) => (
@@ -129,10 +129,10 @@ export function FontsCard() {
               className="flex items-center gap-2 rounded px-2 py-1 hover:bg-[hsl(var(--bg-subtle))] group"
             >
               <Type size={11} className="text-[hsl(var(--text-muted))]" />
-              <span className="font-mono text-[11px] flex-1 truncate">
+              <span className="font-mono text-xs flex-1 truncate">
                 {f.name}
               </span>
-              <span className="text-[10px] text-[hsl(var(--text-muted)/.6)]">
+              <span className="text-xs text-[hsl(var(--text-muted)/.6)]">
                 {f.size_kb} KB
               </span>
               <button
@@ -147,7 +147,7 @@ export function FontsCard() {
       )}
 
       {isLoading && (
-        <p className="text-[11px] text-[hsl(var(--text-muted))]">
+        <p className="text-xs text-[hsl(var(--text-muted))]">
           loading fonts…
         </p>
       )}
@@ -168,7 +168,7 @@ export function FontsCard() {
         )}
       >
         <Upload size={16} className="text-[hsl(var(--text-muted))]" />
-        <p className="text-[11px] text-[hsl(var(--text-muted))] text-center">
+        <p className="text-xs text-[hsl(var(--text-muted))] text-center">
           {upload.isPending
             ? "uploading…"
             : "drop .ttf / .otf / .ttc here, or click to browse"}
@@ -184,7 +184,7 @@ export function FontsCard() {
       </div>
 
       {error && (
-        <div className="mt-2 flex items-center gap-2 text-[11px] text-[hsl(var(--danger))]">
+        <div className="mt-2 flex items-center gap-2 text-xs text-[hsl(var(--danger))]">
           <AlertCircle size={12} />
           {error}
         </div>

@@ -46,6 +46,41 @@ def typeset_status(run_id: str):
     return {"status": "done" if pages else "not_started", "pages": pages}
 
 
+# ── Export ─────────────────────────────────────────────────────────────────────
+
+@router.get("/{run_id}/export")
+def export_run(run_id: str, format: str = "cbz"):
+    """Download the typeset pages in reading order as .cbz (comic archive) or .zip."""
+    import io
+    import re
+    import zipfile
+    from fastapi.responses import StreamingResponse
+    from yomeru.core.paths import list_page_files
+
+    if format not in ("cbz", "zip"):
+        raise HTTPException(400, "format must be cbz or zip")
+    run = _get_run(run_id)
+    typeset_dir = run.output_dir() / "typeset"
+    pages = [typeset_dir / p.name for p in list_page_files(run.pages_dir())]
+    pages = [p for p in pages if p.is_file()]
+    if not pages:
+        raise HTTPException(404, "no rendered pages yet — run rendering first")
+
+    buf = io.BytesIO()
+    # Images are already compressed: store them, the archive is just a container
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for i, p in enumerate(pages, 1):
+            stem = re.sub(r"^\d{3}_", "", p.stem)
+            zf.write(p, f"{i:03d}_{stem}{p.suffix.lower()}")
+    buf.seek(0)
+    name = re.sub(r"[^\w.-]+", "_", run.meta().get("name") or run_id).strip("_") or run_id
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.comicbook+zip" if format == "cbz" else "application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}.{format}"'},
+    )
+
+
 # ── Debug images ───────────────────────────────────────────────────────────────
 
 @router.get("/{run_id}/typeset/debug")

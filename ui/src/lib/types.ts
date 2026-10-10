@@ -10,7 +10,9 @@ export type PhaseStatus =
   | "running"
   | "done"
   | "failed"
-  | "partial";
+  | "partial"
+  | "stale"
+  | "cancelled";
 
 export interface PhaseStatusResponse {
   phase: PhaseName;
@@ -35,8 +37,10 @@ export interface Run {
   global_context: string;
   ui_language: string;
   execution_mode: "sequential" | "manual";
-  status: "pending" | "running" | "done" | "failed";
+  status: "pending" | "running" | "done" | "failed" | "cancelled";
   phase_status: Record<PhaseName, PhaseStatus>;
+  connection_name?: string;
+  settings?: PipelineSettings;
   total_pages: number;
   processed_pages: number;
   created_at: string;

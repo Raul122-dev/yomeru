@@ -256,7 +256,7 @@ export function MatchingEditor({
           <span className="font-mono text-xs text-[hsl(var(--text-muted))]">
             matching · p{pageNum}
           </span>
-          <div className="flex items-center gap-2 text-[10px]">
+          <div className="flex items-center gap-2 text-xs">
             <span className="flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-green-500" /> direct
             </span>
@@ -268,33 +268,33 @@ export function MatchingEditor({
             </span>
           </div>
           {isDirty && (
-            <span className="text-[9px] text-[hsl(var(--accent2))]">
+            <span className="text-xs text-[hsl(var(--accent2))]">
               unsaved
             </span>
           )}
           {error && (
-            <span className="text-[10px] text-[hsl(var(--danger))] truncate">
+            <span className="text-xs text-[hsl(var(--danger))] truncate">
               {error}
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => setShowAlgoModal(true)}
-              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-[11px] text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] transition-colors"
+              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] transition-colors"
               title="Compare with algorithm-only matching"
             >
               <FlaskConical size={10} /> algorithm
             </button>
             <button
               onClick={handleRevert}
-              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-[11px] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] transition-colors"
+              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] transition-colors"
             >
               <RotateCcw size={10} /> revert
             </button>
             <button
               onClick={handleSave}
               disabled={!isDirty || isSaving}
-              className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-[11px] text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-xs text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
             >
               <Save size={10} /> {isSaving ? "saving…" : "save matches"}
             </button>
@@ -385,7 +385,7 @@ export function MatchingEditor({
       {/* sidebar */}
       <div className="w-64 shrink-0 border-l border-[hsl(var(--border))] flex flex-col overflow-hidden">
         <div className="px-3 py-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]">
-          <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+          <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
             {selectedRegion ? `region [${selectedId}]` : "click a region"}
           </p>
         </div>
@@ -393,7 +393,7 @@ export function MatchingEditor({
         {selectedRegion ? (
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {/* region info */}
-            <div className="space-y-1 text-[11px]">
+            <div className="space-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-[hsl(var(--text-muted))]">label</span>
                 <span className="font-mono">{selectedRegion.label}</span>
@@ -413,7 +413,7 @@ export function MatchingEditor({
               {selectedRegion.ocr_text && (
                 <div>
                   <p className="text-[hsl(var(--text-muted))]">ocr</p>
-                  <p className="font-mono text-[10px] mt-0.5 p-1.5 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">
+                  <p className="font-mono text-xs mt-0.5 p-1.5 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">
                     "{selectedRegion.ocr_text}"
                   </p>
                 </div>
@@ -424,29 +424,29 @@ export function MatchingEditor({
             {selectedMatch && (
               <div className="rounded border border-[hsl(var(--success)/.3)] bg-[hsl(var(--success)/.04)] p-2 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[hsl(var(--success))]">
+                  <span className="text-xs text-[hsl(var(--success))]">
                     matched → dlg {selectedMatch.dialogue_index}
                   </span>
                   <button
                     onClick={() => unmatch(selectedId!)}
-                    className="text-[10px] text-[hsl(var(--danger)/.7)] hover:text-[hsl(var(--danger))] transition-colors"
+                    className="text-xs text-[hsl(var(--danger)/.7)] hover:text-[hsl(var(--danger))] transition-colors"
                   >
                     unmatch
                   </button>
                 </div>
-                <p className="text-[11px] text-[hsl(var(--text-muted))] leading-relaxed truncate">
+                <p className="text-xs text-[hsl(var(--text-muted))] leading-relaxed truncate">
                   "{selectedMatch.dialogue_text}"
                 </p>
                 {selectedMatch.scores &&
                   selectedMatch.match_type !== "direct" && (
-                    <div className="flex gap-2 text-[10px] font-mono text-[hsl(var(--text-muted)/.6)]">
+                    <div className="flex gap-2 text-xs font-mono text-[hsl(var(--text-muted)/.6)]">
                       <span>sp:{selectedMatch.scores.spatial.toFixed(2)}</span>
                       <span>tx:{selectedMatch.scores.text.toFixed(2)}</span>
                       <span>to:{selectedMatch.scores.total.toFixed(2)}</span>
                     </div>
                   )}
                 {selectedMatch.match_type === "manual" && (
-                  <span className="text-[9px] text-[hsl(var(--accent2))]">
+                  <span className="text-xs text-[hsl(var(--accent2))]">
                     manual
                   </span>
                 )}
@@ -456,7 +456,7 @@ export function MatchingEditor({
             {/* orphaned warning */}
             {selectedRegion.status === "orphaned" && (
               <div className="rounded border border-[hsl(var(--danger)/.3)] bg-[hsl(var(--danger)/.04)] p-2">
-                <div className="flex items-center gap-1.5 text-[10px] text-[hsl(var(--danger))]">
+                <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--danger))]">
                   <AlertTriangle size={10} />
                   VLM missed this bubble
                 </div>
@@ -465,7 +465,7 @@ export function MatchingEditor({
 
             {/* reassign */}
             <div>
-              <p className="mb-1.5 text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+              <p className="mb-1.5 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
                 assign dialogue
               </p>
               <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -483,7 +483,7 @@ export function MatchingEditor({
                       onClick={() => reassign(selectedId!, d.dialogue_index)}
                       disabled={isCurrentlyAssigned}
                       className={cn(
-                        "w-full text-left rounded border px-2 py-1.5 text-[11px] transition-colors",
+                        "w-full text-left rounded border px-2 py-1.5 text-xs transition-colors",
                         isCurrentlyAssigned
                           ? "border-[hsl(var(--success)/.5)] bg-[hsl(var(--success)/.06)] text-[hsl(var(--success))]"
                           : isTakenByOther
@@ -492,12 +492,12 @@ export function MatchingEditor({
                       )}
                     >
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[9px] shrink-0">
+                        <span className="font-mono text-xs shrink-0">
                           dlg {d.dialogue_index}
                         </span>
                         {isCurrentlyAssigned && <ArrowRight size={9} />}
                         {isTakenByOther && (
-                          <span className="text-[9px]">(taken)</span>
+                          <span className="text-xs">(taken)</span>
                         )}
                       </div>
                       <p className="truncate mt-0.5">{d.text}</p>
@@ -529,7 +529,7 @@ export function MatchingEditor({
                 },
                 { label: "total regions", count: regions.length, color: "" },
               ].map(({ label, count, color }) => (
-                <div key={label} className="flex justify-between text-[11px]">
+                <div key={label} className="flex justify-between text-xs">
                   <span className="text-[hsl(var(--text-muted))]">{label}</span>
                   <span className={cn("font-mono", color)}>{count}</span>
                 </div>
@@ -549,7 +549,7 @@ export function MatchingEditor({
                 />
                 {isRunning ? "re-running…" : "re-run matching"}
               </button>
-              <p className="mt-1.5 text-[9px] text-[hsl(var(--text-muted)/.5)] leading-relaxed">
+              <p className="mt-1.5 text-xs text-[hsl(var(--text-muted)/.5)] leading-relaxed">
                 Re-runs S3 matching with current detections (refined if saved).
               </p>
             </div>

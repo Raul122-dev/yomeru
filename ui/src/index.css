@@ -1,34 +1,54 @@
 @import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
+/* yomeru design tokens — Vercel/Geist DESIGN.md adapted (see docs/DESIGN.md).
+   Variable names are kept from the previous theme so every component re-skins
+   from here; values follow the DESIGN.md ink/canvas/hairline ladder.
+   --accent2 is the single chromatic accent: non-photo blue (selection, focus,
+   manual edits). --accent is the ink used by primary buttons and the mark. */
 @layer base {
   :root {
-    --bg: 0 0% 98%;
-    --bg-surface: 0 0% 100%;
-    --bg-subtle: 0 0% 95%;
-    --border: 0 0% 88%;
-    --border-strong: 0 0% 78%;
-    --text: 0 0% 9%;
-    --text-muted: 0 0% 45%;
-    --accent: 38 92% 50%;
-    --accent-fg: 38 92% 15%;
-    --accent2: 221 83% 58%;
-    --success: 142 71% 38%;
-    --danger: 0 72% 51%;
+    --bg: 0 0% 98%;            /* canvas            #fafafa */
+    --bg-surface: 0 0% 100%;   /* canvas-elevated   #ffffff */
+    --bg-subtle: 0 0% 95%;     /* hairline-soft     #f2f2f2 */
+    --border: 0 0% 89%;        /* hairline (a touch above #ebebeb so cards hold on #fafafa) */
+    --border-strong: 0 0% 82%;
+    --text: 0 0% 9%;           /* ink               #171717 */
+    --text-body: 0 0% 30%;     /* body              #4d4d4d */
+    --text-muted: 0 0% 40%;    /* mute, AA on canvas and surface */
+    --text-faint: 0 0% 52%;    /* faint, labels only */
+    --accent: 0 0% 9%;         /* primary = ink */
+    --accent-fg: 0 0% 100%;    /* on-primary */
+    --accent2: 210 57% 42%;    /* non-photo blue, deep for text contrast */
+    --accent2-soft: 210 70% 94%;
+    --success: 0 0% 9%;        /* done = ink: finished work is just inked */
+    --warning: 37 91% 55%;     /* #f5a623 */
+    --warning-deep: 28 89% 36%;/* #ab570a */
+    --danger: 0 100% 47%;      /* #ee0000 */
+    --text-primary: var(--text);
+    --radius-sm: 6px;
+    --radius-md: 12px;
   }
 
   .dark {
-    --bg: 240 10% 5%;
-    --bg-surface: 240 8% 8%;
-    --bg-subtle: 240 8% 12%;
-    --border: 240 6% 18%;
-    --border-strong: 240 5% 28%;
-    --text: 0 0% 92%;
-    --text-muted: 240 5% 55%;
-    --accent: 38 85% 58%;
-    --accent-fg: 38 85% 12%;
-    --accent2: 221 80% 65%;
-    --success: 142 60% 48%;
-    --danger: 0 65% 60%;
+    --bg: 0 0% 4%;             /* #0a0a0a */
+    --bg-surface: 0 0% 7%;     /* #111111 */
+    --bg-subtle: 0 0% 10%;
+    --border: 0 0% 15%;        /* #262626 */
+    --border-strong: 0 0% 24%;
+    --text: 0 0% 93%;          /* #ededed */
+    --text-body: 0 0% 78%;
+    --text-muted: 0 0% 63%;    /* #a1a1a1 */
+    --text-faint: 0 0% 52%;
+    --accent: 0 0% 93%;
+    --accent-fg: 0 0% 4%;
+    --accent2: 209 61% 65%;    /* non-photo blue #6fa8dc */
+    --accent2-soft: 209 40% 16%;
+    --success: 0 0% 93%;
+    --warning: 37 91% 55%;
+    --warning-deep: 37 91% 62%;
+    --danger: 0 84% 62%;
   }
 
   * {
@@ -38,46 +58,83 @@
   }
 
   html {
-    /* Base size: scales all Tailwind rem units proportionally.
-       text-xs  = 12px → 13.5px  (0.75rem * 18px)
-       text-sm  = 14px → 15.75px (0.875rem * 18px)
-       text-base = 16px → 18px   (1rem * 18px)
-       Keeps the minimal aesthetic while making everything readable. */
-    font-size: 20px;
+    font-size: 16px;
+    background-color: hsl(var(--bg));
   }
 
   body {
     background-color: hsl(var(--bg));
     color: hsl(var(--text));
-    font-family:
-      system-ui,
-      -apple-system,
-      sans-serif;
-    font-size: 0.9375rem; /* 14px at 18px base — comfortable body text */
-    line-height: 1.6;
+    font-family: "Geist Variable", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 20px;
     -webkit-font-smoothing: antialiased;
   }
+
+  code, kbd, .font-mono {
+    font-family: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  h1 { font-weight: 600; letter-spacing: -0.04em; }
+  h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
 
   input,
   select,
   textarea {
-    background-color: hsl(var(--bg-subtle));
+    background-color: hsl(var(--bg-surface));
     border: 1px solid hsl(var(--border));
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: hsl(var(--text));
     font-family: inherit;
-    font-size: 0.875rem; /* 13px at 15px base */
-    padding: 8px 12px;
+    font-size: 14px;
+    padding: 6px 10px;
     width: 100%;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
 
   input:focus,
   select:focus,
   textarea:focus {
     border-color: hsl(var(--accent2));
+    box-shadow: 0 0 0 3px hsl(var(--accent2) / 0.18);
   }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--accent2));
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+}
+
+/* Signature: screentone (halftone dots), the only decorative element. */
+.screentone {
+  background-image: radial-gradient(hsl(var(--text) / 0.13) 1px, transparent 1.25px);
+  background-size: 6px 6px;
+}
+.screentone-fade {
+  background-image: radial-gradient(hsl(var(--text) / 0.12) 1px, transparent 1.25px);
+  background-size: 6px 6px;
+  mask-image: linear-gradient(90deg, black, transparent 70%);
+}
+
+/* Mono uppercase eyebrow (DESIGN.md mono-eyebrow) */
+.eyebrow {
+  font-family: "Geist Mono Variable", ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--text-muted));
 }
 
 /* Horizontal scroll strip — page selector in phases */
@@ -85,17 +142,7 @@
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border-strong)) transparent;
 }
-.scroll-strip::-webkit-scrollbar {
-  height: 6px;
-}
-.scroll-strip::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 3px;
-}
-.scroll-strip::-webkit-scrollbar-thumb {
-  background: hsl(var(--border-strong));
-  border-radius: 3px;
-}
-.scroll-strip::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--text-muted));
-}
+.scroll-strip::-webkit-scrollbar { height: 6px; }
+.scroll-strip::-webkit-scrollbar-track { background: transparent; }
+.scroll-strip::-webkit-scrollbar-thumb { background: hsl(var(--border-strong)); border-radius: 3px; }
+.scroll-strip::-webkit-scrollbar-thumb:hover { background: hsl(var(--text-muted)); }

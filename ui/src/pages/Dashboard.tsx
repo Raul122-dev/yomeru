@@ -1,305 +1,214 @@
 import { useMemo, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import {
-  Trash2,
-  Clock,
-  ChevronRight,
-  Search,
-  ArrowUpDown,
-  X,
-} from "lucide-react";
-import { listRuns, deleteRun } from "../lib/api";
-import type { Run } from "../lib/types";
-import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
-import { Card } from "../components/ui/card";
+import { Plus, Search, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import { deleteRun, listRuns } from "../lib/api";
+import type { PhaseName, PhaseStatus, Run } from "../lib/types";
+import { buttonVariants } from "../components/ui/button";
+import { StatusIcon } from "../lib/status";
 import { cn } from "../lib/utils";
 
-// ── sort options ───────────────────────────────────────────────────────────────
-
-type SortKey = "newest" | "oldest" | "name" | "status";
-
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "newest", label: "newest first" },
-  { key: "oldest", label: "oldest first" },
-  { key: "name", label: "name A→Z" },
-  { key: "status", label: "status" },
+type SortKey = "newest" | "oldest" | "name";
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "newest", label: "Newest" },
+  { key: "oldest", label: "Oldest" },
+  { key: "name", label: "Name" },
 ];
+const PHASES: PhaseName[] = ["detection", "analysis", "matching", "inpainting", "rendering"];
 
 function sortRuns(runs: Run[], sort: SortKey): Run[] {
-  return [...runs].sort((a, b) => {
-    switch (sort) {
-      case "newest":
-        return (
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-      case "oldest":
-        return (
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
-      case "name":
-        return a.name.localeCompare(b.name);
-      case "status": {
-        const order = { running: 0, pending: 1, done: 2, failed: 3 };
-        return (order[a.status] ?? 9) - (order[b.status] ?? 9);
-      }
-    }
-  });
-}
-
-// ── RunCard ────────────────────────────────────────────────────────────────────
-
-function RunCard({ run, query }: { run: Run; query: string }) {
-  const qc = useQueryClient();
-  const del = useMutation({
-    mutationFn: () => deleteRun(run.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["runs"] }),
-  });
-
-  const pct =
-    run.total_pages > 0
-      ? Math.round((run.processed_pages / run.total_pages) * 100)
-      : 0;
-  const date = new Date(run.created_at).toLocaleString(undefined, {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-
-  // highlight matching query in name
-  const highlightedName = useMemo(() => {
-    if (!query) return <span>{run.name}</span>;
-    const idx = run.name.toLowerCase().indexOf(query.toLowerCase());
-    if (idx === -1) return <span>{run.name}</span>;
-    return (
-      <>
-        {run.name.slice(0, idx)}
-        <mark className="bg-[hsl(var(--accent)/.3)] text-[hsl(var(--text))] rounded-sm px-0.5">
-          {run.name.slice(idx, idx + query.length)}
-        </mark>
-        {run.name.slice(idx + query.length)}
-      </>
-    );
-  }, [run.name, query]);
-
-  return (
-    <Card className="transition-shadow hover:shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link
-              to={`/runs/${run.id}`}
-              className="truncate text-sm font-medium hover:text-[hsl(var(--accent))] transition-colors"
-            >
-              {highlightedName}
-            </Link>
-            <Badge variant={run.status}>{run.status}</Badge>
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--text-muted))]">
-            <span className="font-mono">{run.model}</span>
-            <span>·</span>
-            <span>{run.comic_format}</span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <Clock size={11} />
-              {date}
-            </span>
-            {run.total_pages > 0 && (
-              <>
-                <span>·</span>
-                <span>{run.total_pages}p</span>
-              </>
-            )}
-          </div>
-          {run.status === "running" && (
-            <div className="mt-2">
-              <div className="h-1 w-full overflow-hidden rounded-full bg-[hsl(var(--bg-subtle))]">
-                <div
-                  className="h-full rounded-full bg-[hsl(var(--accent2))] transition-all"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <p className="mt-1 text-xs text-[hsl(var(--text-muted))]">
-                {run.processed_pages}/{run.total_pages} pages
-              </p>
-            </div>
-          )}
-          {run.error && (
-            <p className="mt-1.5 text-xs text-[hsl(var(--danger))]">
-              {run.error}
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => del.mutate()}
-            className="hover:text-[hsl(var(--danger))]"
-          >
-            <Trash2 size={14} />
-          </Button>
-          <Link
-            to={`/runs/${run.id}`}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-[hsl(var(--text-muted))] hover:bg-[hsl(var(--bg-subtle))] transition-colors"
-          >
-            <ChevronRight size={14} />
-          </Link>
-        </div>
-      </div>
-    </Card>
+  const t = (r: Run) => new Date(r.created_at).getTime();
+  return [...runs].sort((a, b) =>
+    sort === "name" ? a.name.localeCompare(b.name) : sort === "oldest" ? t(a) - t(b) : t(b) - t(a),
   );
 }
 
-// ── Dashboard ──────────────────────────────────────────────────────────────────
+/** The 5 phases as ink ticks: what's done, what's running, what's left. */
+function PipelineTicks({ run }: { run: Run }) {
+  return (
+    <div className="flex items-center gap-1" aria-label="Pipeline progress">
+      {PHASES.map((p) => {
+        const s = (run.phase_status?.[p] ?? "pending") as PhaseStatus;
+        return (
+          <span key={p} title={`${p}: ${s}`}
+            className={cn(
+              "h-1 flex-1 rounded-full",
+              s === "done" ? "bg-[hsl(var(--text)/.45)]"
+                : s === "running" ? "animate-pulse bg-[hsl(var(--accent2))]"
+                : s === "failed" ? "bg-[hsl(var(--danger))]"
+                : s === "partial" || s === "stale" ? "bg-[hsl(var(--warning))]"
+                : "bg-[hsl(var(--border))]",
+            )} />
+        );
+      })}
+    </div>
+  );
+}
+
+function overall(run: Run): PhaseStatus {
+  const ps = PHASES.map((p) => (run.phase_status?.[p] ?? "pending") as PhaseStatus);
+  if (ps.includes("running")) return "running";
+  if (ps.includes("failed")) return "failed";
+  if (ps.every((s) => s === "done")) return "done";
+  if (ps.includes("stale") || ps.includes("partial")) return "partial";
+  if (ps.includes("cancelled")) return "cancelled";
+  return "pending";
+}
+
+function RunCard({ run }: { run: Run }) {
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: async () => {
+      const r = await deleteRun(run.id);
+      if (!r.ok) throw new Error(`delete failed (${r.status})`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      toast(`Deleted "${run.name}"`);
+    },
+  });
+  const cover = null;
+  const date = new Date(run.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const st = overall(run);
+
+  return (
+    <article className="group relative flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-[hsl(var(--border))] bg-[hsl(var(--bg-surface))] transition-colors hover:border-[hsl(var(--border-strong))]">
+      <Link to={`/runs/${run.id}`} className="flex flex-1 flex-col">
+        <div className={cn("relative aspect-[4/3] overflow-hidden border-b border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]", st === "failed" && "opacity-60 grayscale")}>
+          {cover ? (
+            <img src={cover} alt="" loading="lazy" decoding="async"
+                 className="size-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]" />
+          ) : (
+            <RunCoverFallback run={run} />
+          )}
+        </div>
+        <div className="flex flex-1 flex-col gap-2.5 p-3.5">
+          <div className="flex items-start gap-2">
+            <h2 className="line-clamp-2 flex-1 text-sm font-semibold leading-5">{run.name}</h2>
+            <StatusIcon status={st} className="mt-0.5" />
+          </div>
+          <PipelineTicks run={run} />
+          <p className="truncate font-mono text-[11px] text-[hsl(var(--text-muted))]" title={run.model}>
+            {run.total_pages}p · {run.target_language ?? run.settings?.language.target ?? ""} · {date}
+          </p>
+          <p className="truncate font-mono text-[11px] text-[hsl(var(--text-faint))]" title={run.model}>{run.model}</p>
+          {run.error && st === "failed" && (
+            <p className="line-clamp-2 text-xs text-[hsl(var(--danger))]">{run.error}</p>
+          )}
+        </div>
+      </Link>
+      <button
+        aria-label={`Delete ${run.name}`}
+        onClick={() => {
+          if (confirm(`Delete "${run.name}" and all its files? This can't be undone.`)) del.mutate();
+        }}
+        className="absolute right-2 top-2 grid size-7 place-items-center rounded-[var(--radius-sm)] bg-[hsl(var(--bg-surface)/.9)] text-[hsl(var(--text-muted))] opacity-0 shadow-[0_0_0_1px_hsl(var(--border))] transition-opacity hover:text-[hsl(var(--danger))] focus-visible:opacity-100 group-hover:opacity-100"
+      >
+        <Trash2 size={13} />
+      </button>
+    </article>
+  );
+}
+
+function RunCoverFallback({ run }: { run: Run }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="screentone relative size-full">
+      {!failed && (
+        <img src={`/api/runs/${run.id}/pages-cover`} alt="" loading="lazy" onError={() => setFailed(true)}
+             className="size-full object-cover object-top opacity-90" />
+      )}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("newest");
-  const [showSort, setShowSort] = useState(false);
-
-  const { data: runs = [] as Run[], isLoading } = useQuery<Run[]>({
+  const { data: runs = [], isLoading } = useQuery<Run[]>({
     queryKey: ["runs"],
     queryFn: listRuns,
-    refetchInterval: 3000,
+    // Poll only while a run is working
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((r) => Object.values(r.phase_status ?? {}).includes("running")) ? 3000 : false,
   });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const matching = q
-      ? runs.filter(
-          (r) =>
-            r.name.toLowerCase().includes(q) ||
-            r.model.toLowerCase().includes(q) ||
-            r.comic_format.toLowerCase().includes(q) ||
-            r.status.toLowerCase().includes(q),
-        )
+    const list = q
+      ? runs.filter((r) => [r.name, r.model, r.comic_format, r.target_language].some((f) => f?.toLowerCase().includes(q)))
       : runs;
-    return sortRuns(matching, sort);
+    return sortRuns(list, sort);
   }, [runs, query, sort]);
 
-  if (isLoading)
-    return (
-      <div className="text-sm text-[hsl(var(--text-muted))]">loading…</div>
-    );
-
-  const currentSort = SORT_OPTIONS.find((o) => o.key === sort)!;
-
   return (
-    <div>
-      {/* header */}
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">runs</h1>
-        <Link
-          to="/new"
-          className="inline-flex items-center gap-2 rounded-md bg-[hsl(var(--accent))] px-4 py-2 text-sm font-medium text-[hsl(var(--accent-fg))] transition-colors hover:opacity-90"
-        >
-          + new run
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="eyebrow">Library</p>
+          <h1 className="mt-1 text-3xl leading-9">Runs</h1>
+        </div>
+        <Link to="/new" className={buttonVariants({ variant: "default" })}>
+          <Plus size={14} /> New run
         </Link>
-      </div>
+      </header>
 
-      {/* search + sort toolbar */}
       {runs.length > 0 && (
-        <div className="mb-4 flex items-center gap-2">
-          {/* search */}
-          <div className="relative flex-1">
-            <Search
-              size={13}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))]"
-            />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[220px] flex-1">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))]" />
             <input
-              type="text"
-              placeholder="search by name, model, format, status…"
+              type="search"
+              aria-label="Search runs"
+              placeholder="Search by name, model, language…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg))] py-2 pl-8 pr-8 text-sm placeholder:text-[hsl(var(--text-muted)/.6)] focus:border-[hsl(var(--accent2))] focus:outline-none transition-colors"
+              className="pl-8 pr-8"
             />
             {query && (
-              <button
-                onClick={() => setQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] transition-colors"
-              >
-                <X size={13} />
+              <button aria-label="Clear search" onClick={() => setQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))]">
+                <X size={14} />
               </button>
             )}
           </div>
-
-          {/* sort */}
-          <div className="relative">
-            <button
-              onClick={() => setShowSort((s) => !s)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors whitespace-nowrap",
-                showSort
-                  ? "border-[hsl(var(--accent2)/.5)] text-[hsl(var(--accent2))]"
-                  : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))] hover:border-[hsl(var(--border-strong))] hover:text-[hsl(var(--text))]",
-              )}
-            >
-              <ArrowUpDown size={12} />
-              {currentSort.label}
-            </button>
-
-            {showSort && (
-              <div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg-surface))] shadow-lg overflow-hidden">
-                {SORT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.key}
-                    onClick={() => {
-                      setSort(opt.key);
-                      setShowSort(false);
-                    }}
-                    className={cn(
-                      "w-full px-3 py-2 text-left text-sm transition-colors",
-                      sort === opt.key
-                        ? "bg-[hsl(var(--accent2)/.08)] text-[hsl(var(--accent2))]"
-                        : "text-[hsl(var(--text))] hover:bg-[hsl(var(--bg-subtle))]",
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
+          <div role="radiogroup" aria-label="Sort" className="flex rounded-[var(--radius-sm)] border border-[hsl(var(--border))] bg-[hsl(var(--bg-surface))] p-0.5">
+            {SORTS.map((s) => (
+              <button key={s.key} role="radio" aria-checked={sort === s.key} onClick={() => setSort(s.key)}
+                className={cn("h-7 rounded-[4px] px-2.5 text-xs",
+                  sort === s.key ? "bg-[hsl(var(--text))] text-[hsl(var(--bg))]" : "text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))]")}>
+                {s.label}
+              </button>
+            ))}
           </div>
+          <span className="font-mono text-xs text-[hsl(var(--text-muted))]">
+            {filtered.length === runs.length ? `${runs.length} runs` : `${filtered.length} of ${runs.length}`}
+          </span>
         </div>
       )}
 
-      {/* results */}
-      {runs.length === 0 ? (
-        <Card className="py-16 text-center">
-          <p className="text-sm text-[hsl(var(--text-muted))]">no runs yet</p>
-          <Link
-            to="/new"
-            className="mt-2 block text-sm text-[hsl(var(--accent2))] hover:underline"
-          >
-            create your first run
-          </Link>
-        </Card>
-      ) : filtered.length === 0 ? (
-        <Card className="py-12 text-center">
-          <p className="text-sm text-[hsl(var(--text-muted))]">
-            no runs match "{query}"
+      {isLoading ? (
+        <p className="text-sm text-[hsl(var(--text-muted))]">loading…</p>
+      ) : runs.length === 0 ? (
+        <div className="screentone-fade rounded-[var(--radius-md)] border border-dashed border-[hsl(var(--border-strong))] px-8 py-16">
+          <p className="eyebrow">No runs yet</p>
+          <h2 className="mt-2 text-xl">Translate your first chapter</h2>
+          <p className="mt-1 max-w-md text-sm text-[hsl(var(--text-muted))]">
+            Upload the pages, pick the languages, and yomeru detects, reads, translates and typesets them — with an editor at every step.
           </p>
-          <button
-            onClick={() => setQuery("")}
-            className="mt-2 block w-full text-sm text-[hsl(var(--accent2))] hover:underline"
-          >
-            clear search
-          </button>
-        </Card>
+          <Link to="/new" className={cn(buttonVariants({ variant: "default" }), "mt-5")}>
+            <Plus size={14} /> New run
+          </Link>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--text-muted))]">
+          No runs match "{query}". <button className="text-[hsl(var(--accent2))] underline" onClick={() => setQuery("")}>Clear search</button>
+        </p>
       ) : (
-        <>
-          {query && (
-            <p className="mb-3 text-xs text-[hsl(var(--text-muted))]">
-              {filtered.length} of {runs.length} runs
-            </p>
-          )}
-          <div className="flex flex-col gap-3">
-            {filtered.map((run) => (
-              <RunCard key={run.id} run={run} query={query} />
-            ))}
-          </div>
-        </>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
+          {filtered.map((r) => <RunCard key={r.id} run={r} />)}
+        </div>
       )}
     </div>
   );

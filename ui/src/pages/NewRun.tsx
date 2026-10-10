@@ -89,7 +89,7 @@ export default function NewRun() {
         <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
           Chapter Context
         </label>
-        <p className="mb-2 text-[10px] text-[hsl(var(--text-muted))]">
+        <p className="mb-2 text-xs text-[hsl(var(--text-muted))]">
           Extra context about this chapter that helps the model produce better
           translations. Character names, story setting, genre, narrative style,
           etc.

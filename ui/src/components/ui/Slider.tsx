@@ -29,10 +29,10 @@ export function Slider({
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between">
-        <span className="text-[11px] text-[hsl(var(--text-muted))]">
+        <span className="text-xs text-[hsl(var(--text-muted))]">
           {label}
         </span>
-        <span className="font-mono text-[10px] text-[hsl(var(--accent2))]">
+        <span className="font-mono text-xs text-[hsl(var(--accent2))]">
           {display}
         </span>
       </div>
@@ -46,7 +46,7 @@ export function Slider({
         className="w-full h-1 accent-[hsl(var(--accent2))] cursor-pointer"
       />
       {hint && (
-        <p className="text-[9px] text-[hsl(var(--text-muted))] leading-tight">
+        <p className="text-xs text-[hsl(var(--text-muted))] leading-tight">
           {hint}
         </p>
       )}

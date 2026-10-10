@@ -20,17 +20,7 @@ async function getPages(runId: string): Promise<RunPage[]> {
 
 function getRunRefetchInterval(run?: Run) {
   if (!run) return 2000;
-
-  const unifiedStatuses = Object.values(run.phase_status ?? {});
-  const active =
-    run.status === "running" ||
-    unifiedStatuses.some((status) => status === "running") ||
-    run.detection_status === "running" ||
-    run.analysis_status === "running" ||
-    run.typeset_matching_status === "running" ||
-    run.typeset_inpainting_status === "running" ||
-    run.typeset_rendering_status === "running";
-
+  const active = run.status === "running" || Object.values(run.phase_status ?? {}).includes("running");
   return active ? 2000 : false;
 }
 
@@ -45,7 +35,8 @@ export function useRunDetailData(runId: string) {
   const typesetStatusQuery = useQuery({
     queryKey: ["typeset-status", runId],
     queryFn: () => getTypesetStatus(runId),
-    refetchInterval: 5000,
+    // Only while something runs; phase views invalidate it when they finish
+    refetchInterval: () => (getRunRefetchInterval(runQuery.data) ? 5000 : false),
     retry: false,
     enabled: !!runId,
   });

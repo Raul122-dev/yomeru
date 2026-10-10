@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { connectPhaseWs, startPhase } from "../lib/api";
-import type { PhaseName, PhaseStartPayload } from "../lib/types";
+import type { PhaseName, PhaseStartPayload, PhaseStatus } from "../lib/types";
 
 export interface PhaseEvent {
   type?: string;
@@ -21,177 +21,122 @@ interface PhaseProgress {
   status: "idle" | "running" | "done" | "failed";
   total: number;
   processed: number;
+  /** Non-token events only (bounded); tokens go to `tokens` per page. */
   events: PhaseEvent[];
+  /** Streamed model text per page (analysis). */
+  tokens: Record<number, string>;
 }
 
+const MAX_EVENTS = 500;
+const TERMINAL = new Set(["phase_done", "phase_error", "phase_cancelled"]);
+
+/**
+ * Live progress of one phase over the run's WebSocket.
+ *
+ * The server's phase_status is the source of truth: `effectiveStatus()` only
+ * lets the live status win while it says "running" — once a phase ends, the
+ * polled server status (done / partial / stale / cancelled…) is shown.
+ * The socket reconnects with backoff if it drops mid-phase.
+ */
 export function usePhaseRunner(runId: string, autoListenPhase?: PhaseName) {
   const [progress, setProgress] = useState<PhaseProgress | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const listeningRef = useRef(false);
+  const phaseRef = useRef<PhaseName | null>(null);
+  const retryRef = useRef<{ timer?: number; attempts: number }>({ attempts: 0 });
 
   const stop = useCallback(() => {
-    wsRef.current?.close();
+    phaseRef.current = null;
+    window.clearTimeout(retryRef.current.timer);
+    retryRef.current.attempts = 0;
+    const ws = wsRef.current;
     wsRef.current = null;
-    listeningRef.current = false;
+    ws?.close();
   }, []);
 
   useEffect(() => stop, [stop]);
 
-  // Connect WS and listen for events on a specific phase
-  const listen = useCallback(
-    (phase: PhaseName) => {
-      if (listeningRef.current && progress?.phase === phase) return;
-      stop();
-      listeningRef.current = true;
-      // Always reset to running — if phase already completed, we're starting fresh
-      setProgress((prev) =>
-        prev?.phase === phase && prev.status === "running"
-          ? prev
-          : { phase, status: "running", total: 0, processed: 0, events: [] },
-      );
-
-      wsRef.current = connectPhaseWs(runId, (event: PhaseEvent) => {
-        const isCurrentPhaseEvent =
-          event.phase === phase ||
-          event.type === "heartbeat" ||
-          (phase === "analysis" && event.type === "token");
-
-        if (!isCurrentPhaseEvent) return;
-
-        setProgress((prev) => {
-          if (!prev || prev.phase !== phase) return prev;
-          const events = [...prev.events, event];
-
-          if (event.type === "phase_progress") {
-            return {
-              ...prev,
-              total: event.total ?? prev.total,
-              processed: event.processed ?? prev.processed,
-              events,
-            };
-          }
-          if (event.type === "page_done") {
-            return {
-              ...prev,
-              processed: Math.max(prev.processed + 1, event.processed ?? 0),
-              events,
-            };
-          }
-          if (event.type === "phase_done") {
-            return {
-              ...prev,
-              status: event.status === "done" ? "done" : "failed",
-              total: event.total ?? prev.total,
-              processed: event.processed ?? prev.processed,
-              events,
-            };
-          }
-          if (event.type === "phase_error") {
-            return { ...prev, status: "failed", events };
-          }
+  const onEvent = useCallback((phase: PhaseName, event: PhaseEvent) => {
+    const mine =
+      event.phase === phase || (phase === "analysis" && event.type === "token");
+    if (!mine) return;
+    setProgress((prev) => {
+      if (!prev || prev.phase !== phase) return prev;
+      if (event.type === "token") {
+        const p = Number(event.page);
+        return { ...prev, tokens: { ...prev.tokens, [p]: (prev.tokens[p] ?? "") + (event.token ?? "") } };
+      }
+      const events = [...prev.events, event].slice(-MAX_EVENTS);
+      switch (event.type) {
+        case "phase_start":
+          return event.replay ? { ...prev, events } : { ...prev, status: "running", events, tokens: {} };
+        case "phase_progress":
+          return { ...prev, total: event.total ?? prev.total, processed: event.processed ?? prev.processed, events };
+        case "page_done":
+          return { ...prev, processed: prev.processed + 1, events };
+        case "phase_done":
+          return { ...prev, status: event.status === "failed" ? "failed" : "done", events };
+        case "phase_error":
+          return { ...prev, status: "failed", events };
+        case "phase_cancelled":
+          return { ...prev, status: "idle", events };
+        default:
           return { ...prev, events };
-        });
+      }
+    });
+    if (TERMINAL.has(event.type ?? "") && !event.replay) stop();
+  }, [stop]);
 
-        if (event.type === "phase_done" || event.type === "phase_error") {
-          listeningRef.current = false;
-        }
-      });
-    },
-    [runId, stop, progress?.phase],
-  );
+  const connect = useCallback((phase: PhaseName) => {
+    const ws = connectPhaseWs(runId, (ev) => onEvent(phase, ev));
+    wsRef.current = ws;
+    ws.onopen = () => { retryRef.current.attempts = 0; };
+    ws.onclose = () => {
+      if (wsRef.current !== ws || phaseRef.current !== phase) return; // closed on purpose
+      const attempts = ++retryRef.current.attempts;
+      if (attempts > 8) return;
+      retryRef.current.timer = window.setTimeout(() => {
+        if (phaseRef.current === phase) connect(phase);
+      }, Math.min(500 * 2 ** attempts, 8000));
+    };
+  }, [runId, onEvent]);
 
-  // Auto-listen when phase is already running server-side
+  const listen = useCallback((phase: PhaseName) => {
+    if (phaseRef.current === phase && wsRef.current) return;
+    stop();
+    phaseRef.current = phase;
+    setProgress((prev) =>
+      prev?.phase === phase && prev.status === "running"
+        ? prev
+        : { phase, status: "running", total: 0, processed: 0, events: [], tokens: {} },
+    );
+    connect(phase);
+  }, [stop, connect]);
+
   useEffect(() => {
-    if (autoListenPhase && !listeningRef.current && !progress) {
-      listen(autoListenPhase);
-    }
+    if (autoListenPhase && !phaseRef.current && !progress) listen(autoListenPhase);
   }, [autoListenPhase, listen, progress]);
 
-  const start = useCallback(
-    async (phase: PhaseName, payload?: PhaseStartPayload) => {
+  const start = useCallback(async (phase: PhaseName, payload?: PhaseStartPayload) => {
+    listen(phase);
+    setProgress({ phase, status: "running", total: 0, processed: 0, events: [], tokens: {} });
+    try {
+      await startPhase(runId, phase, payload);
+    } catch (error) {
       stop();
-      setProgress({
-        phase,
-        status: "running",
-        total: 0,
-        processed: 0,
-        events: [],
-      });
-      listeningRef.current = true;
+      const message = error instanceof Error ? error.message : String(error);
+      setProgress((prev) => (prev && prev.phase === phase ? { ...prev, status: "idle" } : prev));
+      // Callers show it as a toast; rethrowing would be an unhandled rejection
+      return { error: message };
+    }
+    return { error: null };
+  }, [runId, listen, stop]);
 
-      wsRef.current = connectPhaseWs(runId, (event: PhaseEvent) => {
-        const isCurrentPhaseEvent =
-          event.phase === phase ||
-          event.type === "heartbeat" ||
-          (phase === "analysis" && event.type === "token");
-
-        if (!isCurrentPhaseEvent) return;
-
-        setProgress((prev) => {
-          if (!prev || prev.phase !== phase) return prev;
-
-          const events = [...prev.events, event];
-
-          if (event.type === "phase_progress") {
-            return {
-              ...prev,
-              total: event.total ?? prev.total,
-              processed: event.processed ?? prev.processed,
-              events,
-            };
-          }
-
-          if (event.type === "page_done") {
-            return {
-              ...prev,
-              processed: Math.max(prev.processed + 1, event.processed ?? 0),
-              events,
-            };
-          }
-
-          if (event.type === "phase_done") {
-            return {
-              ...prev,
-              status: event.status === "done" ? "done" : "failed",
-              total: event.total ?? prev.total,
-              processed: event.processed ?? prev.processed,
-              events,
-            };
-          }
-
-          if (event.type === "phase_error") {
-            return { ...prev, status: "failed", events };
-          }
-
-          return { ...prev, events };
-        });
-
-        if (event.type === "phase_done" || event.type === "phase_error") {
-          stop();
-        }
-      });
-
-      try {
-        await startPhase(runId, phase, payload);
-      } catch (error) {
-        stop();
-        const message = error instanceof Error ? error.message : String(error);
-        setProgress((prev) => {
-          if (!prev || prev.phase !== phase) return prev;
-          return {
-            ...prev,
-            status: "failed",
-            events: [
-              ...prev.events,
-              { type: "phase_error", phase, error: message },
-            ],
-          };
-        });
-        throw error;
-      }
-    },
-    [runId, stop],
+  /** Server status unless the live stream says this phase is running. */
+  const effectiveStatus = useCallback(
+    (phase: PhaseName, serverStatus: PhaseStatus): PhaseStatus =>
+      progress?.phase === phase && progress.status === "running" ? "running" : serverStatus,
+    [progress],
   );
 
-  return { progress, start, stop, listen };
+  return { progress, start, stop, listen, effectiveStatus };
 }

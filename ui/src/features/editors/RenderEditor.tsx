@@ -105,7 +105,7 @@ function DialogueEditRow({
         <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
           <span
             className={cn(
-              "text-[10px] font-mono",
+              "text-xs font-mono",
               isSkipped
                 ? "text-[hsl(var(--text-muted)/.4)]"
                 : "text-[hsl(var(--success))]",
@@ -113,7 +113,7 @@ function DialogueEditRow({
           >
             {isSkipped ? "—" : "✓"}
           </span>
-          <span className="font-mono text-[10px] text-[hsl(var(--accent2))] w-5">
+          <span className="font-mono text-xs text-[hsl(var(--accent2))] w-5">
             r{row.region_id}
           </span>
         </div>
@@ -123,7 +123,7 @@ function DialogueEditRow({
           value={displayText}
           onChange={(e) => onChange({ text_translated: e.target.value })}
           rows={2}
-          className="flex-1 min-w-0 rounded border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] px-2 py-1 text-[11px] leading-relaxed resize-none focus:border-[hsl(var(--accent2))] focus:outline-none"
+          className="flex-1 min-w-0 rounded border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] px-2 py-1 text-xs leading-relaxed resize-none focus:border-[hsl(var(--accent2))] focus:outline-none"
         />
 
         {/* controls */}
@@ -146,7 +146,7 @@ function DialogueEditRow({
       </div>
 
       {/* original text + render info */}
-      <div className="px-3 pb-1 flex gap-3 text-[10px] text-[hsl(var(--text-muted)/.6)]">
+      <div className="px-3 pb-1 flex gap-3 text-xs text-[hsl(var(--text-muted)/.6)]">
         <span className="truncate flex-1">{row.text}</span>
         {row.font_size && <span>{row.font_size}px</span>}
         {row.font_style && <span>{row.font_style}</span>}
@@ -158,7 +158,7 @@ function DialogueEditRow({
         <div className="px-3 pb-2.5 pt-0 flex flex-wrap gap-3">
           {/* font style */}
           <div>
-            <p className="mb-1 text-[9px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+            <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
               style
             </p>
             <div className="flex gap-1">
@@ -169,7 +169,7 @@ function DialogueEditRow({
                     onChange({ font_style: s === "auto" ? undefined : s })
                   }
                   className={cn(
-                    "rounded border px-1.5 py-0.5 text-[10px] transition-colors",
+                    "rounded border px-1.5 py-0.5 text-xs transition-colors",
                     displayStyle === s || (s === "auto" && !override.font_style)
                       ? "border-[hsl(var(--accent2))] text-[hsl(var(--accent2))]"
                       : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))]",
@@ -183,7 +183,7 @@ function DialogueEditRow({
 
           {/* tone */}
           <div>
-            <p className="mb-1 text-[9px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+            <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
               tone
             </p>
             <div className="flex flex-wrap gap-1">
@@ -192,7 +192,7 @@ function DialogueEditRow({
                   key={t}
                   onClick={() => onChange({ tone: t })}
                   className={cn(
-                    "rounded border px-1.5 py-0.5 text-[10px] transition-colors",
+                    "rounded border px-1.5 py-0.5 text-xs transition-colors",
                     displayTone === t
                       ? "border-[hsl(var(--accent2))] text-[hsl(var(--accent2))]"
                       : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))]",
@@ -206,7 +206,7 @@ function DialogueEditRow({
 
           {/* font size override */}
           <div>
-            <p className="mb-1 text-[9px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+            <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
               size override
               {override.font_size_override && (
                 <button
@@ -230,7 +230,7 @@ function DialogueEditRow({
                     : null,
                 })
               }
-              className="w-16 rounded border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] px-2 py-0.5 text-[11px] font-mono focus:border-[hsl(var(--accent2))] focus:outline-none"
+              className="w-16 rounded border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] px-2 py-0.5 text-xs font-mono focus:border-[hsl(var(--accent2))] focus:outline-none"
             />
           </div>
 
@@ -239,7 +239,7 @@ function DialogueEditRow({
             <div className="self-end">
               <button
                 onClick={() => onChange({})}
-                className="text-[10px] text-[hsl(var(--text-muted)/.5)] hover:text-[hsl(var(--danger))] transition-colors"
+                className="text-xs text-[hsl(var(--text-muted)/.5)] hover:text-[hsl(var(--danger))] transition-colors"
               >
                 reset this
               </button>
@@ -368,36 +368,36 @@ export function RenderEditor({
     <div className="rounded-lg border border-[hsl(var(--border))] overflow-hidden">
       {/* toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]">
-        <span className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+        <span className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
           render editor · p{pageNum}
         </span>
         {isDirty && (
-          <span className="text-[9px] text-[hsl(var(--accent2))]">
+          <span className="text-xs text-[hsl(var(--accent2))]">
             unsaved changes
           </span>
         )}
         {error && (
-          <span className="text-[10px] text-[hsl(var(--danger))]">{error}</span>
+          <span className="text-xs text-[hsl(var(--danger))]">{error}</span>
         )}
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={handleRevert}
             disabled={!isDirty}
-            className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-[11px] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
+            className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
           >
             <RotateCcw size={10} /> revert
           </button>
           <button
             onClick={handleSave}
             disabled={!isDirty || isSaving}
-            className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-[11px] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
+            className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
           >
             <Save size={10} /> {isSaving ? "saving…" : "save"}
           </button>
           <button
             onClick={handleReRender}
             disabled={isReRendering}
-            className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-[11px] text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
+            className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-xs text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
           >
             <RefreshCw
               size={10}

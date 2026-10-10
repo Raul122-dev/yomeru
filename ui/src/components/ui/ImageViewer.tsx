@@ -46,7 +46,7 @@ export function ImageViewer({ src, alt, className, label }: ImageViewerProps) {
               className="max-h-[88vh] max-w-[88vw] rounded object-contain shadow-2xl"
             />
             {label && (
-              <div className="absolute bottom-0 left-0 right-0 rounded-b bg-black/60 px-3 py-1.5 text-[11px] text-white/80 text-center">
+              <div className="absolute bottom-0 left-0 right-0 rounded-b bg-black/60 px-3 py-1.5 text-xs text-white/80 text-center">
                 {label}
               </div>
             )}

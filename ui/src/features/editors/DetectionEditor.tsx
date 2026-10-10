@@ -278,7 +278,7 @@ function SidebarRow({
     <div
       onClick={onSelect}
       className={cn(
-        "relative flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-[hsl(var(--border))] last:border-0 text-[11px] transition-colors",
+        "relative flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-[hsl(var(--border))] last:border-0 text-xs transition-colors",
         isSelected
           ? "bg-[hsl(var(--accent2)/.08)] border-l-2 border-l-[hsl(var(--accent2))]"
           : "hover:bg-[hsl(var(--bg-subtle))]",
@@ -306,16 +306,16 @@ function SidebarRow({
           <ChevronDown size={9} />
         </button>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="text-[hsl(var(--text-muted)/.6)] font-mono text-[10px]">
+          <span className="text-[hsl(var(--text-muted)/.6)] font-mono text-xs">
             {w}×{h}
           </span>
           {r.isNew && (
-            <span className="text-[9px] px-1 rounded bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]">
+            <span className="text-xs px-1 rounded bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]">
               new
             </span>
           )}
           {r.score < 1 && !r.isNew && (
-            <span className="text-[10px] text-[hsl(var(--text-muted)/.6)] font-mono">
+            <span className="text-xs text-[hsl(var(--text-muted)/.6)] font-mono">
               {(r.score * 100).toFixed(0)}%
             </span>
           )}
@@ -332,7 +332,7 @@ function SidebarRow({
                   setShowLabels(false);
                 }}
                 className={cn(
-                  "flex items-center gap-2 w-full px-3 py-1.5 text-left text-[10px] hover:bg-[hsl(var(--bg-subtle))] transition-colors",
+                  "flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-[hsl(var(--bg-subtle))] transition-colors",
                   l === r.label && "text-[hsl(var(--accent2))] font-medium",
                 )}
               >
@@ -374,7 +374,7 @@ function Legend({ show, onClose }: { show: boolean; onClose: () => void }) {
       </div>
       <div className="space-y-1.5">
         {LABELS.map((l) => (
-          <div key={l} className="flex items-center gap-2 text-[11px]">
+          <div key={l} className="flex items-center gap-2 text-xs">
             <div
               className="h-3 w-3 rounded-sm border"
               style={{
@@ -383,17 +383,17 @@ function Legend({ show, onClose }: { show: boolean; onClose: () => void }) {
               }}
             />
             <span className="capitalize font-medium">{l.replace(/_/g, " ")}</span>
-            <span className="text-[hsl(var(--text-muted)/.6)] text-[10px]">
+            <span className="text-[hsl(var(--text-muted)/.6)] text-xs">
               — {LABEL_DESCRIPTIONS[l]}
             </span>
           </div>
         ))}
       </div>
-      <div className="border-t border-[hsl(var(--border))] pt-2 space-y-1 text-[10px] text-[hsl(var(--text-muted))]">
+      <div className="border-t border-[hsl(var(--border))] pt-2 space-y-1 text-xs text-[hsl(var(--text-muted))]">
         <p><strong>Score %</strong> — Model confidence in the detection accuracy</p>
         <p><strong>Dimensions</strong> — Width × Height in original pixels</p>
       </div>
-      <div className="border-t border-[hsl(var(--border))] pt-2 space-y-0.5 text-[10px] text-[hsl(var(--text-muted))]">
+      <div className="border-t border-[hsl(var(--border))] pt-2 space-y-0.5 text-xs text-[hsl(var(--text-muted))]">
         <p className="font-medium text-[hsl(var(--text))]">Shortcuts</p>
         <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">Del</kbd> Delete region</p>
         <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">Ctrl+Z</kbd> Undo</p>
@@ -437,7 +437,7 @@ function PageThumb({
     >
       <img src={url} alt={`Page ${page.page}`} className="h-full w-full object-cover" />
       <span className={cn(
-        "absolute bottom-0 inset-x-0 text-center text-[9px] font-mono py-0.5",
+        "absolute bottom-0 inset-x-0 text-center text-xs font-mono py-0.5",
         isCurrent ? "bg-[hsl(var(--accent2))] text-white" : "bg-[hsl(var(--bg)/.85)] text-[hsl(var(--text-muted))]",
       )}>
         {page.page}
@@ -858,7 +858,7 @@ export function DetectionEditor({
           <span className="font-mono text-xs text-[hsl(var(--text-muted))]">
             Page {pageNum}
           </span>
-          <span className="text-[11px] text-[hsl(var(--text-muted)/.5)] truncate max-w-[150px]">
+          <span className="text-xs text-[hsl(var(--text-muted)/.5)] truncate max-w-[150px]">
             {filename}
           </span>
         </div>
@@ -870,7 +870,7 @@ export function DetectionEditor({
             <button
               onClick={() => setTool("select")}
               className={cn(
-                "flex items-center gap-1 px-2.5 py-1.5 text-[11px] transition-colors",
+                "flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors",
                 tool === "select"
                   ? "bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]"
                   : "text-[hsl(var(--text-muted))] hover:bg-[hsl(var(--bg-subtle))]",
@@ -882,7 +882,7 @@ export function DetectionEditor({
             <button
               onClick={() => setTool("draw")}
               className={cn(
-                "flex items-center gap-1 px-2.5 py-1.5 text-[11px] border-l border-[hsl(var(--border))] transition-colors",
+                "flex items-center gap-1 px-2.5 py-1.5 text-xs border-l border-[hsl(var(--border))] transition-colors",
                 tool === "draw"
                   ? "bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]"
                   : "text-[hsl(var(--text-muted))] hover:bg-[hsl(var(--bg-subtle))]",
@@ -923,7 +923,7 @@ export function DetectionEditor({
           >
             <ZoomOut size={14} />
           </button>
-          <span className="text-[11px] font-mono text-[hsl(var(--text-muted))] w-12 text-center">
+          <span className="text-xs font-mono text-[hsl(var(--text-muted))] w-12 text-center">
             {Math.round(zoom * 100)}%
           </span>
           <button
@@ -971,13 +971,13 @@ export function DetectionEditor({
         {/* Right: save/revert/close */}
         <div className="flex items-center gap-2">
           {saveError && (
-            <span className="text-[10px] text-[hsl(var(--danger))] max-w-[120px] truncate">
+            <span className="text-xs text-[hsl(var(--danger))] max-w-[120px] truncate">
               {saveError}
             </span>
           )}
           <button
             onClick={handleRevert}
-            className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-[11px] text-[hsl(var(--text-muted))] hover:border-[hsl(var(--border-strong))] transition-colors"
+            className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:border-[hsl(var(--border-strong))] transition-colors"
             title="Revert all changes"
           >
             <RotateCcw size={10} /> Revert
@@ -985,7 +985,7 @@ export function DetectionEditor({
           <button
             onClick={handleSave}
             disabled={!isDirty || isSaving}
-            className="flex items-center gap-1 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-[11px] text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
+            className="flex items-center gap-1 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-xs text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
             title="Save changes"
           >
             <Save size={10} /> {isSaving ? "Saving…" : "Save"}
@@ -1097,11 +1097,11 @@ export function DetectionEditor({
         <div className="w-56 shrink-0 border-l border-[hsl(var(--border))] flex flex-col overflow-hidden bg-[hsl(var(--bg))]">
           <div className="px-3 py-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+              <span className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
                 Regions ({regions.length})
               </span>
               {isDirty && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]">
+                <span className="text-xs px-1.5 py-0.5 rounded bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]">
                   unsaved
                 </span>
               )}
@@ -1109,10 +1109,10 @@ export function DetectionEditor({
           </div>
           <div className="flex-1 overflow-y-auto">
             {regions.length === 0 ? (
-              <div className="px-3 py-8 text-center text-[11px] text-[hsl(var(--text-muted))]">
+              <div className="px-3 py-8 text-center text-xs text-[hsl(var(--text-muted))]">
                 No regions detected.
                 <br />
-                <span className="text-[10px]">Use Draw tool (N) to add regions.</span>
+                <span className="text-xs">Use Draw tool (N) to add regions.</span>
               </div>
             ) : (
               regions.map((r) => (
@@ -1164,7 +1164,7 @@ export function DetectionEditor({
             >
               <ChevronRight size={14} />
             </button>
-            <span className="text-[10px] text-[hsl(var(--text-muted))] ml-2 shrink-0">
+            <span className="text-xs text-[hsl(var(--text-muted))] ml-2 shrink-0">
               {currentPageIndex + 1} / {allPages.length}
             </span>
           </div>

@@ -325,12 +325,12 @@ export function MaskEditor({
             mask editor · p{pageNum}
           </span>
           {isDirty && (
-            <span className="text-[9px] text-[hsl(var(--accent2))]">
+            <span className="text-xs text-[hsl(var(--accent2))]">
               unsaved
             </span>
           )}
           {error && (
-            <span className="text-[10px] text-[hsl(var(--danger))] truncate max-w-32">
+            <span className="text-xs text-[hsl(var(--danger))] truncate max-w-32">
               {error}
             </span>
           )}
@@ -338,7 +338,7 @@ export function MaskEditor({
             <button
               onClick={() => setShowReference((v) => !v)}
               className={cn(
-                "flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors",
+                "flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors",
                 showReference
                   ? "border-[hsl(var(--accent2)/.4)] text-[hsl(var(--accent2))] bg-[hsl(var(--accent2)/.08)]"
                   : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))]",
@@ -351,7 +351,7 @@ export function MaskEditor({
             <button
               onClick={undo}
               disabled={strokes.length === 0}
-              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-[11px] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
               title="Undo last stroke (Ctrl+Z)"
             >
               <Undo2 size={9} />
@@ -359,7 +359,7 @@ export function MaskEditor({
             <button
               onClick={clearAll}
               disabled={strokes.length === 0}
-              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-[11px] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
               title="Clear all strokes"
             >
               <Trash2 size={9} />
@@ -367,7 +367,7 @@ export function MaskEditor({
             <button
               onClick={handleSave}
               disabled={!isDirty || isSaving}
-              className="flex items-center gap-1.5 rounded border border-[hsl(var(--border))] px-2.5 py-1 text-[11px] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1.5 rounded border border-[hsl(var(--border))] px-2.5 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
               title="Save mask (Ctrl+S)"
             >
               <Save size={9} /> {isSaving ? "saving…" : "save"}
@@ -375,7 +375,7 @@ export function MaskEditor({
             <button
               onClick={handleReInpaint}
               disabled={isInpainting}
-              className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-[11px] text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
+              className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-xs text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
               title="Save mask and re-run inpainting for this page"
             >
               <RefreshCw
@@ -457,7 +457,7 @@ export function MaskEditor({
       <div className="w-56 shrink-0 border-l border-[hsl(var(--border))] flex flex-col p-3 gap-4 overflow-y-auto">
         {/* mode selector */}
         <div>
-          <p className="mb-1.5 text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+          <p className="mb-1.5 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
             tool
           </p>
           <div className="grid grid-cols-2 gap-1.5">
@@ -474,11 +474,11 @@ export function MaskEditor({
                 title={m === "paint" ? "Paint mask (B)" : "Erase mask (E)"}
               >
                 {m === "paint" ? <Brush size={14} /> : <Eraser size={14} />}
-                <span className="text-[10px]">{m}</span>
+                <span className="text-xs">{m}</span>
               </button>
             ))}
           </div>
-          <p className="mt-1 text-[9px] text-[hsl(var(--text-muted)/.6)]">
+          <p className="mt-1 text-xs text-[hsl(var(--text-muted)/.6)]">
             {mode === "paint"
               ? "Paint over text areas to mark them for removal"
               : "Erase painted areas to exclude them from removal"}
@@ -488,10 +488,10 @@ export function MaskEditor({
         {/* brush size */}
         <div>
           <div className="flex justify-between mb-1">
-            <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+            <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
               brush size
             </p>
-            <span className="font-mono text-[10px] text-[hsl(var(--accent2))]">
+            <span className="font-mono text-xs text-[hsl(var(--accent2))]">
               {brushSize}px
             </span>
           </div>
@@ -503,7 +503,7 @@ export function MaskEditor({
             onChange={(e) => setBrushSize(parseInt(e.target.value))}
             className="w-full h-1 accent-[hsl(var(--accent2))] cursor-pointer"
           />
-          <p className="mt-0.5 text-[9px] text-[hsl(var(--text-muted)/.6)]">
+          <p className="mt-0.5 text-xs text-[hsl(var(--text-muted)/.6)]">
             Shortcuts: [ decrease · ] increase
           </p>
         </div>
@@ -511,10 +511,10 @@ export function MaskEditor({
         {/* mask opacity */}
         <div>
           <div className="flex justify-between mb-1">
-            <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+            <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
               mask visibility
             </p>
-            <span className="font-mono text-[10px] text-[hsl(var(--accent2))]">
+            <span className="font-mono text-xs text-[hsl(var(--accent2))]">
               {Math.round(opacity * 100)}%
             </span>
           </div>
@@ -526,15 +526,15 @@ export function MaskEditor({
             onChange={(e) => setOpacity(parseInt(e.target.value) / 100)}
             className="w-full h-1 accent-[hsl(var(--accent2))] cursor-pointer"
           />
-          <p className="mt-0.5 text-[9px] text-[hsl(var(--text-muted)/.6)]">
+          <p className="mt-0.5 text-xs text-[hsl(var(--text-muted)/.6)]">
             How visible the magenta overlay appears
           </p>
         </div>
 
         {/* stats */}
         {hasMask && (
-          <div className="rounded border border-[hsl(var(--border))] p-2.5 space-y-1.5 text-[11px]">
-            <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))] mb-1">
+          <div className="rounded border border-[hsl(var(--border))] p-2.5 space-y-1.5 text-xs">
+            <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))] mb-1">
               current mask info
             </p>
             <div className="flex justify-between">
@@ -549,7 +549,7 @@ export function MaskEditor({
               <span className="text-[hsl(var(--text-muted))]">coverage</span>
               <span className="font-mono">{s4?.coverage_pct}%</span>
             </div>
-            <p className="text-[9px] text-[hsl(var(--text-muted)/.6)] pt-1 border-t border-[hsl(var(--border))]">
+            <p className="text-xs text-[hsl(var(--text-muted)/.6)] pt-1 border-t border-[hsl(var(--border))]">
               Coverage = % of total image pixels marked for removal. Lower is better — only text should be masked.
             </p>
           </div>
@@ -559,11 +559,11 @@ export function MaskEditor({
         <div className="rounded border border-[hsl(var(--border))] p-2.5 space-y-2">
           <div className="flex items-center gap-1.5">
             <Info size={10} className="text-[hsl(var(--text-muted))]" />
-            <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--text-muted))]">
+            <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
               help
             </p>
           </div>
-          <div className="space-y-1 text-[10px] text-[hsl(var(--text-muted))]">
+          <div className="space-y-1 text-xs text-[hsl(var(--text-muted))]">
             <div className="flex items-center gap-2">
               <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: MASK_COLOR }} />
               <span>Masked area (will be inpainted)</span>
@@ -573,7 +573,7 @@ export function MaskEditor({
               <span>Original (preserved)</span>
             </div>
           </div>
-          <div className="pt-1.5 border-t border-[hsl(var(--border))] space-y-0.5 text-[9px] text-[hsl(var(--text-muted)/.6)]">
+          <div className="pt-1.5 border-t border-[hsl(var(--border))] space-y-0.5 text-xs text-[hsl(var(--text-muted)/.6)]">
             <p className="font-medium text-[hsl(var(--text-muted))]">Shortcuts</p>
             <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">B</kbd> paint · <kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">E</kbd> erase</p>
             <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">[</kbd> <kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">]</kbd> brush size</p>
