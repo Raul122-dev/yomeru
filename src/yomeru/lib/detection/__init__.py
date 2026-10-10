@@ -83,7 +83,8 @@ def build_detector(backend: str = "auto") -> Any:
     Return a cached detector instance.
 
     backend: "auto" | "ogkalu" | "ctd"
-      - "auto"   → CTD if its weights are already downloaded, else ogkalu
+      - "auto"   → ogkalu (validated default; CTD is opt-in until the A/B test
+                   decides — it labels bubbles poorly and over-detects)
       - "ogkalu" → RT-DETR-v2 via HuggingFace (no local model required)
       - "ctd"    → Comic Text Detector (requires models/ctd/comictextdetector.pt)
     """
@@ -92,7 +93,7 @@ def build_detector(backend: str = "auto") -> Any:
     from .ctd import CTDDetector
 
     if backend == "auto":
-        backend = "ctd" if CTDDetector.is_downloaded() else "ogkalu"
+        backend = "ogkalu"
         print(f"  [detector] auto → {backend}", file=sys.stderr)
 
     if backend in _cache:
