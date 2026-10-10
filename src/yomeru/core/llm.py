@@ -13,7 +13,9 @@ from typing import Any
 from yomeru.core.settings import Connection, ModelRef, store
 
 REQUEST_TIMEOUT = 180.0  # seconds; a hung endpoint must not hold a run lock forever
-MAX_OUTPUT_TOKENS = 8192
+# Reasoning models (Gemini 3 Pro, o-series…) spend output budget on hidden
+# thinking before the JSON; 8k truncated real pages mid-answer.
+MAX_OUTPUT_TOKENS = 32768
 
 
 class LLMError(RuntimeError):
@@ -85,6 +87,9 @@ def _stream(rm: ResolvedModel, system: str, text: str, b64: str, mime: str) -> I
             model=rm.model, max_tokens=MAX_OUTPUT_TOKENS, system=system, messages=messages,
         ) as stream:
             yield from stream.text_stream
+            final = stream.get_final_message()
+        if final.stop_reason == "max_tokens":
+            raise LLMError(f"{rm.label}: reply cut off at {MAX_OUTPUT_TOKENS} output tokens")
         return
 
     client = _openai_client(rm.connection)
@@ -100,9 +105,18 @@ def _stream(rm: ResolvedModel, system: str, text: str, b64: str, mime: str) -> I
             ]},
         ],
     )
+    finish = None
     for chunk in stream:
-        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
+        if not chunk.choices:
+            continue
+        c = chunk.choices[0]
+        finish = c.finish_reason or finish
+        if c.delta and c.delta.content:
+            yield c.delta.content
+    # A truncated reply still parses (json_repair) into a page with half the
+    # dialogues — fail loudly so the page is retried instead.
+    if finish == "length":
+        raise LLMError(f"{rm.label}: reply cut off at {MAX_OUTPUT_TOKENS} output tokens")
 
 
 def list_models(conn: Connection) -> list[dict]:
