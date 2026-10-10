@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
-import { getDetections, pageThumbUrl } from "../../lib/api";
+import { getDetections, pageImageUrl } from "../../lib/api";
+import { Img } from "../../components/ui/Img";
 import { usePhaseView } from "../../hooks/usePhaseView";
 import { DetectionEditor, type Region } from "../editors/DetectionEditor";
 import { cn } from "../../lib/utils";
@@ -103,8 +104,8 @@ export function DetectionPhase({ runId, pages }: DetectionPhaseProps) {
                   title={counts ? Object.entries(counts).map(([l, n]) => `${n} ${LABEL_NAMES[l] ?? l}`).join(" · ") : undefined}
                 >
                   <div className="relative aspect-[5/7] overflow-hidden rounded-[4px] bg-[hsl(var(--bg-subtle))]">
-                    <img src={pageThumbUrl(runId, p.filename)} alt={`page ${p.page}`} loading="lazy" decoding="async"
-                         className={cn("size-full object-cover object-top", active && "opacity-60")} />
+                    <Img src={pageImageUrl(runId, p.filename)} alt={`page ${p.page}`} loading="lazy" sizes="160px" maxWidth={320}
+                         className="size-full" imgClassName={cn("object-cover object-top", active && "opacity-60")} />
                     {det && (
                       <span className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-center gap-1 rounded-[4px] bg-[hsl(var(--bg-surface)/.92)] py-1 text-xs opacity-0 transition-opacity group-hover:opacity-100">
                         <Pencil size={11} /> edit boxes

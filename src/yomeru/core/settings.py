@@ -71,7 +71,15 @@ class LanguageSettings(BaseModel):
 
 
 class DetectionSettings(BaseModel):
-    backend: Literal["auto", "ogkalu", "ctd"] = "auto"
+    # ogkalu is the only detector (CTD retired: the whole pipeline is keyed on
+    # ogkalu's region labels). Old configs/runs saying "auto"/"ctd" coerce here.
+    backend: Literal["ogkalu"] = "ogkalu"
+
+    @field_validator("backend", mode="before")
+    @classmethod
+    def _only_ogkalu(cls, v: object) -> str:
+        return "ogkalu"
+
     threshold: float = Field(default=0.4, ge=0.05, le=0.95)
 
 

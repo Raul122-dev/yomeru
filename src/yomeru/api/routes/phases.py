@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, WebSocket
+from fastapi import APIRouter, HTTPException, Request, WebSocket
+
+from yomeru.core.images import serve_image
 from pydantic import BaseModel
 
 from yomeru.core.runs import Run
@@ -292,14 +294,13 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
 
 
 @router.get("/{run_id}/inpainting/mask-debug/{page_num}")
-def get_mask_debug(run_id: str, page_num: int):
+def get_mask_debug(run_id: str, page_num: int, request: Request, w: int | None = None):
     """
     Generate mask debug overlay for a page (always regenerates).
     Shows the auto-generated masks colored per region over the original image.
     """
     import json
     from PIL import Image
-    from fastapi.responses import FileResponse
     from yomeru.lib.inpainting import build_text_mask
 
     run = _get_run(run_id)
@@ -330,10 +331,7 @@ def get_mask_debug(run_id: str, page_num: int):
     out_path = debug_dir / f"p{page_num:02d}_s4_mask_debug.jpg"
     _save_mask_debug(img, per_region_masks, debug_dir, page_num)
 
-    return FileResponse(out_path)
-
-
-_NO_CACHE = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
+    return serve_image(request, out_path, w)
 
 
 def _ensure_rendered(run: Run, page_num: int, force: bool) -> None:
@@ -347,23 +345,21 @@ def _ensure_rendered(run: Run, page_num: int, force: bool) -> None:
 
 
 @router.get("/{run_id}/rendering/scanline-preview/{page_num}")
-def get_scanline_preview(run_id: str, page_num: int, force: int = 0):
+def get_scanline_preview(run_id: str, page_num: int, request: Request, force: int = 0, w: int | None = None):
     """Debug render (green bubble contours). Regenerated when inputs change."""
-    from fastapi.responses import FileResponse
     from yomeru.lib.rendering.scanline_engine import output_paths
     run = _get_run(run_id)
     _ensure_rendered(run, page_num, bool(force))
-    return FileResponse(output_paths(run, page_num)[0], headers=_NO_CACHE)
+    return serve_image(request, output_paths(run, page_num)[0], w)
 
 
 @router.get("/{run_id}/rendering/scanline-production/{page_num}")
-def get_scanline_production(run_id: str, page_num: int, force: int = 0):
+def get_scanline_production(run_id: str, page_num: int, request: Request, force: int = 0, w: int | None = None):
     """Final render (no contour lines). Regenerated when inputs change."""
-    from fastapi.responses import FileResponse
     from yomeru.lib.rendering.scanline_engine import output_paths
     run = _get_run(run_id)
     _ensure_rendered(run, page_num, bool(force))
-    return FileResponse(output_paths(run, page_num)[1], headers=_NO_CACHE)
+    return serve_image(request, output_paths(run, page_num)[1], w)
 
 
 @router.post("/{run_id}/start-all")

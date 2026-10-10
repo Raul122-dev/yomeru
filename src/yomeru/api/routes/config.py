@@ -154,7 +154,6 @@ def delete_preset(pid: str):
 @router.get("/capabilities")
 def get_capabilities():
     """Return what the installed environment can actually run."""
-    from yomeru.lib.detection.ctd import CTDDetector
     from yomeru.lib.inpainting import lama_available
     try:
         import torch
@@ -165,9 +164,6 @@ def get_capabilities():
     detectors = [
         {"key": "ogkalu", "label": "ogkalu RT-DETR", "available": torch_ok,
          "note": "HuggingFace model, downloads on first use."},
-        {"key": "ctd", "label": "CTD (Comic Text Detector)", "available": torch_ok,
-         "downloaded": CTDDetector.is_downloaded(),
-         "note": "Pixel-level masks. Weights download on first use."},
     ]
     return {
         "ready": torch_ok,

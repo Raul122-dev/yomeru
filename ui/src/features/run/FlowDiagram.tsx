@@ -14,7 +14,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { cn } from "../../lib/utils";
-import { pageImageUrl } from "../../lib/api";
+import { pageThumbUrl } from "../../lib/api";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 export type PageStatus = "pending" | "processing" | "done" | "error";
@@ -83,7 +83,9 @@ function PageNode({ data }: { data: PageNodeData }) {
         {(status === "done" || status === "processing" || status === "error") &&
           filename && (
             <img
-              src={pageImageUrl(runId, filename)}
+              src={pageThumbUrl(runId, filename, 320)}
+              loading="lazy"
+              decoding="async"
               alt={`page ${pageNumber}`}
               className={cn(
                 "h-full w-full object-cover",

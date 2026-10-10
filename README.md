@@ -41,7 +41,7 @@ Everything yomeru writes lives in one folder:
 |---|---|
 | `data/runs/<id>/` | one folder per run (pages, phase outputs, edits) |
 | `data/config.json` | settings and provider API keys |
-| `data/models/` | downloaded model weights (HuggingFace, EasyOCR, CTD, LaMa) |
+| `data/models/` | downloaded model weights (HuggingFace ogkalu, EasyOCR, LaMa) |
 
 `data/` is created inside the repo and is git-ignored. Override with `YOMERU_DATA=/some/path`. When installed with pip (no repo checkout), it defaults to `~/.yomeru`.
 
@@ -108,7 +108,7 @@ yomeru/
 │   │   ├── inpainting.py       ← Phase 4: text removal
 │   │   └── rendering.py        ← Phase 5: text rendering
 │   ├── lib/                    ← Reusable backends/algorithms
-│   │   ├── detection/          ← CTD, Ogkalu detectors
+│   │   ├── detection/          ← ogkalu RT-DETR detector
 │   │   ├── matching/           ← Hungarian matcher + OCR
 │   │   ├── inpainting/         ← LaMa, OpenCV inpainters
 │   │   └── rendering/          ← scanline engine, layout, fonts

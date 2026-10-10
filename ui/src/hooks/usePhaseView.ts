@@ -27,7 +27,9 @@ export function usePhaseView(
   const runner = usePhaseRunner(runId);
   const { progress, listen, effectiveStatus } = runner;
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
-  const [nonce, setNonce] = useState(() => Date.now());
+  // Cache-buster only after edits/re-runs; otherwise ETag revalidation (304)
+  // keeps images cached across visits.
+  const [nonce, setNonce] = useState(0);
 
   const { data: run } = useQuery({
     queryKey: ["run", runId],

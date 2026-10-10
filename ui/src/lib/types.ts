@@ -92,7 +92,7 @@ export interface PipelineSettings {
   analysis_model: ModelRef;
   translation_model: ModelRef;
   language: { source: string; target: string; comic_format: string };
-  detection: { backend: "auto" | "ogkalu" | "ctd"; threshold: number };
+  detection: { backend: "ogkalu"; threshold: number };
   matching: { ocr_weight: number; spatial_weight: number; position_weight: number; min_score: number };
   inpainting: { backend: "auto" | "lama" | "opencv" };
   rendering: { use_translation: boolean };

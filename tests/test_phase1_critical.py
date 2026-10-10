@@ -172,7 +172,8 @@ def test_mask_edit_is_a_delta(tmp_path):
 
 # ── weights / CTD ────────────────────────────────────────────────────────────
 
-def test_ctd_weights_live_in_data_models():
+def test_weights_live_in_data_models():
     from yomeru.core.paths import MODELS_DIR
-    from yomeru.lib.detection.ctd import CTDDetector
-    assert CTDDetector.DEFAULT_MODEL_PATH.is_relative_to(MODELS_DIR)
+    from yomeru.core.weights import WEIGHTS
+    assert set(WEIGHTS) == {"lama"}
+    assert all(w.path.is_relative_to(MODELS_DIR) for w in WEIGHTS.values())

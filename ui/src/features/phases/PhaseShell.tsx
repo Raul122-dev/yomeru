@@ -10,6 +10,7 @@ import type { PhaseStatus } from "../../lib/types";
 import { StatusBadge } from "../../lib/status";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
+import { Img } from "../../components/ui/Img";
 
 export interface PhaseHeaderProps {
   runId: string;
@@ -136,8 +137,8 @@ export function PageStrip({ items, selected, onSelect }: {
             )}
           >
             <div className="relative aspect-[5/7] overflow-hidden rounded-[4px] border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]">
-              <img src={it.src} alt={`page ${it.page}`} loading="lazy" decoding="async"
-                   className="size-full object-cover object-top" />
+              <Img src={it.src} alt={`page ${it.page}`} loading="lazy" sizes="132px" maxWidth={320}
+                   className="size-full" imgClassName="object-cover object-top" />
               {it.flag && (
                 <span className={cn("absolute right-1 top-1 size-2 rounded-full",
                   it.flag === "error" ? "bg-[hsl(var(--danger))]" : "bg-[hsl(var(--warning))]")} />

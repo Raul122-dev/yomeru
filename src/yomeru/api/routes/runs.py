@@ -4,8 +4,9 @@ import shutil
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+
+from yomeru.core.images import serve_image
 
 import re
 
@@ -32,46 +33,19 @@ def get_run(run_id: str):
     return run.meta()
 
 
-def _thumbnail(src: Path, width: int) -> Path:
-    """Cached JPEG thumbnail next to the run (regenerated if the source changes)."""
-    from PIL import Image
-    width = max(64, min(width, 800))
-    cache = src.parent.parent / "thumbs" / f"{src.stem}.w{width}.jpg"
-    if not cache.exists() or cache.stat().st_mtime < src.stat().st_mtime:
-        cache.parent.mkdir(exist_ok=True)
-        with Image.open(src) as im:
-            im = im.convert("RGB")
-            im.thumbnail((width, width * 4))
-            tmp = cache.with_suffix(".tmp.jpg")
-            im.save(tmp, quality=82)
-            tmp.replace(cache)
-    return cache
-
-
 @router.get("/{run_id}/pages-cover")
-def get_cover(run_id: str, w: int = 420):
-    """Thumbnail of the first page, for the runs library."""
+def get_cover(run_id: str, request: Request, w: int = 320):
+    """First page, for the runs library."""
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
     files = list_page_files(run.pages_dir())
     if not files: raise HTTPException(404, "no pages")
-    return FileResponse(_thumbnail(files[0], w), headers={"Cache-Control": "max-age=3600"})
-
-
-@router.get("/{run_id}/thumbs/{filename}")
-def get_page_thumb(run_id: str, filename: str, w: int = 280):
-    run = Run.load(run_id)
-    if not run: raise HTTPException(404, "run not found")
-    try:
-        src = safe_child(run.pages_dir(), filename)
-    except ValueError:
-        raise HTTPException(400, "invalid filename")
-    if not src.is_file(): raise HTTPException(404, "image not found")
-    return FileResponse(_thumbnail(src, w), headers={"Cache-Control": "max-age=3600"})
+    return serve_image(request, files[0], w)
 
 
 @router.get("/{run_id}/pages/{filename}")
-def get_page_image(run_id: str, filename: str):
+def get_page_image(run_id: str, filename: str, request: Request, w: int | None = None):
+    """Source page. ?w= returns a resized WebP (see core/images.py)."""
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
     try:
@@ -79,7 +53,7 @@ def get_page_image(run_id: str, filename: str):
     except ValueError:
         raise HTTPException(400, "invalid filename")
     if not path.is_file(): raise HTTPException(404, "image not found")
-    return FileResponse(path)
+    return serve_image(request, path, w)
 
 
 @router.get("/{run_id}/pages")

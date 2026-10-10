@@ -40,7 +40,8 @@ def test_migration_v1_to_v2():
     assert (s.analysis_model.connection_id, s.analysis_model.model) == ("custom", "google/gemini-3.1-pro-preview")
     assert not s.translation_model.is_set()
     assert s.language.comic_format == "manga"
-    assert (s.detection.backend, s.detection.threshold) == ("ctd", 0.3)
+    # CTD was retired: legacy "ctd" coerces to the only detector
+    assert (s.detection.backend, s.detection.threshold) == ("ogkalu", 0.3)
     assert s.matching.ocr_weight == 0.5
 
 

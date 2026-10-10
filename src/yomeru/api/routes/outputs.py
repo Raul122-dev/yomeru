@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request
+
+from yomeru.core.images import serve_image
 
 from yomeru.core.runs import Run
 
@@ -98,8 +99,8 @@ def list_debug_images(run_id: str):
 
 
 @router.get("/{run_id}/typeset/debug/{filename}")
-def get_debug_image(run_id: str, filename: str):
-    """Serve a debug image file."""
+def get_debug_image(run_id: str, filename: str, request: Request, w: int | None = None):
+    """Serve a debug image file (?w= for a resized WebP)."""
     run = _get_run(run_id)
     try:
         path = safe_child(run.output_dir() / "typeset" / "debug", filename)
@@ -107,7 +108,7 @@ def get_debug_image(run_id: str, filename: str):
         raise HTTPException(400, "invalid filename")
     if not path.is_file():
         raise HTTPException(404, "debug image not found")
-    return FileResponse(path)
+    return serve_image(request, path, w)
 
 
 # ── Render logs ────────────────────────────────────────────────────────────────
@@ -130,8 +131,8 @@ def get_render_log(run_id: str, page_num: int):
 # ── Final typeset pages ────────────────────────────────────────────────────────
 
 @router.get("/{run_id}/typeset/pages/{filename}")
-def get_typeset_page(run_id: str, filename: str):
-    """Serve a final typeset page image."""
+def get_typeset_page(run_id: str, filename: str, request: Request, w: int | None = None):
+    """Serve a final typeset page image (?w= for a resized WebP)."""
     run = _get_run(run_id)
     try:
         path = safe_child(run.output_dir() / "typeset", filename)
@@ -139,4 +140,4 @@ def get_typeset_page(run_id: str, filename: str):
         raise HTTPException(400, "invalid filename")
     if not path.is_file():
         raise HTTPException(404, "typeset image not found")
-    return FileResponse(path)
+    return serve_image(request, path, w)

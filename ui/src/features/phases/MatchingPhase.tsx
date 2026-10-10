@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { debugImageUrl, getDebugImages, pageImageUrl, pageThumbUrl } from "../../lib/api";
+import { debugImageUrl, getDebugImages, pageImageUrl } from "../../lib/api";
 import { getStageDebugImage, groupDebugImages } from "../../lib/debug";
 import { usePhaseView } from "../../hooks/usePhaseView";
 import { MatchingEditor } from "../editors/MatchingEditor";
@@ -53,7 +53,7 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
               return {
                 page: e.page,
                 filename: e.filename,
-                src: pageThumbUrl(runId, e.filename),
+                src: pageImageUrl(runId, e.filename),
                 meta: m ? `${m.matched}/${m.total_dialogues}` : "—",
                 flag: unmatched > 0 ? "warn" : undefined,
               };

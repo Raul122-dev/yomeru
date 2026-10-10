@@ -8,6 +8,7 @@ import type { PhaseName, PhaseStatus, Run } from "../lib/types";
 import { buttonVariants } from "../components/ui/button";
 import { StatusIcon } from "../lib/status";
 import { cn } from "../lib/utils";
+import { Img } from "../components/ui/Img";
 
 type SortKey = "newest" | "oldest" | "name";
 const SORTS: { key: SortKey; label: string }[] = [
@@ -116,8 +117,8 @@ function RunCoverFallback({ run }: { run: Run }) {
   return (
     <div className="screentone relative size-full">
       {!failed && (
-        <img src={`/api/runs/${run.id}/pages-cover`} alt="" loading="lazy" onError={() => setFailed(true)}
-             className="size-full object-cover object-top opacity-90" />
+        <Img src={`/api/runs/${run.id}/pages-cover`} loading="lazy" sizes="240px" maxWidth={640}
+             onError={() => setFailed(true)} className="size-full bg-transparent" imgClassName="object-cover object-top" />
       )}
     </div>
   );

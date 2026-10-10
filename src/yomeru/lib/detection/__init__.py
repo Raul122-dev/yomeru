@@ -4,7 +4,7 @@ Detection stage — public interface.
 Usage:
     from yomeru.lib.detection import build_detector, TextRegion
 
-    detector = build_detector("ogkalu")        # or "ctd" / "auto"
+    detector = build_detector()
     regions  = detector.detect(image, threshold=0.5)
 
 See SPEC.md for the full input/output contract.
@@ -78,42 +78,18 @@ class BaseDetector(Protocol):
 _cache: dict[str, Any] = {}
 
 
-def build_detector(backend: str = "auto") -> Any:
+def build_detector(backend: str = "ogkalu") -> Any:
     """
-    Return a cached detector instance.
-
-    backend: "auto" | "ogkalu" | "ctd"
-      - "auto"   → ogkalu (validated default; CTD is opt-in until the A/B test
-                   decides — it labels bubbles poorly and over-detects)
-      - "ogkalu" → RT-DETR-v2 via HuggingFace (no local model required)
-      - "ctd"    → Comic Text Detector (requires models/ctd/comictextdetector.pt)
+    Return the cached detector. ogkalu RT-DETR is the only backend: every later
+    phase (matching, inpainting, rendering) is keyed on its bubble /
+    text_bubble / text_free regions, so the detector is not interchangeable.
+    "auto" and the retired "ctd" are accepted for old runs and resolve to ogkalu.
     """
-    import sys
     from .ogkalu import OgkaluDetector
-    from .ctd import CTDDetector
-
-    if backend == "auto":
-        backend = "ogkalu"
-        print(f"  [detector] auto → {backend}", file=sys.stderr)
-
-    if backend in _cache:
-        return _cache[backend]
-
-    if backend == "ogkalu":
-        inst: Any = OgkaluDetector()
-    elif backend == "ctd":
-        inst = CTDDetector()
-    else:
-        raise ValueError(f"unknown detector backend: {backend!r}")
-
-    _cache[backend] = inst
-    return inst
+    if "ogkalu" not in _cache:
+        _cache["ogkalu"] = OgkaluDetector()
+    return _cache["ogkalu"]
 
 
 def list_backends() -> list[dict]:
-    """Return available backends with availability status."""
-    from .ctd import CTDDetector
-    return [
-        {"key": "ogkalu", "label": "ogkalu RT-DETR", "available": True},
-        {"key": "ctd",    "label": "CTD",            "available": CTDDetector.is_available()},
-    ]
+    return [{"key": "ogkalu", "label": "ogkalu RT-DETR", "available": True}]

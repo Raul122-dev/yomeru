@@ -27,11 +27,6 @@ class Weight:
 
 
 WEIGHTS: dict[str, Weight] = {
-    "ctd": Weight(
-        "ctd",
-        "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.2.1/comictextdetector.pt",
-        "ctd/comictextdetector.pt",
-    ),
     "lama": Weight(
         "lama",
         "https://github.com/enesmsahin/simple-lama-inpainting/releases/download/v0.1.0/big-lama.pt",

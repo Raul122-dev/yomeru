@@ -203,9 +203,17 @@ type str = string;
 export const getAnalyses = (id: str) => req<unknown[]>(`/runs/${id}/analyses`);
 export const pageImageUrl = (id: str, filename: str) =>
   `/api/runs/${id}/pages/${filename}`;
-/** Small cached JPEG for strips/grids (full images only in viewers/editors). */
-export const pageThumbUrl = (id: str, filename: str, w = 280) =>
-  `/api/runs/${id}/thumbs/${encodeURIComponent(filename)}?w=${w}`;
+/**
+ * Background for canvas editors: big enough for a full-width editor on a
+ * 2× screen, never the multi-MB source. Masks (PNG) are NOT routed here —
+ * they are edited pixel-exact.
+ */
+export const editorImageUrl = (url: string, w = 1600) =>
+  `${url}${url.includes("?") ? "&" : "?"}w=${w}`;
+
+/** Resized WebP of a source page for strips/grids (server snaps w, see core/images.py). */
+export const pageThumbUrl = (id: str, filename: str, w = 320) =>
+  `/api/runs/${id}/pages/${encodeURIComponent(filename)}?w=${w}`;
 
 // ── annotations ───────────────────────────────────────────────────────────────
 export const getAnnotations = (id: str) =>

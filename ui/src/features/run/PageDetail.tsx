@@ -14,7 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import {
-  pageImageUrl,
+  pageThumbUrl,
   saveEdit,
 } from "../../lib/api";
 import { Button } from "../../components/ui/button";
@@ -207,7 +207,7 @@ export function PageDetail({
         <div className="flex gap-4">
           {!imgError && (
             <img
-              src={pageImageUrl(runId, filename)}
+              src={pageThumbUrl(runId, filename, 160)}
               alt={filename}
               className="h-20 w-14 rounded border border-[hsl(var(--border))] object-cover shrink-0"
               onError={() => setImgError(true)}

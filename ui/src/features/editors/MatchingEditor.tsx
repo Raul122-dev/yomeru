@@ -32,6 +32,7 @@ import {
   savePageMatches,
   revertPageMatches,
   pageImageUrl,
+  editorImageUrl,
 } from "../../lib/api";
 import { useScopedPhaseRunner } from "../../hooks/useScopedPhaseRunner";
 import { cn } from "../../lib/utils";
@@ -96,7 +97,7 @@ export function MatchingEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
 
-  const imgUrl = pageImageUrl(runId, filename);
+  const imgUrl = editorImageUrl(pageImageUrl(runId, filename));
   const [bgImage] = useImage(imgUrl, "anonymous");
 
   const [containerW, setContainerW] = useState(600);

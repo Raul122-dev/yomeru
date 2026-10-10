@@ -63,6 +63,8 @@ import {
   savePageDetections,
   revertPageDetections,
   pageImageUrl,
+  pageThumbUrl,
+  editorImageUrl,
 } from "../../lib/api";
 import { cn } from "../../lib/utils";
 
@@ -423,7 +425,7 @@ function PageThumb({
   hasDetections: boolean;
   onClick: () => void;
 }) {
-  const url = pageImageUrl(runId, page.filename);
+  const url = pageThumbUrl(runId, page.filename, 160);
   return (
     <button
       onClick={onClick}
@@ -435,7 +437,7 @@ function PageThumb({
         !hasDetections && "opacity-40",
       )}
     >
-      <img src={url} alt={`Page ${page.page}`} className="h-full w-full object-cover" />
+      <img src={url} alt={`Page ${page.page}`} loading="lazy" decoding="async" className="h-full w-full object-cover" />
       <span className={cn(
         "absolute bottom-0 inset-x-0 text-center text-xs font-mono py-0.5",
         isCurrent ? "bg-[hsl(var(--accent2))] text-white" : "bg-[hsl(var(--bg)/.85)] text-[hsl(var(--text-muted))]",
@@ -479,7 +481,9 @@ export function DetectionEditor({
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
 
-  const imgUrl = pageImageUrl(runId, filename);
+  // Background only: region coords come from originalW/H, so a 1600px WebP is
+  // indistinguishable on screen and ~10× lighter than the source page.
+  const imgUrl = editorImageUrl(pageImageUrl(runId, filename));
   const [bgImage] = useImage(imgUrl, "anonymous");
 
   // Dimensions

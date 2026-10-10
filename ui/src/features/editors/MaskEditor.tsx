@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import {
   pageImageUrl,
+  editorImageUrl,
   saveMask,
   debugImageUrl,
 } from "../../lib/api";
@@ -77,12 +78,12 @@ export function MaskEditor({
   const stageRef = useRef<Konva.Stage>(null);
 
   // Load background (original page image) and inpainted reference
-  const pageUrl = pageImageUrl(runId, filename);
+  const pageUrl = editorImageUrl(pageImageUrl(runId, filename));
   const [bgImage] = useImage(pageUrl, "anonymous");
-  const inpaintedUrl = debugImageUrl(
+  const inpaintedUrl = editorImageUrl(debugImageUrl(
     runId,
     `p${String(pageNum).padStart(2, "0")}_s4_inpainted.jpg`,
-  );
+  ));
   const [inpaintedImg] = useImage(inpaintedUrl, "anonymous");
   const pad = String(pageNum).padStart(2, "0");
   const [maskNonce, setMaskNonce] = useState(() => Date.now());

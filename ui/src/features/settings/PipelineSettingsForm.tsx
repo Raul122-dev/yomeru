@@ -68,15 +68,10 @@ export function PipelineSettingsForm({
 
       <section className="flex flex-col gap-4">
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Detection</h3>
-        <Select
-          label="detector"
-          value={value.detection.backend}
-          onChange={(e) => set("detection", { backend: e.target.value as PipelineSettings["detection"]["backend"] })}
-        >
-          <option value="auto">Auto (CTD if downloaded, else ogkalu)</option>
-          <option value="ogkalu">ogkalu RT-DETR — speech bubbles</option>
-          <option value="ctd">CTD — text blocks with pixel masks</option>
-        </Select>
+        <p className="text-xs text-[hsl(var(--text-muted))]">
+          Detector: <span className="font-mono">ogkalu RT-DETR</span> — finds bubbles, text in bubbles and free text.
+          Every later phase relies on these regions.
+        </p>
         <Slider
           label="confidence threshold"
           value={value.detection.threshold}

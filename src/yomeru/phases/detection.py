@@ -28,7 +28,7 @@ def run(
     Detect text regions in all pages (or a subset).
 
     Options:
-        backend: str = "auto"       (detection model: "auto", "ogkalu", "ctd")
+        backend: str = "auto"       (only "ogkalu"; legacy values accepted)
         threshold: float = 0.4      (confidence threshold)
     """
     from yomeru.lib.detection import build_detector
