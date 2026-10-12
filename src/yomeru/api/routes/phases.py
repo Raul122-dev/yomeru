@@ -415,7 +415,8 @@ def _phase_options(run: Run, phase: str) -> dict:
     st = run_settings(meta)
     lang = st.language
     if phase == "detection":
-        return {"backend": st.detection.backend, "threshold": st.detection.threshold}
+        return {"backend": st.detection.backend, "backend_options": st.detection.options,
+                "threshold": st.detection.threshold}
     if phase == "analysis":
         return {
             "model": st.analysis_model.model_dump(),

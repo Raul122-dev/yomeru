@@ -30,7 +30,7 @@ COMPLETE = ("done", "partial")
 # Phases not yet behind a backend take the GPU lock for the whole phase.
 # Backend-based phases (inpainting) lock per page from BackendSpec.needs_gpu,
 # and rendering locks per page, so previews can interleave.
-GPU_PHASES = ("detection", "matching")
+GPU_PHASES = ("matching",)
 
 
 class PhaseError(Exception):

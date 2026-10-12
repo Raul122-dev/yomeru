@@ -71,16 +71,24 @@ class LanguageSettings(BaseModel):
 
 
 class DetectionSettings(BaseModel):
-    # ogkalu is the only detector (CTD retired: the whole pipeline is keyed on
-    # ogkalu's region labels). Old configs/runs saying "auto"/"ctd" coerce here.
-    backend: Literal["ogkalu"] = "ogkalu"
+    """Detector = a registered backend. It must emit the core/labels vocabulary
+    (bubble / text_bubble / text_free): every later phase is keyed on it."""
+    backend: str = "ogkalu"
+    options: dict = Field(default_factory=dict)
+    threshold: float = Field(default=0.4, ge=0.05, le=0.95)
 
     @field_validator("backend", mode="before")
     @classmethod
-    def _only_ogkalu(cls, v: object) -> str:
-        return "ogkalu"
+    def _legacy(cls, v: object) -> object:
+        # "auto" / retired "ctd" in old configs and runs → the default detector
+        return "ogkalu" if v in (None, "auto", "ctd") else v
 
-    threshold: float = Field(default=0.4, ge=0.05, le=0.95)
+    @model_validator(mode="after")
+    def _known_backend(self):
+        from yomeru.plugins import get_spec
+        spec = get_spec("detection", self.backend)
+        self.options = spec.options_model.model_validate(self.options).model_dump()
+        return self
 
 
 class MatchingSettings(BaseModel):

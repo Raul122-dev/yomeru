@@ -16,9 +16,6 @@ from yomeru.core import artifacts
 from yomeru.core.runs import Run
 from yomeru.phases import PageResult, PhaseResult, ProgressCallback, null_progress
 
-SUPPORTED = {".jpg", ".jpeg", ".png", ".webp"}
-
-
 def run(
     run: Run,
     options: dict,
@@ -28,14 +25,21 @@ def run(
     """
     Detect text regions in all pages (or a subset).
 
+    Orchestrator: the detector is a registered backend (yomeru/plugins/detection.py).
+
     Options:
-        backend: str = "auto"       (only "ogkalu"; legacy values accepted)
+        backend: str = "ogkalu"
+        backend_options: dict
         threshold: float = 0.4      (confidence threshold)
     """
-    from yomeru.lib.detection import build_detector
+    from contextlib import nullcontext
 
-    backend = options.get("backend", run.meta().get("detector_backend", "auto"))
-    threshold = options.get("threshold", run.meta().get("detector_threshold", 0.4))
+    from yomeru.core.contracts import Region
+    from yomeru.core.gpu import gpu_lock
+    from yomeru.plugins import get_backend
+
+    spec, detector = get_backend("detection", options.get("backend", "ogkalu"), options.get("backend_options"))
+    threshold = options.get("threshold", 0.4)
 
     output_dir = run.output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -46,9 +50,8 @@ def run(
 
     total = len(pages)
     on_progress({"type": "phase_progress", "phase": "detection", "total": total, "processed": 0})
-    print(f"\n[detection] {total} pages, backend={backend}, threshold={threshold}", file=sys.stderr)
+    print(f"\n[detection] {total} pages, backend={spec.name}, threshold={threshold}", file=sys.stderr)
 
-    detector = build_detector(backend)
     results: list[PageResult] = []
     all_detections: dict[int, list[dict]] = {}
     page_sizes: dict[int, tuple[int, int]] = {}
@@ -71,20 +74,15 @@ def run(
         try:
             img = Image.open(page_path).convert("RGB")
             page_sizes[page_num] = (img.width, img.height)
-            regions = detector.detect(img)
+            with (gpu_lock() if spec.needs_gpu else nullcontext()):
+                raw = detector.detect(img, threshold)
 
-            # Apply threshold filter
-            regions = [r for r in regions if r.score >= threshold]
-
-            # Convert to serializable dicts
-            region_dicts = []
-            for rid, r in enumerate(regions, 1):
-                region_dicts.append({
-                    "id": rid,
-                    "x1": r.x1, "y1": r.y1, "x2": r.x2, "y2": r.y2,
-                    "label": r.label,
-                    "score": round(r.score, 4),
-                })
+            # Ids 1..n in backend order; every region must speak the label
+            # vocabulary the rest of the pipeline is keyed on (core/labels).
+            region_dicts = [
+                Region.model_validate({"id": rid, **r, "score": round(r["score"], 4)}).model_dump()
+                for rid, r in enumerate(raw, 1)
+            ]
 
             all_detections[page_num] = region_dicts
             elapsed = round(time.time() - t0, 2)
