@@ -29,7 +29,6 @@ interface Dialogue {
   bubble_type: string;
   region_id?: number | null;
   font_style?: string | null;
-  line_break_hint?: string | null;
   skip?: boolean;
 }
 interface Character {
@@ -389,12 +388,6 @@ export function PageDetail({
                         </p>
                       </div>
                     ) : null}
-
-                    {d.line_break_hint && !isSkipped && (
-                      <p className="text-xs text-[hsl(var(--text-muted))] font-mono mt-1">
-                        line breaks: {d.line_break_hint.replace(/\n/g, " / ")}
-                      </p>
-                    )}
                   </div>
 
                   {/* Correction section */}

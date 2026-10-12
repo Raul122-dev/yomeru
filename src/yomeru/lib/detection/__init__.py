@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-import numpy as np
 from PIL import Image
 
 
@@ -31,7 +30,6 @@ class TextRegion:
     y2: int
     label: str = "text"
     score: float = 1.0
-    mask: np.ndarray | None = None
 
     @property
     def bbox(self) -> tuple[int, int, int, int]:

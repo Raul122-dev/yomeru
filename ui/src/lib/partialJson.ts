@@ -23,7 +23,6 @@ export interface PartialPageData {
     description: string;
     emotional_state: string;
     last_action: string;
-    last_seen_page: number;
   }[];
   scene?: { location: string; mood: string; narrative_beat: string };
   reading_order?: number[];

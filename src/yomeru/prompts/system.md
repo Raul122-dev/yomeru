@@ -116,8 +116,7 @@ Stable identification rules:
       "id": <string>,
       "description": <string — hair, clothing, distinguishing features; be specific enough to re-identify>,
       "emotional_state": <string>,
-      "last_action": <string — what they are physically doing in this page>,
-      "last_seen_page": <int>
+      "last_action": <string — what they are physically doing in this page>
     }
   ],
   "scene": {
@@ -222,7 +221,7 @@ Cover pages, title pages, and chapter splash pages typically contain MANY region
 
 ---
 
-**`skip_reason` valid values:** `"decorative_title"`, `"logo"`, `"credits_on_art"`, `"publisher"`, `"copyright"`, `"page_number"`, `"watermark"`, `"integrated_art"`
+**`skip_reason` valid values:** `"decorative_title"`, `"logo"`, `"credits"`, `"already_readable"`, `"publisher"`, `"copyright"`, `"page_number"`, `"watermark"`, `"integrated_art"`
 
 ### Handling uncertainty
 

@@ -53,7 +53,6 @@ _C_ALIASES = {
     "appearance":"description","visual_description":"description",
     "state":"emotional_state","emotion":"emotional_state",
     "action":"last_action","current_action":"last_action",
-    "page":"last_seen_page","last_page":"last_seen_page",
 }
 _S_ALIASES = {
     "setting":"location","place":"location",
@@ -87,8 +86,6 @@ class Dialogue(BaseModel):
     # font_style: visual style of the bubble text
     # bold=action/shout, regular=normal, thought=internal, narration=caption
     font_style: str | None = None
-    # line_break_hint: VLM-suggested line breaks for translated text
-    line_break_hint: str | None = None
     # skip: VLM or user decision to exclude this dialogue from typesetting.
     # When true, matching/inpainting/rendering will ignore this region.
     # The data is preserved for manual override if needed later.
@@ -149,7 +146,6 @@ class CharacterState(BaseModel):
     description: str = ""
     emotional_state: str = "neutral"
     last_action: str = ""
-    last_seen_page: int = 0
 
     @model_validator(mode="before")
     @classmethod
@@ -161,14 +157,6 @@ class CharacterState(BaseModel):
     def coerce_id(cls, v: object) -> str:
         if isinstance(v, int): return f"char_{v}"
         return str(v).strip() if v else "unknown"
-
-    @field_validator("last_seen_page", mode="before")
-    @classmethod
-    def coerce_page(cls, v: object) -> int:
-        """Model sometimes returns null for last_seen_page — default to 0."""
-        if v is None: return 0
-        try: return int(v)  # type: ignore[arg-type]
-        except (TypeError, ValueError): return 0
 
     @field_validator("description", "emotional_state", "last_action", mode="before")
     @classmethod
@@ -221,7 +209,6 @@ class ContextObject(BaseModel):
     characters: dict[str, CharacterState] = Field(default_factory=dict)
     scene: Scene | None = None
     page_summaries: list[dict] = Field(default_factory=list)
-    dialogue_history: list[dict] = Field(default_factory=list)
     chunk_summaries: list[str] = Field(default_factory=list)
 
     def update(self, a: PageAnalysis) -> None:
@@ -231,13 +218,10 @@ class ContextObject(BaseModel):
                 ex = self.characters[c.id]
                 ex.emotional_state = c.emotional_state
                 ex.last_action = c.last_action
-                ex.last_seen_page = c.last_seen_page
             else:
                 self.characters[c.id] = c
         self.scene = a.scene
         self.page_summaries.append({"page": a.page_number, "summary": a.page_summary})
-        for d in a.dialogues:
-            self.dialogue_history.append({"page": a.page_number, **d.model_dump()})
 
     def compress_chunk(self, analyses: list[PageAnalysis]) -> str:
         if not analyses: return ""

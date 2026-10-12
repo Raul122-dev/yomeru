@@ -7,8 +7,8 @@ Usage:
     inpainter = build_inpainter("auto")      # or "lama" / "opencv"
     clean_img = inpainter.inpaint(image, mask)
 
-    # Build mask from detected region
-    mask = build_text_mask(image, region.bbox, region.mask)
+    # Text mask for one region (shape depends on its label)
+    mask = build_text_mask(image, region_bbox, region_label=label)
 
 See SPEC.md for the full input/output contract.
 """
@@ -71,7 +71,6 @@ def lama_available() -> bool:
 def build_text_mask(
     image: Image.Image,
     region_bbox: tuple[int, int, int, int],
-    region_mask: np.ndarray | None = None,
     region_label: str = TEXT_BUBBLE,
 ) -> np.ndarray:
     """
@@ -90,7 +89,6 @@ def build_text_mask(
     Args:
         image: Full page image (RGB)
         region_bbox: (x1, y1, x2, y2) bounding box of the region
-        region_mask: Optional pre-existing mask (from detection model)
         region_label: a core.labels label (TEXT_LABELS)
 
     Returns:
