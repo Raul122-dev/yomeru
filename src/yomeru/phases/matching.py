@@ -6,7 +6,7 @@ Output: output/typeset/debug/pXX_render_log.json (with s2_detection + s3_matchin
 """
 from __future__ import annotations
 
-from yomeru.core.labels import ALL_LABELS, BUBBLE, TEXT_BUBBLE, is_text
+from yomeru.core.labels import BUBBLE, TEXT_BUBBLE, is_text
 import sys
 import time
 
@@ -39,6 +39,7 @@ def run(
     ocr_weight = options.get("ocr_weight", 0.4)
     spatial_weight = options.get("spatial_weight", 0.4)
     match_min_score = options.get("match_min_score", 0.05)
+    comic_format = options.get("comic_format", "auto")
 
     from yomeru.core import artifacts
 
@@ -160,7 +161,7 @@ def run(
                 ]
 
                 if all_text_regions:
-                    rtl = source_lang.lower() in ("japanese", "auto", "chinese (traditional)")
+                    rtl = _right_to_left(comic_format, source_lang)
                     sorted_indices = _sort_reading_order(all_text_regions, right_to_left=rtl)
 
                     # For each unresolved dialogue, find the next unclaimed region in reading order
@@ -172,10 +173,21 @@ def run(
                     ]
 
                     from yomeru.lib.matching import MatchResult
-                    n_assign = min(len(still_unresolved), len(available_in_order))
-                    for k in range(n_assign):
-                        dlg_idx = still_unresolved[k]
-                        region = all_text_regions[available_in_order[k]]
+                    # Reading order is only a tie-breaker: a dialogue whose own bbox
+                    # says it is elsewhere must not grab the next free region (it
+                    # used to: an SFX landed ~360px away and its region got erased).
+                    # Without a usable bbox → left unmatched for the editor.
+                    n_assign = 0
+                    for dlg_idx in still_unresolved:
+                        hint = _to_pixel_bbox(dialogues[dlg_idx].get("bbox") or [0, 0, 0, 0],
+                                              img_w, img_h, analysis_w, analysis_h)
+                        pick = next((k for k in available_in_order
+                                     if _near(all_text_regions[k], hint, img_w, img_h)), None)
+                        if pick is None:
+                            continue
+                        available_in_order.remove(pick)
+                        region = all_text_regions[pick]
+                        n_assign += 1
                         matches[dlg_idx] = MatchResult(
                             dialogue_index=dlg_idx,
                             region=region,
@@ -199,9 +211,12 @@ def run(
                             and m.region.x2 == det["x2"] and m.region.y2 == det["y2"]):
                         claimed_ids.add(det_id)
 
+            # Text regions no dialogue landed in. Bubble containers are never
+            # "orphans": they hold a text_bubble, not text of their own (they
+            # used to be counted — p1 reported 14 "empty bubbles" with none).
             orphaned = [
                 r for r in page_dets.values()
-                if r["id"] not in claimed_ids and r.get("label") in ALL_LABELS
+                if r["id"] not in claimed_ids and is_text(r.get("label"))
             ]
 
             # ── Step 5: Rescue orphaned text_bubble regions (Capa 3) ─────────
@@ -259,6 +274,29 @@ def run(
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+def _right_to_left(comic_format: str, source_lang: str) -> bool:
+    """Reading direction: the format decides (manga RTL; manhwa/manhua/comic
+    LTR); only 'auto' falls back to the source language."""
+    fmt = (comic_format or "auto").lower()
+    if fmt != "auto":
+        return fmt == "manga"
+    return source_lang.lower() in ("japanese", "chinese (traditional)")
+
+
+def _near(region, hint, img_w: int, img_h: int) -> bool:
+    """Region overlaps the VLM bbox, or its centre is within 8% of the page
+    diagonal of the bbox. Degenerate/missing hints never match."""
+    hx1, hy1, hx2, hy2 = hint
+    if (hx2 - hx1) * (hy2 - hy1) <= 100:
+        return False
+    if region.overlap_score(hint) > 0:
+        return True
+    cx, cy = region.center
+    dx = max(hx1 - cx, 0, cx - hx2)
+    dy = max(hy1 - cy, 0, cy - hy2)
+    return (dx * dx + dy * dy) ** 0.5 <= 0.08 * (img_w * img_w + img_h * img_h) ** 0.5
+
+
 def _region_from_det(det: dict, img_w: int, img_h: int):
     """Build a TextRegion from a saved detection dict."""
     from yomeru.lib.detection import TextRegion
@@ -269,7 +307,6 @@ def _region_from_det(det: dict, img_w: int, img_h: int):
         y2=max(0, min(img_h, int(det["y2"]))),
         label=det.get("label", BUBBLE),
         score=float(det.get("score", 1.0)),
-        mask=None,
     )
 
 
@@ -326,7 +363,6 @@ def _rescue_orphaned_text_regions(
             y2=max(0, min(img_h, oy2)),
             label=orphan.get("label", TEXT_BUBBLE),
             score=float(orphan.get("score", 1.0)),
-            mask=None,
         )
 
         # OCR the orphaned region

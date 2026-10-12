@@ -104,3 +104,47 @@ def test_hungarian_never_reuses_a_region_claimed_by_region_id(client, monkeypatc
     log = json.loads((out / "typeset" / "debug" / "p01_render_log.json").read_text())
     rids = [m["region_id"] for m in log["s3_matching"]["matches"]]
     assert len(rids) == len(set(rids)), f"a region was assigned twice: {rids}"
+
+
+
+def test_near_and_reading_direction():
+    from yomeru.lib.detection import TextRegion
+    from yomeru.phases.matching import _near, _right_to_left
+    r = TextRegion(100, 100, 200, 160, "text_free")
+    assert _near(r, (110, 110, 190, 150), 1000, 1400)          # overlap
+    assert _near(r, (230, 100, 300, 160), 1000, 1400)          # close by
+    assert not _near(r, (600, 1000, 900, 1300), 1000, 1400)    # far away
+    assert not _near(r, (0, 0, 0, 0), 1000, 1400)              # no bbox
+    assert _right_to_left("manga", "English") is True
+    assert _right_to_left("manhwa", "auto") is False            # was RTL (source 'auto')
+    assert _right_to_left("auto", "Japanese") is True
+
+
+def test_reading_order_fallback_does_not_grab_far_regions(client, monkeypatch):
+    """A dialogue with no region_id whose bbox is far from every free region
+    stays unmatched (and its region is not erased), instead of taking the
+    next region in reading order."""
+    from yomeru.core.runs import Run
+    from yomeru.phases import matching
+
+    buf = io.BytesIO()
+    Image.new("RGB", (1000, 1400), "white").save(buf, "PNG")
+    r = client.post("/api/runs", data={"name": "t", "auto_start": "false"},
+                    files=[("files", ("p.png", buf.getvalue(), "image/png"))])
+    run = Run.load(r.json()["id"])
+    assert run is not None
+    out = run.output_dir(); out.mkdir(parents=True, exist_ok=True)
+    (out / "page_detections.json").write_text(json.dumps([{
+        "page_number": 1, "original_w": 1000, "original_h": 1400,
+        "regions": [{"id": 1, "x1": 50, "y1": 50, "x2": 200, "y2": 100, "label": "text_free", "score": 0.9}],
+    }]))
+    (out / "page_analyses.json").write_text(json.dumps([{
+        "page_number": 1, "analysis_image_w": 1000, "analysis_image_h": 1400, "source_language": "English",
+        "dialogues": [{"text": "BOOM", "text_translated": "BUM", "region_id": None, "bbox": [600, 1000, 900, 1300]}],
+    }]))
+    monkeypatch.setattr("yomeru.lib.matching.hungarian.ocr_region", lambda *a, **k: "")
+    monkeypatch.setattr("yomeru.lib.matching.ocr.ocr_region", lambda *a, **k: "")
+    matching.run(run, options={})
+    log = json.loads((out / "typeset" / "debug" / "p01_render_log.json").read_text())
+    assert log["s3_matching"]["matches"] == []
+    assert [o["region_id"] for o in log["s3_matching"]["orphaned"]] == [1]

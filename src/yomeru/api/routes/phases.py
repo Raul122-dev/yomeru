@@ -427,7 +427,7 @@ def _phase_options(run: Run, phase: str) -> dict:
     if phase == "matching":
         m = st.matching
         return {"ocr_weight": m.ocr_weight, "spatial_weight": m.spatial_weight,
-                "match_min_score": m.min_score}
+                "match_min_score": m.min_score, "comic_format": lang.comic_format}
     if phase == "inpainting":
         return {"backend": st.inpainting.backend, "backend_options": st.inpainting.options}
     if phase == "rendering":

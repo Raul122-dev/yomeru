@@ -59,7 +59,7 @@ interface RegionDisplay {
   y2: number;
   label: string;
   score: number;
-  status: "matched" | "fallback" | "orphaned";
+  status: "matched" | "fallback" | "orphaned" | "container";
   dialogue_index?: number;
   dialogue_text?: string;
   ocr_text?: string | null;
@@ -71,6 +71,7 @@ const STATUS_COLOR = {
   matched: "#22c55e", // green — direct VLM match
   fallback: "#fbbf24", // yellow — fallback/rescue match
   orphaned: "#ef4444", // red — no match
+  container: "#9ca3af", // grey — bubble outline, holds a text region
 } as const;
 
 // ── main component ────────────────────────────────────────────────────────────
@@ -142,7 +143,9 @@ export function MatchingEditor({
       y2: r.bbox[3],
       label: r.label,
       score: r.score,
-      status: match ? (match.match_type === "fallback" ? "fallback" : "matched") : "orphaned",
+      status: match
+        ? (match.match_type === "fallback" ? "fallback" : "matched")
+        : r.label === "bubble" ? "container" : "orphaned",
       dialogue_index: match?.dialogue_index,
       dialogue_text: match?.dialogue_text,
       ocr_text: orphan?.ocr_text ?? match?.ocr_text,
