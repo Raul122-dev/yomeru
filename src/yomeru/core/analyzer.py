@@ -1,4 +1,5 @@
 from __future__ import annotations
+from yomeru.core.labels import BUBBLE, is_text
 import base64
 import json
 import re
@@ -63,8 +64,8 @@ def _build_detection_context(regions: list[dict], image_size: tuple[int, int]) -
     n = len(regions)
 
     # Classify regions
-    text_regions = [r for r in regions if r.get("label") in ("text_bubble", "text_free", "sfx", "caption")]
-    bubble_regions = [r for r in regions if r.get("label") == "bubble"]
+    text_regions = [r for r in regions if is_text(r.get("label"))]
+    bubble_regions = [r for r in regions if r.get("label") == BUBBLE]
 
     # Find overlapping/adjacent pairs
     overlap_warnings: list[str] = []
@@ -79,8 +80,8 @@ def _build_detection_context(regions: list[dict], image_size: tuple[int, int]) -
             iy2 = min(a["y2"], b["y2"])
             if ix1 >= ix2 or iy1 >= iy2:
                 # No intersection — check adjacency (within 20px)
-                a_is_text = a.get("label") in ("text_bubble", "text_free", "sfx", "caption")
-                b_is_text = b.get("label") in ("text_bubble", "text_free", "sfx", "caption")
+                a_is_text = is_text(a.get("label"))
+                b_is_text = is_text(b.get("label"))
                 if not (a_is_text and b_is_text):
                     continue
                 gap_x = max(0, max(a["x1"], b["x1"]) - min(a["x2"], b["x2"]))
@@ -91,8 +92,8 @@ def _build_detection_context(regions: list[dict], image_size: tuple[int, int]) -
                     )
             else:
                 # They intersect — only warn if BOTH are text-bearing
-                a_is_text = a.get("label") in ("text_bubble", "text_free", "sfx", "caption")
-                b_is_text = b.get("label") in ("text_bubble", "text_free", "sfx", "caption")
+                a_is_text = is_text(a.get("label"))
+                b_is_text = is_text(b.get("label"))
                 if a_is_text and b_is_text:
                     overlap_warnings.append(
                         f"  ⚠ Regions [{a['id']}] and [{b['id']}] OVERLAP — each contains its OWN separate text, do NOT merge them"
@@ -102,7 +103,7 @@ def _build_detection_context(regions: list[dict], image_size: tuple[int, int]) -
     region_lines: list[str] = []
     for r in regions:
         rid = r["id"]
-        label = r.get("label", "bubble")
+        label = r.get("label", BUBBLE)
         x1, y1, x2, y2 = r["x1"], r["y1"], r["x2"], r["y2"]
         w, h = x2 - x1, y2 - y1
         # Classify position in 9-zone grid
@@ -111,7 +112,7 @@ def _build_detection_context(regions: list[dict], image_size: tuple[int, int]) -
         row = "top" if cy < img_h / 3 else ("bottom" if cy > img_h * 2 / 3 else "middle")
         pos = f"{row}-{col}"
 
-        must_have_text = label in ("text_bubble", "text_free", "sfx", "caption")
+        must_have_text = is_text(label)
         marker = "★" if must_have_text else "○"
         region_lines.append(
             f"  {marker} [{rid}] {label} — {w}×{h}px at {pos} ({x1},{y1})-({x2},{y2})"

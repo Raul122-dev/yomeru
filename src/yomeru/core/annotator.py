@@ -7,6 +7,7 @@ Two modes:
                                   (no detector, used when detections already exist)
 """
 from __future__ import annotations
+from yomeru.core.labels import BUBBLE, is_text
 import json
 import sys
 from dataclasses import dataclass
@@ -41,7 +42,7 @@ def annotate_from_detections(
             self.id = d["id"]
             self.x1 = d["x1"]; self.y1 = d["y1"]
             self.x2 = d["x2"]; self.y2 = d["y2"]
-            self.label = d.get("label", "bubble")
+            self.label = d.get("label", BUBBLE)
             self.score = d.get("score", 1.0)
 
     proxies = [_RegionProxy(r) for r in regions]
@@ -123,8 +124,6 @@ _REGION_COLORS = {
     "bubble":       (30, 140, 255),
     "text_bubble":  (30, 140, 255),
     "text_free":    (255, 140, 30),
-    "sfx":          (220, 60, 60),
-    "caption":      (60, 180, 60),
 }
 _DEFAULT_COLOR = (100, 100, 200)
 
@@ -205,7 +204,7 @@ def _draw_numbered_boxes(image: Image.Image, regions: list) -> Image.Image:
             r, g, b = _REGION_COLORS.get(region.label, _DEFAULT_COLOR)
 
         x1, y1, x2, y2 = region.x1, region.y1, region.x2, region.y2
-        is_text_region = region.label in ("text_bubble", "text_free", "sfx", "caption")
+        is_text_region = is_text(region.label)
         border_width = 3 if is_text_region else 2
 
         # Semi-transparent fill (lighter for non-text regions)

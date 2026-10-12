@@ -11,6 +11,7 @@ Routes:
 """
 from __future__ import annotations
 
+from yomeru.core.labels import TEXT_BUBBLE, is_text
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
@@ -135,7 +136,7 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
 
     page_dets = detections[page_num]
     # Only use text-bearing regions
-    text_regions = {k: v for k, v in page_dets.items() if v.get("label") in ("text_bubble", "text_free")}
+    text_regions = {k: v for k, v in page_dets.items() if is_text(v.get("label"))}
     if not text_regions:
         return {"page": page_num, "matches": [], "unmatched": [], "regions_used": 0, "dialogues_total": 0}
 
@@ -323,7 +324,7 @@ def get_mask_debug(run_id: str, page_num: int, request: Request, w: int | None =
     for m in log.get("s3_matching", {}).get("matches", []):
         r = m["region"]
         bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
-        label = r.get("label", "text_bubble")
+        label = r.get("label", TEXT_BUBBLE)
         text_mask = build_text_mask(img, bbox, region_label=label)
         per_region_masks.append((bbox, label, text_mask))
 

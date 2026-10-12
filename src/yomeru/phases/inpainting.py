@@ -6,6 +6,7 @@ Output: output/typeset/debug/pXX_s4_inpainted.jpg
 """
 from __future__ import annotations
 
+from yomeru.core.labels import TEXT_BUBBLE, is_free as is_free_label
 import json
 import sys
 import time
@@ -106,11 +107,11 @@ def run(
                     continue
                 r = m["region"]
                 bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
-                label = r.get("label", "text_bubble")
+                label = r.get("label", TEXT_BUBBLE)
                 text_mask = build_text_mask(img, bbox, region_label=label)
                 per_region_masks.append((bbox, label, text_mask))
                 combined_mask = np.maximum(combined_mask, text_mask)
-                if label in ("text_free", "sfx"):
+                if is_free_label(label):
                     # LaMa for free text — it needs full page context
                     free_mask = np.maximum(free_mask, text_mask)
                 else:
@@ -227,7 +228,6 @@ def _save_mask_debug(
     colors = {
         "text_bubble": (255, 0, 255),   # magenta
         "text_free": (0, 200, 255),     # cyan
-        "sfx": (255, 165, 0),           # orange
     }
 
     for bbox, label, mask in per_region_masks:

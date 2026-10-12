@@ -11,6 +11,7 @@ phase and by the preview endpoints.
 """
 from __future__ import annotations
 
+from yomeru.core.labels import CONTAINER_LABELS, TEXT_BUBBLE, is_free as is_free_label
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -131,7 +132,7 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
     page_det = next((d for d in detections if d.get("page_number") == page_num), {})
     bubble_regions = [
         (r["x1"], r["y1"], r["x2"], r["y2"])
-        for r in page_det.get("regions", []) if r.get("label") in ("bubble", "text_bubble")
+        for r in page_det.get("regions", []) if r.get("label") in CONTAINER_LABELS
     ]
 
     source_lang = page_analysis.get("source_language", "auto")
@@ -179,10 +180,10 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
 
         r = m["region"]
         text_bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
-        label = r.get("label", "text_bubble")
+        label = r.get("label", TEXT_BUBBLE)
 
         # Color and style for free text vs bubble text
-        is_free = label in ("text_free", "sfx")
+        is_free = is_free_label(label)
 
         # Find containing bubble
         tcx = (text_bbox[0] + text_bbox[2]) // 2

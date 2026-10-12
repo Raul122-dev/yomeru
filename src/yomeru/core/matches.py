@@ -4,6 +4,7 @@ Used by inpainting, rendering and the scanline preview so all three agree.
 """
 from __future__ import annotations
 
+from yomeru.core.labels import TEXT_BUBBLE
 import json
 from pathlib import Path
 
@@ -18,7 +19,7 @@ def _as_xyxy(region: dict | None) -> dict | None:
         return None
     return {
         "x1": bbox[0], "y1": bbox[1], "x2": bbox[2], "y2": bbox[3],
-        "label": region.get("label", "text_bubble"), "score": region.get("score", 1.0),
+        "label": region.get("label", TEXT_BUBBLE), "score": region.get("score", 1.0),
     }
 
 

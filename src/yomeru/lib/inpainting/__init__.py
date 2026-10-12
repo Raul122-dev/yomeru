@@ -14,6 +14,7 @@ See SPEC.md for the full input/output contract.
 """
 from __future__ import annotations
 
+from yomeru.core.labels import TEXT_BUBBLE, is_free as is_free_label
 from typing import Any, Protocol
 
 import numpy as np
@@ -71,7 +72,7 @@ def build_text_mask(
     image: Image.Image,
     region_bbox: tuple[int, int, int, int],
     region_mask: np.ndarray | None = None,
-    region_label: str = "text_bubble",
+    region_label: str = TEXT_BUBBLE,
 ) -> np.ndarray:
     """
     Build a binary mask for inpainting a text region.
@@ -90,7 +91,7 @@ def build_text_mask(
         image: Full page image (RGB)
         region_bbox: (x1, y1, x2, y2) bounding box of the region
         region_mask: Optional pre-existing mask (from detection model)
-        region_label: "text_bubble", "text_free", "sfx", etc.
+        region_label: a core.labels label (TEXT_LABELS)
 
     Returns:
         uint8 mask of same HxW as `image` (255 = inpaint, 0 = preserve).
@@ -111,7 +112,7 @@ def build_text_mask(
         return full
 
     h, w = crop.shape[:2]
-    is_free = region_label in ("text_free", "sfx")
+    is_free = is_free_label(region_label)
 
     # For text_free: use full bbox as mask — let LaMa reconstruct the entire area.
     # LaMa has full page context and produces best results with clean, complete masks.

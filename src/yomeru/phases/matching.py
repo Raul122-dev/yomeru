@@ -6,6 +6,7 @@ Output: output/typeset/debug/pXX_render_log.json (with s2_detection + s3_matchin
 """
 from __future__ import annotations
 
+from yomeru.core.labels import ALL_LABELS, BUBBLE, TEXT_BUBBLE, is_text
 import json
 import sys
 import time
@@ -149,7 +150,7 @@ def run(
                     r for r in (
                         _region_from_det(det, img_w, img_h)
                         for det_id, det in page_dets.items()
-                        if det.get("label") in ("text_bubble", "text_free") and det_id not in used_region_ids
+                        if is_text(det.get("label")) and det_id not in used_region_ids
                     )
                     if (r.x1, r.y1, r.x2, r.y2) not in claimed_bboxes
                 ]
@@ -185,7 +186,7 @@ def run(
                 all_text_regions = [
                     _region_from_det(det, img_w, img_h)
                     for det in page_dets.values()
-                    if det.get("label") in ("text_bubble", "text_free")
+                    if is_text(det.get("label"))
                 ]
 
                 if all_text_regions:
@@ -231,11 +232,11 @@ def run(
 
             orphaned = [
                 r for r in page_dets.values()
-                if r["id"] not in claimed_ids and r.get("label") in ("bubble", "text_bubble", "text_free")
+                if r["id"] not in claimed_ids and r.get("label") in ALL_LABELS
             ]
 
             # ── Step 5: Rescue orphaned text_bubble regions (Capa 3) ─────────
-            orphaned_text = [r for r in orphaned if r.get("label") in ("text_bubble", "text_free")]
+            orphaned_text = [r for r in orphaned if is_text(r.get("label"))]
             if orphaned_text:
                 rescued = _rescue_orphaned_text_regions(
                     orphaned_text, matches, dialogues, img, source_lang,
@@ -328,7 +329,7 @@ def _region_from_det(det: dict, img_w: int, img_h: int):
         y1=max(0, min(img_h, int(det["y1"]))),
         x2=max(0, min(img_w, int(det["x2"]))),
         y2=max(0, min(img_h, int(det["y2"]))),
-        label=det.get("label", "bubble"),
+        label=det.get("label", BUBBLE),
         score=float(det.get("score", 1.0)),
         mask=None,
     )
@@ -395,7 +396,7 @@ def _validate_vlm_matches(
     unclaimed_text_regions = [
         r for r in page_dets.values()
         if r["id"] not in claimed_region_ids
-        and r.get("label") in ("text_bubble", "text_free")
+        and is_text(r.get("label"))
     ]
 
     # Check 3: For unclaimed text regions, check if any matched dialogue
@@ -472,7 +473,7 @@ def _validate_vlm_matches(
             for det_id, det in page_dets.items():
                 if det_id == dialogues[dlg_idx].get("region_id"):
                     continue
-                if det.get("label") not in ("text_bubble", "text_free"):
+                if not is_text(det.get("label")):
                     continue
                 candidate = _region_from_det(det, img_w, img_h)
                 ov = candidate.overlap_score(hint)
@@ -532,7 +533,7 @@ def _rescue_orphaned_text_regions(
             y1=max(0, min(img_h, oy1)),
             x2=max(0, min(img_w, ox2)),
             y2=max(0, min(img_h, oy2)),
-            label=orphan.get("label", "text_bubble"),
+            label=orphan.get("label", TEXT_BUBBLE),
             score=float(orphan.get("score", 1.0)),
             mask=None,
         )
