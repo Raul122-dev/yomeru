@@ -61,3 +61,24 @@ def test_font_size_override_caps_the_size_and_survives_normalisation(run):
     assert after[i]["font_size"] <= fixed and after[i]["size_fixed"]
     prod = artifacts.page_artifact(run, 1, artifacts.SCANLINE_PRODUCTION)
     assert np.asarray(Image.open(prod)).any()
+
+
+def test_hyphenation_uses_the_drawn_language(run):
+    """Spanish translations were hyphenated with the SOURCE language's rules
+    (auto → en_US): 'REP-RESENTACIÓN', 'MOTOSIER-RA'."""
+    from yomeru.lib.rendering.text_layout import LANG_MAP
+    import pyphen
+    assert pyphen.Pyphen(lang=LANG_MAP["Spanish"]).inserted("representación") == "re-pre-sen-ta-ción"
+    from yomeru.lib.rendering import scanline_engine as eng
+    seen = []
+    real = eng.scanline_layout
+    def spy(*a, **k):
+        seen.append(a[5] if len(a) > 5 else k.get("lang_code"))
+        return real(*a, **k)
+    import pytest as _p
+    mp = _p.MonkeyPatch(); mp.setattr(eng, "scanline_layout", spy)
+    try:
+        eng.render_page(run, 1)
+    finally:
+        mp.undo()
+    assert seen and set(seen) == {"es"}

@@ -105,12 +105,16 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
         for r in artifacts.load_detections(run).get(page_num, {}).values() if r.get("label") in CONTAINER_LABELS
     ]
 
+    from yomeru.core.settings import run_settings
+    st = run_settings(run.meta())
     if use_translation is None:
-        from yomeru.core.settings import run_settings
-        use_translation = run_settings(run.meta()).rendering.use_translation
+        use_translation = st.rendering.use_translation
 
-    source_lang = page_analysis.get("source_language", "auto")
-    lang_code = LANG_MAP.get(source_lang, "en_US")
+    # Hyphenation rules of the language being DRAWN: the target language for
+    # translations (was the source language → Spanish split with en_US rules),
+    # the source language when rendering the original text.
+    drawn_lang = st.language.target if use_translation else page_analysis.get("source_language", "auto")
+    lang_code = LANG_MAP.get(drawn_lang, "en_US")
 
     # Pre-compute contours for all bubbles (expensive, cache once)
     bubble_contours: dict[tuple[int, int, int, int], object] = {}
