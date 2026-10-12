@@ -1,8 +1,7 @@
 export type DebugStageKey =
   | "s2_detection"
   | "s3_matching"
-  | "s4_inpainted"
-  | "s5_final";
+  | "s4_inpainted";
 
 export type DebugImageGroups = Record<
   string,
@@ -13,7 +12,6 @@ const DEBUG_STAGE_KEYS: DebugStageKey[] = [
   "s2_detection",
   "s3_matching",
   "s4_inpainted",
-  "s5_final",
 ];
 
 export function getDebugPageKey(pageNum: number) {

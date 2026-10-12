@@ -2,7 +2,8 @@
 Phase 5: Rendering — Render translated text into inpainted bubbles.
 
 Input:  Inpainted images + matching logs + analyses
-Output: output/typeset/<filename> (final images) + debug/pXX_s5_final.jpg
+Output: output/typeset/<filename> (final page) + render_log.s5_rendering
+        (the engine's per-dialogue records: status, text, font size, lines, box)
 """
 from __future__ import annotations
 
@@ -27,15 +28,8 @@ def run(
     Render translated text into inpainted bubble regions.
 
     Options:
-        renderer_backend: str = "pil"
-        use_translation: bool = True
-        skip_sfx: bool = True
-        skip_narration: bool = False
-        padding: int = 12
-        min_font_size: int = 9
-        max_font_size: int = 30
+        use_translation: bool = True   (False renders the original text — layout check)
     """
-    meta = run.meta()
     use_translation = options.get("use_translation", True)
 
     from yomeru.core import artifacts
@@ -86,53 +80,12 @@ def run(
                 results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No match log"))
                 continue
 
-            matches_data = artifacts.effective_matches(run, page_num, log)
-            dialogues = analysis.get("dialogues", [])
-
-            overrides = artifacts.load_render_overrides(run, page_num)
-
-            # Build render events from match data (for log/editor sync)
-            render_events: list[dict] = []
-            for m in matches_data:
-                dlg_i = m.get("dialogue_index", -1)
-                if dlg_i < 0:
-                    continue
-                ovr = overrides.get(dlg_i, {})
-                dlg = dialogues[dlg_i] if 0 <= dlg_i < len(dialogues) else {}
-
-                if ovr.get("skip") or dlg.get("skip"):
-                    render_events.append({
-                        "dialogue_index": dlg_i, "status": "skip",
-                        "skip_reason": ovr.get("skip_reason") or dlg.get("skip_reason", "analysis"),
-                        "region_id": m.get("region_id"), "text": "",
-                    })
-                else:
-                    text = ""
-                    if use_translation:
-                        text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
-                    else:
-                        text = ovr.get("text") or dlg.get("text", "")
-
-                    render_events.append({
-                        "dialogue_index": dlg_i,
-                        "status": "ok" if text.strip() else "skip",
-                        "skip_reason": "" if text.strip() else "empty_text",
-                        "region_id": m.get("region_id"),
-                        "text": text,
-                        "tone": ovr.get("tone") or dlg.get("tone", "neutral"),
-                        "bubble_type": dlg.get("bubble_type", "speech"),
-                        "font_style": ovr.get("font_style") or dlg.get("font_style") or "bold",
-                    })
-
-            ok_count = sum(1 for e in render_events if e["status"] == "ok")
-            skip_count = sum(1 for e in render_events if e["status"] == "skip")
-
             # Scanline engine renders the page; a failure here fails the page
             # (it used to be logged as a warning and the page counted as done).
             from yomeru.core.gpu import gpu_lock
             from yomeru.lib.rendering.scanline_engine import render_page
             with gpu_lock():
-                rendered = render_page(run, page_num)
+                rendered = render_page(run, page_num, use_translation=use_translation)
             scanline_prod = rendered.production_path
 
             import shutil
@@ -142,10 +95,11 @@ def run(
             else:
                 with Image.open(scanline_prod) as im:
                     im.save(str(out_path))
-            shutil.copy2(str(scanline_prod), str(artifacts.page_artifact(run, page_num, artifacts.S5_FINAL)))
-
+            # The engine's own records: what was really drawn (size, lines, box)
+            ok_count = sum(1 for e in rendered.events if e["status"] == "ok")
+            skip_count = len(rendered.events) - ok_count
             artifacts.update_render_log(run, page_num, "s5_rendering",
-                                        {"ok": ok_count, "skipped": skip_count, "renders": render_events})
+                                        {"ok": ok_count, "skipped": skip_count, "renders": rendered.events})
 
             elapsed = round(time.time() - t0, 2)
             print(f"  p{page_num}: {ok_count} rendered, {skip_count} skipped [{elapsed}s]", file=sys.stderr)

@@ -44,6 +44,9 @@ class RenderOutput:
     preview_path: Path
     production_path: Path
     layouts: int
+    # One record per effective match, as actually rendered: status ok/skip
+    # (+ reason), the text used, final font size, style, lines and container.
+    events: list[dict]
 
 
 def output_paths(run: Run, page_num: int) -> tuple[Path, Path]:
@@ -66,7 +69,7 @@ def is_cached(run: Run, page_num: int) -> bool:
     return not any(f.exists() and f.stat().st_mtime > mtime for f in input_paths(run, page_num))
 
 
-def render_page(run: Run, page_num: int) -> RenderOutput:
+def render_page(run: Run, page_num: int, use_translation: bool | None = None) -> RenderOutput:
     """Render one page; writes preview + production images atomically."""
     inpainted_path = artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED)
     if not inpainted_path.exists():
@@ -102,6 +105,10 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
         for r in artifacts.load_detections(run).get(page_num, {}).values() if r.get("label") in CONTAINER_LABELS
     ]
 
+    if use_translation is None:
+        from yomeru.core.settings import run_settings
+        use_translation = run_settings(run.meta()).rendering.use_translation
+
     source_lang = page_analysis.get("source_language", "auto")
     lang_code = LANG_MAP.get(source_lang, "en_US")
 
@@ -125,24 +132,36 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
     # ── Pass 1: Compute all layouts ──────────────────────────────────────────
     # Store: list of (layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, lang_code)
     all_layouts: list[tuple] = []
+    events: list[dict] = []
+    layout_event: list[dict] = []  # parallel to all_layouts
+
+    def skip_event(dlg_i: int, m: dict, reason: str, text: str = "") -> None:
+        events.append({"dialogue_index": dlg_i, "region_id": m.get("region_id"),
+                       "status": "skip", "skip_reason": reason, "text": text})
 
     for match_idx, m in enumerate(matches):
-        if match_idx not in valid_match_indices:
-            continue
-
         dlg_i = m.get("dialogue_index", -1)
+        if match_idx not in valid_match_indices:
+            skip_event(dlg_i, m, "duplicate_region")
+            continue
         if dlg_i < 0 or dlg_i >= len(dialogues):
+            skip_event(dlg_i, m, "no_dialogue")
             continue
 
         dlg = dialogues[dlg_i]
         ovr = overrides.get(dlg_i, {})
 
-        # Check for skip (override or VLM-suggested)
+        # Skip (override or VLM-suggested)
         if ovr.get("skip") or dlg.get("skip"):
+            skip_event(dlg_i, m, ovr.get("skip_reason") or dlg.get("skip_reason") or "skipped")
             continue
 
-        text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
+        if use_translation:
+            text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
+        else:  # layout check with the original text
+            text = dlg.get("text", "")
         if not text.strip():
+            skip_event(dlg_i, m, "empty_text")
             continue
 
         r = m["region"]
@@ -170,6 +189,7 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
         # Clean text
         clean_text, _ = extract_embedded_breaks(text)
         if not clean_text.strip():
+            skip_event(dlg_i, m, "empty_text", text)
             continue
         lang_code_for_this_match = lang_code
 
@@ -207,6 +227,12 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
             max_size = max(30, min(60, bubble_h // 6))
             if bubble_w < 80:
                 max_size = min(max_size, max(12, bubble_w // 4))
+
+        # User-fixed size (render editor): the search starts at it, so the text
+        # is never larger; it may still shrink if it truly does not fit.
+        size_override = ovr.get("font_size_override")
+        if size_override:
+            max_size = max(MIN_FONT + 1, int(size_override))
 
         # Width factors: vertical bubbles get narrower factors to use more lines
         if is_vertical_bubble:
@@ -370,6 +396,14 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
                 text_angle = detect_text_angle(original_img, text_bbox)
 
             all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, lang_code_for_this_match))
+            ev = {"dialogue_index": dlg_i, "region_id": m.get("region_id"), "status": "ok",
+                  "text": text, "font_style": style, "tone": tone, "bubble_type": bubble_type,
+                  "bbox": list(bubble_bbox), "box_size": [bubble_w, bubble_h],
+                  "size_fixed": bool(size_override)}
+            events.append(ev)
+            layout_event.append(ev)
+        else:
+            skip_event(dlg_i, m, "no_fit", text)
 
     # ── Font consistency: normalize sizes toward page median ─────────────────
     if len(all_layouts) > 2:
@@ -378,6 +412,8 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
 
         for idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, layout_lang_code) in enumerate(all_layouts):
             if size >= target_size * 0.7 or target_size <= size:
+                continue
+            if layout_event[idx].get("size_fixed"):  # user chose this size
                 continue
 
             # Skip vertical layouts (single-char-per-line) — they were sized intentionally
@@ -668,7 +704,13 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
                 )
 
     _save_atomic(prod_img, production_path)
-    return RenderOutput(preview_path, production_path, len(all_layouts))
+
+    # Final size and lines after median normalisation + collision nudging
+    for ev, ((size, _font, positioned), *_rest) in zip(layout_event, all_layouts):
+        ev["font_size"] = size
+        ev["lines"] = [pl.text for pl in positioned]
+    events.sort(key=lambda e: e["dialogue_index"])
+    return RenderOutput(preview_path, production_path, len(all_layouts), events)
 
 
 def _save_atomic(img: Image.Image, path: Path) -> None:
