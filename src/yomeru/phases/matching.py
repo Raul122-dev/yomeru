@@ -7,10 +7,8 @@ Output: output/typeset/debug/pXX_render_log.json (with s2_detection + s3_matchin
 from __future__ import annotations
 
 from yomeru.core.labels import ALL_LABELS, BUBBLE, TEXT_BUBBLE, is_text
-import json
 import sys
 import time
-from pathlib import Path
 
 from PIL import Image
 
@@ -45,13 +43,12 @@ def run(
     position_weight = options.get("position_weight", 0.2)
     match_min_score = options.get("match_min_score", 0.05)
 
-    output_dir = run.output_dir()
-    pages_dir = run.pages_dir()
+    from yomeru.core import artifacts
 
-    # Load detections and analyses
-    detections = _load_detections(run)
-    analyses = _load_analyses(run)
-    all_pages = _collect_pages(pages_dir)
+    # Effective inputs: active detections, analyses merged with user edits
+    detections = artifacts.load_detections(run)
+    analyses = artifacts.load_analyses(run)
+    all_pages = artifacts.page_files(run)
 
     if page_scope:
         analyses = [a for a in analyses if a.get("page_number") in page_scope]
@@ -60,11 +57,7 @@ def run(
     on_progress({"type": "phase_progress", "phase": "matching", "total": total, "processed": 0})
     print(f"\n[matching] {total} pages, backend={matcher_backend}", file=sys.stderr)
 
-    # Prepare output dirs
-    typeset_dir = output_dir / "typeset"
-    debug_dir = typeset_dir / "debug"
-    typeset_dir.mkdir(parents=True, exist_ok=True)
-    debug_dir.mkdir(parents=True, exist_ok=True)
+    debug_dir = artifacts.debug_dir(run, create=True)
 
     page_map = {i: p for i, p in all_pages}
     results: list[PageResult] = []
@@ -254,7 +247,7 @@ def run(
                     orphaned = [r for r in orphaned if r["id"] not in rescued_ids]
 
             # Save matching log + debug image
-            _save_match_log(matches, dialogues, page_dets, orphaned, debug_dir, page_num, img_w, img_h)
+            _save_match_log(run, matches, dialogues, page_dets, orphaned, page_num, img_w, img_h)
             _save_debug_image(img, matches, dialogues, page_dets, orphaned, debug_dir, page_num)
 
             elapsed = round(time.time() - t0, 2)
@@ -290,36 +283,6 @@ def run(
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-
-def _load_detections(run: Run) -> dict[int, dict[int, dict]]:
-    """Load detections as {page_num: {region_id: region_dict}}."""
-    det_file = run.active_detections_file()
-    if not det_file.exists():
-        return {}
-    data = json.loads(det_file.read_text())
-    result = {}
-    for entry in data:
-        page_num = entry["page_number"]
-        result[page_num] = {r["id"]: r for r in entry["regions"]}
-    return result
-
-
-def _load_analyses(run: Run) -> list[dict]:
-    """Load analyses from the active analyses file, merged with user edits."""
-    f = run.active_analyses_file()
-    if not f.exists():
-        return []
-    original = json.loads(f.read_text())
-    from yomeru.core.annotations import AnnotationStore
-    store = AnnotationStore(run.output_dir())
-    return store.merged_analyses(original)
-
-
-def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    from yomeru.core.paths import list_page_files
-    pages = list_page_files(folder)
-    return [(i, p) for i, p in enumerate(pages, 1)]
-
 
 def _region_from_det(det: dict, img_w: int, img_h: int):
     """Build a TextRegion from a saved detection dict."""
@@ -617,7 +580,7 @@ def _text_containment_score(needle: str, haystack: str) -> float:
     return len(tn & th) / len(tn)
 
 
-def _save_match_log(matches, dialogues, page_dets, orphaned, debug_dir, page_num, img_w, img_h):
+def _save_match_log(run, matches, dialogues, page_dets, orphaned, page_num, img_w, img_h):
     """Save matching results to render_log.json."""
     # Fallback matches carry the dialogue's (often null) region_id; resolve the
     # real detection id from the matched geometry so the editor shows it.
@@ -691,11 +654,9 @@ def _save_match_log(matches, dialogues, page_dets, orphaned, debug_dir, page_num
         },
     }
 
-    log_path = debug_dir / f"p{page_num:02d}_render_log.json"
-
-    # When re-running matching, CLEAR later phase data to force re-execution
-    # (the old inpainting/rendering data is now stale with new matches)
-    log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False))
+    # Re-running matching replaces the whole log: s4/s5 of the old matches are stale
+    from yomeru.core import artifacts
+    artifacts.write_render_log(run, page_num, log)
 
 
 def _save_debug_image(img, matches, dialogues, page_dets, orphaned, debug_dir, page_num):

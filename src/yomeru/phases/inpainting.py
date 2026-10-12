@@ -7,7 +7,6 @@ Output: output/typeset/debug/pXX_s4_inpainted.jpg
 from __future__ import annotations
 
 from yomeru.core.labels import TEXT_BUBBLE, is_free as is_free_label
-import json
 import sys
 import time
 from pathlib import Path
@@ -17,9 +16,6 @@ from PIL import Image
 
 from yomeru.core.runs import Run
 from yomeru.phases import PageResult, PhaseResult, ProgressCallback, null_progress
-
-SUPPORTED = {".jpg", ".jpeg", ".png", ".webp"}
-
 
 def run(
     run: Run,
@@ -38,26 +34,22 @@ def run(
     meta = run.meta()
     backend = options.get("inpainter_backend", meta.get("inpainter_backend", "auto"))
 
-    output_dir = run.output_dir()
-    pages_dir = run.pages_dir()
-    debug_dir = output_dir / "typeset" / "debug"
+    from yomeru.core import artifacts
 
+    debug_dir = artifacts.debug_dir(run)
     if not debug_dir.exists():
         return PhaseResult(
             phase="inpainting", status="failed", error="Run matching phase first",
         )
 
-    all_pages = _collect_pages(pages_dir)
-    page_map = {i: p for i, p in all_pages}
-
-    # Determine which pages to process
-    pages_to_process = []
-    for page_num, page_path in all_pages:
-        if page_scope and page_num not in page_scope:
-            continue
-        log_path = debug_dir / f"p{page_num:02d}_render_log.json"
-        if log_path.exists():
-            pages_to_process.append((page_num, page_path, log_path))
+    # Pages that went through matching (have a render log)
+    pages_to_process = [
+        (page_num, page_path)
+        for page_num, page_path in artifacts.page_files(run)
+        if (not page_scope or page_num in page_scope)
+        and artifacts.page_artifact(run, page_num, artifacts.RENDER_LOG).exists()
+    ]
+    analyses = artifacts.load_analyses(run)
 
     total = len(pages_to_process)
     on_progress({"type": "phase_progress", "phase": "inpainting", "total": total, "processed": 0})
@@ -73,7 +65,7 @@ def run(
 
     results: list[PageResult] = []
 
-    for page_num, page_path, log_path in pages_to_process:
+    for page_num, page_path in pages_to_process:
         on_progress({"type": "page_start", "phase": "inpainting", "page": page_num, "filename": page_path.name})
         t0 = time.time()
 
@@ -81,26 +73,14 @@ def run(
             img = Image.open(page_path).convert("RGB")
             img_w, img_h = img.size
 
-            log = json.loads(log_path.read_text())
+            log = artifacts.load_render_log(run, page_num) or {}
             combined_mask = np.zeros((img_h, img_w), dtype=np.uint8)
             per_region_masks: list[tuple[tuple[int,int,int,int], str, np.ndarray]] = []
             bubble_mask = np.zeros((img_h, img_w), dtype=np.uint8)
             free_mask = np.zeros((img_h, img_w), dtype=np.uint8)
 
-            from yomeru.core.matches import effective_matches
-            matches_list = effective_matches(log, debug_dir, page_num)
-
-            # Load analyses to check for skipped dialogues
-            from yomeru.core.annotations import AnnotationStore
-            _analyses_file = run.active_analyses_file()
-            _skipped_indices: set[int] = set()
-            if _analyses_file.exists():
-                _all_analyses = json.loads(_analyses_file.read_text())
-                _store = AnnotationStore(run.output_dir())
-                _merged = _store.merged_analyses(_all_analyses)
-                _page_analysis = next((a for a in _merged if a.get("page_number") == page_num), {})
-                _page_dlgs = _page_analysis.get("dialogues", [])
-                _skipped_indices = {i for i, d in enumerate(_page_dlgs) if d.get("skip")}
+            matches_list = artifacts.effective_matches(run, page_num, log)
+            _skipped_indices = artifacts.skipped_dialogues(artifacts.page_analysis(analyses, page_num))
 
             for m in matches_list:
                 if m.get("dialogue_index", -1) in _skipped_indices:
@@ -119,15 +99,15 @@ def run(
 
             # Manual mask edits are a DELTA on top of the auto mask:
             # transparent = keep auto, white = add, black = remove.
-            refined_mask_path = debug_dir / f"p{page_num:02d}_mask_refined.png"
+            refined_mask_path = artifacts.page_artifact(run, page_num, artifacts.MASK_REFINED)
             if refined_mask_path.exists():
                 combined_mask, bubble_mask, free_mask = _apply_mask_edits(
                     refined_mask_path, img.size, combined_mask, bubble_mask, free_mask,
                 )
 
-            _save_mask_debug(img, per_region_masks, debug_dir, page_num)
+            _save_mask_debug(img, per_region_masks, artifacts.page_artifact(run, page_num, artifacts.S4_MASK_DEBUG))
             # What the mask editor shows as the starting point (auto + edits)
-            Image.fromarray(combined_mask).save(debug_dir / f"p{page_num:02d}_mask_current.png")
+            Image.fromarray(combined_mask).save(artifacts.page_artifact(run, page_num, artifacts.MASK_CURRENT))
 
             mask_pixels = int(combined_mask.sum() // 255)
             if combined_mask.sum() > 0:
@@ -142,11 +122,9 @@ def run(
                 inpainted = img.copy()
 
             # Save inpainted image
-            inpainted.save(str(debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"), quality=88)
+            inpainted.save(str(artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED)), quality=88)
 
-            # Update render log with inpainting info
-            log = json.loads(log_path.read_text())
-            log["s4_inpainting"] = {
+            artifacts.update_render_log(run, page_num, "s4_inpainting", {
                 "backend_bubble": "opencv",
                 "backend_free": "lama" if lama_inpainter else "opencv",
                 "backend": "opencv+lama" if lama_inpainter else "opencv",
@@ -154,8 +132,7 @@ def run(
                 "total_pixels": img_w * img_h,
                 "coverage_pct": round(mask_pixels / (img_w * img_h) * 100, 2),
                 "skipped": mask_pixels == 0,
-            }
-            log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False))
+            })
 
             elapsed = round(time.time() - t0, 2)
             print(f"  p{page_num}: inpainted ({mask_pixels}px masked) [{elapsed}s]", file=sys.stderr)
@@ -180,12 +157,6 @@ def run(
         phase="inpainting", status=status, total_pages=total,
         processed_pages=done, failed_pages=failed, page_results=results,
     )
-
-
-def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    from yomeru.core.paths import list_page_files
-    pages = list_page_files(folder)
-    return [(i, p) for i, p in enumerate(pages, 1)]
 
 
 def _apply_mask_edits(path, size, combined, bubble, free):
@@ -216,8 +187,7 @@ def _apply_mask_edits(path, size, combined, bubble, free):
 def _save_mask_debug(
     image: Image.Image,
     per_region_masks: list[tuple[tuple[int, int, int, int], str, np.ndarray]],
-    debug_dir: Path,
-    page_num: int,
+    out_path: Path,
 ) -> None:
     """Save a debug image showing the generated masks overlaid on the original."""
     import cv2
@@ -250,5 +220,4 @@ def _save_mask_debug(
         cv2.putText(arr, label, (32, legend_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         legend_y += 25
 
-    out_path = debug_dir / f"p{page_num:02d}_s4_mask_debug.jpg"
     Image.fromarray(arr).save(str(out_path), quality=90)

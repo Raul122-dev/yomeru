@@ -9,12 +9,12 @@ Provides access to:
 """
 from __future__ import annotations
 
-import json
 
 from fastapi import APIRouter, HTTPException, Request
 
 from yomeru.core.images import serve_image
 
+from yomeru.core import artifacts
 from yomeru.core.runs import Run
 
 from yomeru.core.paths import safe_child
@@ -37,7 +37,7 @@ def _get_run(run_id: str) -> Run:
 def typeset_status(run_id: str):
     """Return typeset output status — which pages have been rendered."""
     run = _get_run(run_id)
-    typeset_dir = run.output_dir() / "typeset"
+    typeset_dir = artifacts.typeset_dir(run)
     if not typeset_dir.exists():
         return {"status": "not_started", "pages": []}
     pages = sorted(
@@ -61,7 +61,7 @@ def export_run(run_id: str, format: str = "cbz"):
     if format not in ("cbz", "zip"):
         raise HTTPException(400, "format must be cbz or zip")
     run = _get_run(run_id)
-    typeset_dir = run.output_dir() / "typeset"
+    typeset_dir = artifacts.typeset_dir(run)
     pages = [typeset_dir / p.name for p in list_page_files(run.pages_dir())]
     pages = [p for p in pages if p.is_file()]
     if not pages:
@@ -88,7 +88,7 @@ def export_run(run_id: str, format: str = "cbz"):
 def list_debug_images(run_id: str):
     """List all debug image files for a run."""
     run = _get_run(run_id)
-    debug_dir = run.output_dir() / "typeset" / "debug"
+    debug_dir = artifacts.debug_dir(run)
     if not debug_dir.exists():
         return {"images": []}
     images = sorted(
@@ -103,7 +103,7 @@ def get_debug_image(run_id: str, filename: str, request: Request, w: int | None 
     """Serve a debug image file (?w= for a resized WebP)."""
     run = _get_run(run_id)
     try:
-        path = safe_child(run.output_dir() / "typeset" / "debug", filename)
+        path = safe_child(artifacts.debug_dir(run), filename)
     except ValueError:
         raise HTTPException(400, "invalid filename")
     if not path.is_file():
@@ -118,13 +118,12 @@ def get_render_log(run_id: str, page_num: int):
     """Return the render log for a specific page (matching + rendering details)."""
     from fastapi.responses import JSONResponse
     run = _get_run(run_id)
-    log_path = run.output_dir() / "typeset" / "debug" / f"p{page_num:02d}_render_log.json"
-    if not log_path.exists():
+    data = artifacts.load_render_log(run, page_num)
+    if data is None:
         return JSONResponse(
             {"page_number": page_num, "renders": [], "matched": 0, "unmatched": 0},
             headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
         )
-    data = json.loads(log_path.read_text())
     return JSONResponse(data, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
@@ -135,7 +134,7 @@ def get_typeset_page(run_id: str, filename: str, request: Request, w: int | None
     """Serve a final typeset page image (?w= for a resized WebP)."""
     run = _get_run(run_id)
     try:
-        path = safe_child(run.output_dir() / "typeset", filename)
+        path = safe_child(artifacts.typeset_dir(run), filename)
     except ValueError:
         raise HTTPException(400, "invalid filename")
     if not path.is_file():

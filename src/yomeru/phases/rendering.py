@@ -6,10 +6,8 @@ Output: output/typeset/<filename> (final images) + debug/pXX_s5_final.jpg
 """
 from __future__ import annotations
 
-import json
 import sys
 import time
-from pathlib import Path
 
 from PIL import Image
 
@@ -41,19 +39,14 @@ def run(
     use_translation = options.get("use_translation", True)
     source_language = options.get("source_language", meta.get("source_language", "auto"))
 
-    output_dir = run.output_dir()
-    pages_dir = run.pages_dir()
-    debug_dir = output_dir / "typeset" / "debug"
-    typeset_dir = output_dir / "typeset"
-    typeset_dir.mkdir(parents=True, exist_ok=True)
+    from yomeru.core import artifacts
 
-    if not debug_dir.exists():
+    typeset_dir = artifacts.typeset_dir(run, create=True)
+    if not artifacts.debug_dir(run).exists():
         return PhaseResult(phase="rendering", status="failed", error="Run inpainting phase first")
 
-    # Load analyses
-    analyses = _load_analyses(run)
-    all_pages = _collect_pages(pages_dir)
-    page_map = {i: p for i, p in all_pages}
+    analyses = artifacts.load_analyses(run)
+    page_map = dict(artifacts.page_files(run))
 
     if page_scope:
         analyses = [a for a in analyses if a.get("page_number") in page_scope]
@@ -76,46 +69,29 @@ def run(
         try:
             # Invalidate cached scanline previews so they regenerate on next view
             for scan_file in (
-                debug_dir / f"p{page_num:02d}_scanline_preview.jpg",
-                debug_dir / f"p{page_num:02d}_scanline_production.jpg",
+                artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PREVIEW),
+                artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PRODUCTION),
             ):
                 if scan_file.exists():
                     scan_file.unlink()
 
             # Check prerequisites
-            inpainted_path = debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"
-            if not inpainted_path.exists():
+            if not artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED).exists():
                 on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No inpainted image"})
                 results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No inpainted image"))
                 continue
 
-            log_path = debug_dir / f"p{page_num:02d}_render_log.json"
-            if not log_path.exists():
+            log = artifacts.load_render_log(run, page_num)
+            if log is None:
                 on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No match log"})
                 results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No match log"))
                 continue
 
-            log = json.loads(log_path.read_text())
-
-            from yomeru.core.matches import effective_matches
-            matches_data = effective_matches(log, debug_dir, page_num)
+            matches_data = artifacts.effective_matches(run, page_num, log)
             dialogues = analysis.get("dialogues", [])
             source_lang = analysis.get("source_language", source_language)
 
-            # Load render overrides if they exist
-            overrides_path = debug_dir / f"p{page_num:02d}_render_overrides.json"
-            overrides = {}
-            if overrides_path.exists():
-                try:
-                    raw_overrides = json.loads(overrides_path.read_text())
-                    if isinstance(raw_overrides, list):
-                        overrides = {
-                            o["dialogue_index"]: o
-                            for o in raw_overrides
-                            if isinstance(o, dict) and "dialogue_index" in o
-                        }
-                except (json.JSONDecodeError, KeyError):
-                    overrides = {}
+            overrides = artifacts.load_render_overrides(run, page_num)
 
             # Build render events from match data (for log/editor sync)
             render_events: list[dict] = []
@@ -168,11 +144,10 @@ def run(
             else:
                 with Image.open(scanline_prod) as im:
                     im.save(str(out_path))
-            shutil.copy2(str(scanline_prod), str(debug_dir / f"p{page_num:02d}_s5_final.jpg"))
+            shutil.copy2(str(scanline_prod), str(artifacts.page_artifact(run, page_num, artifacts.S5_FINAL)))
 
-            # Update render log
-            log["s5_rendering"] = {"ok": ok_count, "skipped": skip_count, "renders": render_events}
-            log_path.write_text(json.dumps(log, indent=2, ensure_ascii=False))
+            artifacts.update_render_log(run, page_num, "s5_rendering",
+                                        {"ok": ok_count, "skipped": skip_count, "renders": render_events})
 
             elapsed = round(time.time() - t0, 2)
             print(f"  p{page_num}: {ok_count} rendered, {skip_count} skipped [{elapsed}s]", file=sys.stderr)
@@ -198,22 +173,3 @@ def run(
         processed_pages=done, failed_pages=failed, page_results=results,
     )
 
-
-def _load_analyses(run: Run) -> list[dict]:
-    """Load analyses from the active file, merged with user edits (same as matching)."""
-    f = run.active_analyses_file()
-    if not f.exists():
-        return []
-    original = json.loads(f.read_text())
-    from yomeru.core.annotations import AnnotationStore
-    store = AnnotationStore(run.output_dir())
-    return store.merged_analyses(original)
-
-
-def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    from yomeru.core.paths import list_page_files
-    pages = list_page_files(folder)
-    return [(i, p) for i, p in enumerate(pages, 1)]
-
-
-from yomeru.lib.rendering.scanline_engine import _expand_free_text_bbox  # noqa: E402,F401  (compat)

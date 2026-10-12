@@ -154,19 +154,6 @@ class Run:
         r = self.analyses_file(refined=True)
         return r if r.exists() else self.analyses_file(refined=False)
 
-    def matching_file(self) -> Path:
-        return self.output_dir() / "matching.json"
-
-    def typeset_dir(self) -> Path:
-        d = self.output_dir() / "typeset"
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    def debug_dir(self) -> Path:
-        d = self.output_dir() / "typeset" / "debug"
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
     def _write_meta(self, data: dict) -> None:
         # Atomic write: write to temp file then rename to prevent race conditions
         # Atomic: unique temp file per writer, then rename

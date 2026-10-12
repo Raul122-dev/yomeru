@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from yomeru.core import artifacts
 from yomeru.core.runs import Run
 from yomeru.phases import PageResult, PhaseResult, ProgressCallback, null_progress
 
@@ -45,11 +46,10 @@ def run(
     global_context = options.get("global_context", meta.get("global_context", ""))
     page_context = options.get("page_context", "")
 
-    pages_dir = run.pages_dir()
     output_dir = run.output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    all_pages = _collect_pages(pages_dir)
+    all_pages = artifacts.page_files(run)
     pages = all_pages if not page_scope else [(i, p) for i, p in all_pages if i in page_scope]
 
     total = len(pages)
@@ -167,14 +167,6 @@ def get_status(run: Run) -> dict:
         "status": run.get_phase_status("analysis"),
         "pages_analyzed": len(data),
     }
-
-
-def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    from yomeru.core.paths import list_page_files
-    pages = list_page_files(folder)
-    if not pages:
-        raise FileNotFoundError(f"No images found in {folder}")
-    return [(i, p) for i, p in enumerate(pages, 1)]
 
 
 def _load_existing_analyses(output_dir: Path):

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from yomeru.core import artifacts
 from yomeru.core.runs import Run
 from yomeru.phases import PageResult, PhaseResult, ProgressCallback, null_progress
 
@@ -36,11 +37,10 @@ def run(
     backend = options.get("backend", run.meta().get("detector_backend", "auto"))
     threshold = options.get("threshold", run.meta().get("detector_threshold", 0.4))
 
-    pages_dir = run.pages_dir()
     output_dir = run.output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    pages = _collect_pages(pages_dir)
+    pages = artifacts.page_files(run)
     if page_scope:
         pages = [(i, p) for i, p in pages if i in page_scope]
 
@@ -138,15 +138,6 @@ def get_status(run: Run) -> dict:
         "pages_detected": len(data),
         "total_regions": sum(len(entry["regions"]) for entry in data),
     }
-
-
-def _collect_pages(folder: Path) -> list[tuple[int, Path]]:
-    """Returns list of (page_number, path) sorted."""
-    from yomeru.core.paths import list_page_files
-    pages = list_page_files(folder)
-    if not pages:
-        raise FileNotFoundError(f"No images found in {folder}")
-    return [(i, p) for i, p in enumerate(pages, 1)]
 
 
 def _save_detections(all_detections: dict[int, list[dict]], page_sizes: dict[int, tuple[int, int]], output_dir: Path) -> None:

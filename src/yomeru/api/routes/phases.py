@@ -11,7 +11,7 @@ Routes:
 """
 from __future__ import annotations
 
-from yomeru.core.labels import TEXT_BUBBLE, is_text
+from yomeru.core.labels import is_text
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
@@ -123,13 +123,12 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
     """
     from PIL import Image
     from yomeru.lib.matching import build_matcher
-    from yomeru.phases.matching import (
-        _load_detections, _load_analyses, _region_from_det, _to_pixel_bbox,
-    )
+    from yomeru.core import artifacts
+    from yomeru.phases.matching import _region_from_det, _to_pixel_bbox
 
     run = _get_run(run_id)
-    detections = _load_detections(run)
-    analyses = _load_analyses(run)
+    detections = artifacts.load_detections(run)
+    analyses = artifacts.load_analyses(run)
 
     if page_num not in detections:
         raise HTTPException(404, f"No detections for page {page_num}")
@@ -151,19 +150,17 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
         return {"page": page_num, "matches": [], "unmatched": [], "regions_used": 0, "dialogues_total": 0}
 
     # Load image
-    pages_dir = run.pages_dir()
-    from yomeru.core.paths import list_page_files
-    page_files = list_page_files(pages_dir)
-    img_path = page_files[page_num - 1] if page_num <= len(page_files) else None
+    img_path = dict(artifacts.page_files(run)).get(page_num)
     if not img_path or not img_path.exists():
         raise HTTPException(404, f"Page image not found for page {page_num}")
 
     img = Image.open(img_path)
     img_w, img_h = img.size
 
-    # Analysis image size (for bbox conversion)
-    analysis_w = page_data.get("image_width", img_w)
-    analysis_h = page_data.get("image_height", img_h)
+    # Size of the image the model saw (dialogue bboxes are in that space).
+    # Was reading `image_width`, a key analysis never writes → wrong scaling.
+    analysis_w = int(page_data.get("analysis_image_w") or img_w)
+    analysis_h = int(page_data.get("analysis_image_h") or img_h)
 
     # Build regions list
     regions = [_region_from_det(det, img_w, img_h) for det in text_regions.values()]
@@ -275,10 +272,8 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
     draw.rectangle([lx, ly + 18, lx + 12, ly + 30], fill=COLOR_UNMATCHED_REG, outline=BORDER_UNMATCHED_REG)
     draw.text((lx + 16, ly + 17), "Unmatched region", fill=(255, 255, 255), font=font_sm)
 
-    # Save debug image
-    debug_dir = run.output_dir() / "typeset" / "debug"
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    debug_path = debug_dir / f"p{page_num:02d}_algo_only.jpg"
+    artifacts.debug_dir(run, create=True)
+    debug_path = artifacts.page_artifact(run, page_num, artifacts.ALGO_ONLY)
     debug_img.convert("RGB").save(str(debug_path), quality=85)
 
     return {
@@ -296,43 +291,18 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
 
 @router.get("/{run_id}/inpainting/mask-debug/{page_num}")
 def get_mask_debug(run_id: str, page_num: int, request: Request, w: int | None = None):
-    """
-    Generate mask debug overlay for a page (always regenerates).
-    Shows the auto-generated masks colored per region over the original image.
-    """
-    import json
-    from PIL import Image
-    from yomeru.lib.inpainting import build_text_mask
+    """Per-region mask overlay written by the inpainting phase.
 
+    It used to be regenerated on every request from the raw automatic matches,
+    ignoring refined matches, skips and mask edits — so it could disagree with
+    what was actually inpainted. Now it is the phase's own artifact.
+    """
+    from yomeru.core import artifacts
     run = _get_run(run_id)
-    debug_dir = run.output_dir() / "typeset" / "debug"
-
-    log_path = debug_dir / f"p{page_num:02d}_render_log.json"
-    if not log_path.exists():
-        raise HTTPException(404, f"No render log for page {page_num}")
-
-    pages_dir = run.pages_dir()
-    from yomeru.core.paths import list_page_files
-    all_pages = list_page_files(pages_dir)
-    if page_num < 1 or page_num > len(all_pages):
-        raise HTTPException(404, f"Page {page_num} not found")
-
-    img = Image.open(all_pages[page_num - 1]).convert("RGB")
-    log = json.loads(log_path.read_text())
-
-    per_region_masks = []
-    for m in log.get("s3_matching", {}).get("matches", []):
-        r = m["region"]
-        bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
-        label = r.get("label", TEXT_BUBBLE)
-        text_mask = build_text_mask(img, bbox, region_label=label)
-        per_region_masks.append((bbox, label, text_mask))
-
-    from yomeru.phases.inpainting import _save_mask_debug
-    out_path = debug_dir / f"p{page_num:02d}_s4_mask_debug.jpg"
-    _save_mask_debug(img, per_region_masks, debug_dir, page_num)
-
-    return serve_image(request, out_path, w)
+    path = artifacts.page_artifact(run, page_num, artifacts.S4_MASK_DEBUG)
+    if not path.exists():
+        raise HTTPException(404, f"No inpainting masks for page {page_num} — run inpainting first")
+    return serve_image(request, path, w)
 
 
 def _ensure_rendered(run: Run, page_num: int, force: bool) -> None:

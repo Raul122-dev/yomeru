@@ -16,6 +16,7 @@ import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from yomeru.core import artifacts
 from yomeru.core.runs import Run
 
 router = APIRouter(prefix="/runs", tags=["editing"])
@@ -156,9 +157,8 @@ class MatchesBody(BaseModel):
 def save_page_matches(run_id: str, page_num: int, body: MatchesBody):
     """Persist refined matches for a page."""
     run = _get_run(run_id)
-    debug_dir = run.output_dir() / "typeset" / "debug"
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    matches_file = debug_dir / f"p{page_num:02d}_matches_refined.json"
+    artifacts.debug_dir(run, create=True)
+    matches_file = artifacts.page_artifact(run, page_num, artifacts.MATCHES_REFINED)
     matches_file.write_text(json.dumps(
         [m.model_dump() for m in body.matches], indent=2
     ))
@@ -169,7 +169,7 @@ def save_page_matches(run_id: str, page_num: int, body: MatchesBody):
 def revert_page_matches(run_id: str, page_num: int):
     """Remove refined matches, reverting to auto matching."""
     run = _get_run(run_id)
-    f = run.output_dir() / "typeset" / "debug" / f"p{page_num:02d}_matches_refined.json"
+    f = artifacts.page_artifact(run, page_num, artifacts.MATCHES_REFINED)
     if f.exists():
         f.unlink()
 
@@ -184,15 +184,14 @@ class MaskBody(BaseModel):
 def save_page_mask(run_id: str, page_num: int, body: MaskBody):
     """Save a refined inpainting mask as PNG."""
     run = _get_run(run_id)
-    debug_dir = run.output_dir() / "typeset" / "debug"
-    debug_dir.mkdir(parents=True, exist_ok=True)
+    artifacts.debug_dir(run, create=True)
 
     data_url = body.mask_data_url
     if "," in data_url:
         data_url = data_url.split(",", 1)[1]
     try:
         img_bytes = base64.b64decode(data_url)
-        mask_file = debug_dir / f"p{page_num:02d}_mask_refined.png"
+        mask_file = artifacts.page_artifact(run, page_num, artifacts.MASK_REFINED)
         mask_file.write_bytes(img_bytes)
         return {"ok": True, "path": str(mask_file)}
     except Exception as e:
@@ -218,9 +217,8 @@ class RenderOverridesBody(BaseModel):
 def save_render_overrides(run_id: str, page_num: int, body: RenderOverridesBody):
     """Persist render overrides for a page (consumed by rendering phase)."""
     run = _get_run(run_id)
-    debug_dir = run.output_dir() / "typeset" / "debug"
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    overrides_file = debug_dir / f"p{page_num:02d}_render_overrides.json"
+    artifacts.debug_dir(run, create=True)
+    overrides_file = artifacts.page_artifact(run, page_num, artifacts.RENDER_OVERRIDES)
     overrides_file.write_text(json.dumps(
         [o.model_dump(exclude_none=True) for o in body.render_overrides], indent=2
     ))

@@ -11,16 +11,14 @@ phase and by the preview endpoints.
 """
 from __future__ import annotations
 
-from yomeru.core.labels import CONTAINER_LABELS, TEXT_BUBBLE, is_free as is_free_label
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
 
-from yomeru.core.annotations import AnnotationStore
-from yomeru.core.matches import effective_matches
+from yomeru.core import artifacts
+from yomeru.core.labels import CONTAINER_LABELS, TEXT_BUBBLE, is_free as is_free_label
 from yomeru.core.paths import list_page_files
 from yomeru.core.runs import Run
 from yomeru.lib.rendering.color_detect import (
@@ -49,17 +47,15 @@ class RenderOutput:
 
 
 def output_paths(run: Run, page_num: int) -> tuple[Path, Path]:
-    debug_dir = run.output_dir() / "typeset" / "debug"
-    return (debug_dir / f"p{page_num:02d}_scanline_preview.jpg",
-            debug_dir / f"p{page_num:02d}_scanline_production.jpg")
+    return (artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PREVIEW),
+            artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PRODUCTION))
 
 
 def input_paths(run: Run, page_num: int) -> list[Path]:
     """Files whose change makes a cached render stale."""
-    d = run.output_dir() / "typeset" / "debug"
-    return [d / f"p{page_num:02d}_s4_inpainted.jpg", d / f"p{page_num:02d}_render_log.json",
-            d / f"p{page_num:02d}_matches_refined.json", d / f"p{page_num:02d}_render_overrides.json",
-            run.active_analyses_file()]
+    a = artifacts
+    return [a.page_artifact(run, page_num, n) for n in
+            (a.S4_INPAINTED, a.RENDER_LOG, a.MATCHES_REFINED, a.RENDER_OVERRIDES)] + [run.active_analyses_file()]
 
 
 def is_cached(run: Run, page_num: int) -> bool:
@@ -72,8 +68,7 @@ def is_cached(run: Run, page_num: int) -> bool:
 
 def render_page(run: Run, page_num: int) -> RenderOutput:
     """Render one page; writes preview + production images atomically."""
-    debug_dir = run.output_dir() / "typeset" / "debug"
-    inpainted_path = debug_dir / f"p{page_num:02d}_s4_inpainted.jpg"
+    inpainted_path = artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED)
     if not inpainted_path.exists():
         raise RenderInputMissing("No inpainted image for this page")
 
@@ -85,54 +80,26 @@ def render_page(run: Run, page_num: int) -> RenderOutput:
     MIN_FONT = max(8, img_max_side // 150)
 
     # Load ORIGINAL page image (for bubble contour detection — has visible borders)
-    pages_dir = run.pages_dir()
-    all_pages = list_page_files(pages_dir)
+    all_pages = list_page_files(run.pages_dir())
     if page_num < 1 or page_num > len(all_pages):
         raise RenderInputMissing(f"Page {page_num} not found")
     with Image.open(all_pages[page_num - 1]) as _im:
         original_img = _im.convert("RGB")
 
     # Load matching data
-    log_path = debug_dir / f"p{page_num:02d}_render_log.json"
-    if not log_path.exists():
+    log = artifacts.load_render_log(run, page_num)
+    if log is None:
         raise RenderInputMissing("No render log for this page")
-    log = json.loads(log_path.read_text())
+    matches = artifacts.effective_matches(run, page_num, log)
 
-    matches = effective_matches(log, debug_dir, page_num)
-
-    # Load analyses for dialogue text (merged with user edits)
-    analyses_file = run.active_analyses_file()
-    if analyses_file.exists():
-        original_analyses = json.loads(analyses_file.read_text())
-        store = AnnotationStore(run.output_dir())
-        analyses = store.merged_analyses(original_analyses)
-    else:
-        analyses = []
-    page_analysis = next((a for a in analyses if a.get("page_number") == page_num), {})
+    page_analysis = artifacts.page_analysis(artifacts.load_analyses(run), page_num)
     dialogues = page_analysis.get("dialogues", [])
+    overrides = artifacts.load_render_overrides(run, page_num)
 
-    # Load render overrides if they exist
-    overrides_path = debug_dir / f"p{page_num:02d}_render_overrides.json"
-    overrides: dict[int, dict] = {}
-    if overrides_path.exists():
-        try:
-            raw_overrides = json.loads(overrides_path.read_text())
-            if isinstance(raw_overrides, list):
-                overrides = {
-                    o["dialogue_index"]: o
-                    for o in raw_overrides
-                    if isinstance(o, dict) and "dialogue_index" in o
-                }
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-    # Load detections for bubble bboxes (use active/refined)
-    dets_file = run.active_detections_file()
-    detections = json.loads(dets_file.read_text()) if dets_file.exists() else []
-    page_det = next((d for d in detections if d.get("page_number") == page_num), {})
+    # Bubble containers from the active (possibly edited) detections, in file order
     bubble_regions = [
         (r["x1"], r["y1"], r["x2"], r["y2"])
-        for r in page_det.get("regions", []) if r.get("label") in CONTAINER_LABELS
+        for r in artifacts.load_detections(run).get(page_num, {}).values() if r.get("label") in CONTAINER_LABELS
     ]
 
     source_lang = page_analysis.get("source_language", "auto")
