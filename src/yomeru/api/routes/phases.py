@@ -430,7 +430,7 @@ def _phase_options(run: Run, phase: str) -> dict:
         return {"ocr_weight": m.ocr_weight, "spatial_weight": m.spatial_weight,
                 "position_weight": m.position_weight, "match_min_score": m.min_score}
     if phase == "inpainting":
-        return {"inpainter_backend": st.inpainting.backend}
+        return {"backend": st.inpainting.backend, "backend_options": st.inpainting.options}
     if phase == "rendering":
         return {"source_language": lang.source, "target_language": lang.target,
                 "use_translation": st.rendering.use_translation}

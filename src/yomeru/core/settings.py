@@ -23,7 +23,7 @@ import time
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from yomeru.core.paths import CONFIG_FILE
 
@@ -91,7 +91,26 @@ class MatchingSettings(BaseModel):
 
 
 class InpaintingSettings(BaseModel):
-    backend: Literal["auto", "lama", "opencv"] = "auto"
+    """Inpainting technique = a registered backend (yomeru/plugins) + its options."""
+    backend: str = "classic"
+    options: dict = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_backend(cls, data):
+        # v1/v2 configs and old runs stored the engine name; it maps onto the
+        # classic backend ("opencv" = OpenCV everywhere, else LaMa for free text).
+        if isinstance(data, dict) and data.get("backend") in ("auto", "lama", "opencv"):
+            data = {**data, "backend": "classic",
+                    "options": {"free_text": "opencv" if data["backend"] == "opencv" else "lama"}}
+        return data
+
+    @model_validator(mode="after")
+    def _known_backend(self):
+        from yomeru.plugins import get_spec
+        spec = get_spec("inpainting", self.backend)  # raises UnknownBackend
+        self.options = spec.options_model.model_validate(self.options).model_dump()
+        return self
 
 
 class RenderingSettings(BaseModel):

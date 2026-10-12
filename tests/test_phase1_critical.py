@@ -157,14 +157,14 @@ def test_override_to_orphan_region_is_used():
 # ── mask edits ───────────────────────────────────────────────────────────────
 
 def test_mask_edit_is_a_delta(tmp_path):
-    from yomeru.phases.inpainting import _apply_mask_edits
+    from yomeru.plugins.inpainting import apply_mask_delta, load_mask_edit
     auto = np.zeros((20, 20), np.uint8); auto[0:10, :] = 255
     bubble = auto.copy(); free = np.zeros_like(auto)
     edit = np.zeros((20, 20, 4), np.uint8)
     edit[0:5, 0:5] = (0, 0, 0, 255)          # remove a corner of the auto mask
     edit[15:20, 15:20] = (255, 255, 255, 255)  # add a new area
     p = tmp_path / "m.png"; Image.fromarray(edit, "RGBA").save(p)
-    comb, b, f = _apply_mask_edits(p, (20, 20), auto, bubble, free)
+    comb, b, f = apply_mask_delta(load_mask_edit(p, (20, 20)), auto, bubble, free)
     assert comb[7, 7] == 255          # untouched auto mask kept
     assert comb[2, 2] == 0 and b[2, 2] == 0
     assert comb[17, 17] == 255 and f[17, 17] == 255

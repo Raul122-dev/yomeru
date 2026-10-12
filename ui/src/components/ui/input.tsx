@@ -47,11 +47,13 @@ export function Input({
 
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
+  hint?: string;
 }
 
 export function Select({
   className,
   label,
+  hint,
   id,
   children,
   ...props
@@ -78,6 +80,7 @@ export function Select({
       >
         {children}
       </select>
+      {hint && <p className="mt-1.5 text-xs text-[hsl(var(--text-muted))]">{hint}</p>}
     </div>
   );
 }

@@ -149,30 +149,15 @@ def delete_preset(pid: str):
     return public_config(store.update(fn))
 
 
-# ── environment ──────────────────────────────────────────────────────────────
+# ── backends (techniques per phase) ─────────────────────────────────────────
 
-@router.get("/capabilities")
-def get_capabilities():
-    """Return what the installed environment can actually run."""
-    from yomeru.lib.inpainting import lama_available
-    try:
-        import torch
-        torch_ok = True
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    except ImportError:
-        torch_ok, device = False, "cpu"
-    detectors = [
-        {"key": "ogkalu", "label": "ogkalu RT-DETR", "available": torch_ok,
-         "note": "HuggingFace model, downloads on first use."},
-    ]
-    return {
-        "ready": torch_ok,
-        "device": device,
-        "detectors": detectors,
-        "inpainter": "lama" if lama_available() else "opencv",
-        "lama_ready": lama_available(),
-        "message": None if torch_ok else "Typesetting extras missing: uv sync --extra typesetting",
-    }
+@router.get("/backends/{phase}")
+def get_backends(phase: str):
+    """Registered techniques for a phase, with each one's options schema."""
+    from yomeru.plugins import list_backends
+    if phase not in ("detection", "analysis", "matching", "inpainting", "rendering"):
+        raise HTTPException(404, f"unknown phase {phase!r}")
+    return list_backends(phase)  # type: ignore[arg-type]
 
 
 @router.get("/formats")

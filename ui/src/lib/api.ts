@@ -19,7 +19,7 @@ import type {
   RenderEvent,
   Run,
   StageLog,
-  TypesetCapabilities,
+  BackendInfo,
   TypesetStatus,
 } from "./types";
 
@@ -44,7 +44,7 @@ export type {
   RenderEvent,
   Run,
   StageLog,
-  TypesetCapabilities,
+  BackendInfo,
   TypesetStatus,
 } from "./types";
 
@@ -285,8 +285,9 @@ export const saveMask = (id: str, page: number, maskDataUrl: str) =>
   });
 
 // ── outputs (read-only file access) ──────────────────────────────────────────
-export const getTypesetCapabilities = () =>
-  req<TypesetCapabilities>("/config/capabilities");
+/** Registered techniques for a phase (yomeru/plugins), with their options schema. */
+export const getBackends = (phase: PhaseName) =>
+  req<BackendInfo[]>(`/config/backends/${phase}`);
 export const getTypesetStatus = (id: str) =>
   req<TypesetStatus>(`/runs/${id}/typeset/status`);
 export const typesetPageUrl = (id: str, filename: str) =>

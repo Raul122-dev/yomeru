@@ -94,7 +94,7 @@ export interface PipelineSettings {
   language: { source: string; target: string; comic_format: string };
   detection: { backend: "ogkalu"; threshold: number };
   matching: { ocr_weight: number; spatial_weight: number; position_weight: number; min_score: number };
-  inpainting: { backend: "auto" | "lama" | "opencv" };
+  inpainting: { backend: string; options: Record<string, unknown> };
   rendering: { use_translation: boolean };
 }
 
@@ -124,12 +124,13 @@ export interface TypesetStatus {
   active: boolean;
 }
 
-export interface TypesetCapabilities {
-  ready: boolean;
-  device: string;
-  detectors: { key: string; label: string; available: boolean }[];
-  inpainter: string;
-  message?: string;
+/** A registered technique of a phase (GET /config/backends/{phase}). */
+export interface BackendInfo {
+  name: string;
+  description: string;
+  needs_gpu: boolean;
+  version: string;
+  options: { properties?: Record<string, { enum?: string[]; default?: unknown; title?: string; description?: string }> };
 }
 
 export interface DetectionRegion {

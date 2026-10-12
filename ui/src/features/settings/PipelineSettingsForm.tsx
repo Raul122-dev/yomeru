@@ -7,6 +7,7 @@ import { Select } from "../../components/ui/input";
 import { Switch } from "../../components/ui/Switch";
 import { Slider } from "../../components/ui/Slider";
 import { ModelPicker } from "./ModelPicker";
+import { BackendPicker } from "./BackendPicker";
 
 /** Editor for a full PipelineSettings — used for global settings and presets. */
 export function PipelineSettingsForm({
@@ -97,15 +98,12 @@ export function PipelineSettingsForm({
 
       <section className="flex flex-col gap-4">
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Inpainting & rendering</h3>
-        <Select
+        <BackendPicker
+          phase="inpainting"
           label="inpainting"
-          value={value.inpainting.backend}
-          onChange={(e) => set("inpainting", { backend: e.target.value as PipelineSettings["inpainting"]["backend"] })}
-        >
-          <option value="auto">Auto (OpenCV for bubbles, LaMa for free text)</option>
-          <option value="lama">LaMa</option>
-          <option value="opencv">OpenCV only (fast)</option>
-        </Select>
+          value={value.inpainting}
+          onChange={(v) => onChange({ ...value, inpainting: v })}
+        />
         <Switch
           label="Render translated text"
           hint="Off renders the original text (useful to check the layout)"
