@@ -186,7 +186,6 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
         source_language=source_lang,
         ocr_weight=0.4,
         spatial_weight=0.4,
-        position_weight=0.2,
         min_score=0.0,  # Show all results, even poor matches
     )
 
@@ -210,7 +209,6 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
             "scores": {
                 "spatial": round(m.spatial_score, 3),
                 "text": round(m.text_score, 3),
-                "position": round(m.position_score, 3),
                 "total": round(m.total_score, 3),
             },
             "ocr_text": m.ocr_text[:60] if m.ocr_text else None,
@@ -429,7 +427,7 @@ def _phase_options(run: Run, phase: str) -> dict:
     if phase == "matching":
         m = st.matching
         return {"ocr_weight": m.ocr_weight, "spatial_weight": m.spatial_weight,
-                "position_weight": m.position_weight, "match_min_score": m.min_score}
+                "match_min_score": m.min_score}
     if phase == "inpainting":
         return {"backend": st.inpainting.backend, "backend_options": st.inpainting.options}
     if phase == "rendering":

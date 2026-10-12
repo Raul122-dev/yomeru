@@ -32,7 +32,6 @@ class MatchResult:
     region: TextRegion
     spatial_score: float
     text_score: float
-    position_score: float
     total_score: float
     ocr_text: str = ""
 
@@ -49,7 +48,6 @@ class BaseMatcher(Protocol):
         source_language: str,
         ocr_weight: float,
         spatial_weight: float,
-        position_weight: float,
         min_score: float,
     ) -> dict[int, MatchResult]: ...
 
@@ -62,7 +60,7 @@ def build_matcher(backend: str = "hungarian") -> Any:
     Return a cached matcher instance.
 
     backend: "hungarian" | "reading_order"
-      - "hungarian": Score-based optimal assignment (spatial + OCR + position)
+      - "hungarian": Score-based optimal assignment (spatial + OCR)
       - "reading_order": Sort-based positional matching (industry standard)
     """
     if backend in _cache:

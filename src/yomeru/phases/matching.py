@@ -31,16 +31,13 @@ def run(
         matcher_backend: str = "hungarian"
         ocr_weight: float = 0.4
         spatial_weight: float = 0.4
-        position_weight: float = 0.2
         match_min_score: float = 0.05
     """
     from yomeru.lib.matching import build_matcher, MatchResult
 
-    meta = run.meta()
     matcher_backend = options.get("matcher_backend", "hungarian")
     ocr_weight = options.get("ocr_weight", 0.4)
     spatial_weight = options.get("spatial_weight", 0.4)
-    position_weight = options.get("position_weight", 0.2)
     match_min_score = options.get("match_min_score", 0.05)
 
     from yomeru.core import artifacts
@@ -104,34 +101,14 @@ def run(
                     matches[i] = MatchResult(
                         dialogue_index=i, region=region,
                         spatial_score=1.0, text_score=1.0,
-                        position_score=1.0, total_score=1.0,
+                        total_score=1.0,
                     )
                 else:
                     unresolved.append(i)
 
-            # ── Step 2: Validate VLM assignments (Capa 2) ────────────────────
             print(f"    [matching] after Step 1: {len(matches)} matches, {len(unresolved)} unresolved", file=sys.stderr)
             if unresolved:
                 print(f"    [matching] unresolved dialogues: {unresolved}", file=sys.stderr)
-            validation_issues = _validate_vlm_matches(
-                matches, dialogues, page_dets, img, img_w, img_h,
-                analysis_w, analysis_h, source_lang,
-            )
-            # Fix issues found by validator
-            if validation_issues["reassignments"]:
-                for dlg_idx, new_region_id in validation_issues["reassignments"].items():
-                    det = page_dets[new_region_id]
-                    region = _region_from_det(det, img_w, img_h)
-                    matches[dlg_idx] = MatchResult(
-                        dialogue_index=dlg_idx, region=region,
-                        spatial_score=0.9, text_score=0.9,
-                        position_score=0.9, total_score=0.9,
-                    )
-            if validation_issues["splits"]:
-                for split in validation_issues["splits"]:
-                    # A split means one dialogue was merged — we can't split the text
-                    # but we can mark the orphaned region as needing attention
-                    pass
 
             # ── Step 3: Fallback Hungarian for unresolved ────────────────────
             if unresolved:
@@ -158,7 +135,7 @@ def run(
                     image=img, dialogues=fallback_dlgs, regions=candidates,
                     hint_bboxes=fallback_hints, source_language=source_lang,
                     ocr_weight=ocr_weight, spatial_weight=spatial_weight,
-                    position_weight=position_weight, min_score=match_min_score,
+                    min_score=match_min_score,
                 )
                 for local_i, fb_match in fb_matches.items():
                     orig_i = unresolved[local_i]
@@ -204,7 +181,6 @@ def run(
                             region=region,
                             spatial_score=0.0,
                             text_score=0.0,
-                            position_score=1.0,
                             total_score=0.5,
                             ocr_text="",
                         )
@@ -233,7 +209,7 @@ def run(
             if orphaned_text:
                 rescued = _rescue_orphaned_text_regions(
                     orphaned_text, matches, dialogues, img, source_lang,
-                    matcher, ocr_weight, spatial_weight, position_weight, match_min_score,
+                    matcher, ocr_weight, spatial_weight, match_min_score,
                 )
                 if rescued:
                     # Add rescued matches and remove from orphaned
@@ -252,10 +228,9 @@ def run(
 
             elapsed = round(time.time() - t0, 2)
             direct = sum(1 for m in matches.values() if m.total_score == 1.0)
-            validated = len(validation_issues.get("reassignments", {}))
             rescued_count = len(rescued) if orphaned_text else 0
             print(f"  p{page_num}: {len(matches)}/{len(dialogues)} matched "
-                  f"({direct} direct, {validated} validated, {rescued_count} rescued, "
+                  f"({direct} direct, {rescued_count} rescued, "
                   f"{len(orphaned)} orphaned) [{elapsed}s]", file=sys.stderr)
 
             on_progress({
@@ -311,152 +286,6 @@ def _to_pixel_bbox(bbox, img_w, img_h, analysis_w, analysis_h):
     return (max(0, int(x1)), max(0, int(y1)), min(img_w, int(x2)), min(img_h, int(y2)))
 
 
-# ── Capa 2: Post-VLM Validator ─────────────────────────────────────────────────
-
-def _validate_vlm_matches(
-    matches: dict,
-    dialogues: list[dict],
-    page_dets: dict[int, dict],
-    img: "Image.Image",
-    img_w: int, img_h: int,
-    analysis_w: int, analysis_h: int,
-    source_lang: str,
-) -> dict:
-    """
-    Validate VLM region assignments and detect issues:
-    1. Duplicate assignments (two dialogues → same region)
-    2. Spatial mismatch (dialogue bbox far from assigned region)
-    3. Unclaimed text_bubble regions that should have matches
-    4. Potential text merges (one dialogue text suspiciously long for its region)
-    
-    Returns dict with:
-      - reassignments: {dlg_idx: new_region_id} for corrections
-      - splits: list of suspected text merges
-      - warnings: list of warning strings
-    """
-    result = {"reassignments": {}, "splits": [], "warnings": []}
-
-    # Check 1: Duplicate region assignments
-    region_to_dlg: dict[int, list[int]] = {}
-    for dlg_idx, match in matches.items():
-        rid = dialogues[dlg_idx].get("region_id")
-        if rid is not None:
-            region_to_dlg.setdefault(int(rid), []).append(dlg_idx)
-
-    for rid, dlg_indices in region_to_dlg.items():
-        if len(dlg_indices) > 1:
-            result["warnings"].append(
-                f"Region {rid} claimed by multiple dialogues: {dlg_indices}"
-            )
-
-    # Check 2: Unclaimed text_bubble/text_free regions
-    claimed_region_ids = set()
-    for dlg_idx in matches:
-        rid = dialogues[dlg_idx].get("region_id")
-        if rid is not None:
-            claimed_region_ids.add(int(rid))
-
-    unclaimed_text_regions = [
-        r for r in page_dets.values()
-        if r["id"] not in claimed_region_ids
-        and is_text(r.get("label"))
-    ]
-
-    # Check 3: For unclaimed text regions, check if any matched dialogue
-    # has text that's suspiciously long (potential merge)
-    if unclaimed_text_regions:
-        for unclaimed in unclaimed_text_regions:
-            ur_x1, ur_y1 = unclaimed["x1"], unclaimed["y1"]
-            ur_x2, ur_y2 = unclaimed["x2"], unclaimed["y2"]
-            ur_area = (ur_x2 - ur_x1) * (ur_y2 - ur_y1)
-
-            # Find the nearest matched dialogue by region proximity
-            best_neighbor_idx = None
-            best_distance = float("inf")
-
-            for dlg_idx, match in matches.items():
-                if match.total_score < 1.0:
-                    continue  # only check direct matches
-                mr = match.region
-                # Check if the unclaimed region is adjacent to this match's region
-                gap_x = max(0, max(ur_x1, mr.x1) - min(ur_x2, mr.x2))
-                gap_y = max(0, max(ur_y1, mr.y1) - min(ur_y2, mr.y2))
-                dist = (gap_x ** 2 + gap_y ** 2) ** 0.5
-                if dist < best_distance:
-                    best_distance = dist
-                    best_neighbor_idx = dlg_idx
-
-            # If the nearest matched dialogue is very close (<30px) to the unclaimed region
-            # AND the dialogue text is longer than expected for its region, suspect a merge
-            if best_neighbor_idx is not None and best_distance < 30:
-                neighbor_dlg = dialogues[best_neighbor_idx]
-                neighbor_text = neighbor_dlg.get("text", "")
-                neighbor_region = matches[best_neighbor_idx].region
-                neighbor_area = (neighbor_region.x2 - neighbor_region.x1) * (neighbor_region.y2 - neighbor_region.y1)
-
-                # Heuristic: if text length per area is much higher than typical
-                # (typical is ~1 char per 200-400 px² depending on font size)
-                chars_per_area = len(neighbor_text) / max(1, neighbor_area) * 10000
-                if chars_per_area > 8:  # suspiciously dense text for the region
-                    result["splits"].append({
-                        "dialogue_index": best_neighbor_idx,
-                        "orphaned_region_id": unclaimed["id"],
-                        "reason": f"Text '{neighbor_text[:40]}...' may include text from adjacent region {unclaimed['id']}",
-                    })
-                    result["warnings"].append(
-                        f"Suspected merge: D{best_neighbor_idx} text may include R{unclaimed['id']}"
-                    )
-
-    # Check 4: Spatial coherence — dialogue bbox should be near assigned region
-    for dlg_idx, match in matches.items():
-        if match.total_score < 1.0:
-            continue  # only validate direct VLM matches
-        dlg = dialogues[dlg_idx]
-        bbox = dlg.get("bbox")
-        if not bbox or len(bbox) < 4:
-            continue
-        hint = _to_pixel_bbox(bbox, img_w, img_h, analysis_w, analysis_h)
-        region = match.region
-        overlap = region.overlap_score(hint)
-        if overlap < 0.01:
-            # bbox hint is completely outside the assigned region.
-            # Only reassign if the VLM didn't explicitly provide a region_id
-            # (bbox hints are imprecise — trust region_id over bbox when both exist)
-            vlm_rid = dlg.get("region_id")
-            if vlm_rid is not None and int(vlm_rid) in page_dets:
-                # VLM explicitly assigned this region — trust it over bbox hint
-                result["warnings"].append(
-                    f"D{dlg_idx}: bbox mismatch (overlap={overlap:.2f}) but keeping VLM assignment R{vlm_rid}"
-                )
-                continue
-
-            # No explicit region_id — try to find a better match
-            best_overlap = 0.0
-            best_rid = None
-            for det_id, det in page_dets.items():
-                if det_id == dialogues[dlg_idx].get("region_id"):
-                    continue
-                if not is_text(det.get("label")):
-                    continue
-                candidate = _region_from_det(det, img_w, img_h)
-                ov = candidate.overlap_score(hint)
-                if ov > best_overlap:
-                    best_overlap = ov
-                    best_rid = det_id
-            if best_rid is not None and best_overlap > 0.5:
-                result["reassignments"][dlg_idx] = best_rid
-                result["warnings"].append(
-                    f"D{dlg_idx}: bbox suggests R{best_rid} (overlap={best_overlap:.2f}) not R{dialogues[dlg_idx].get('region_id')}"
-                )
-
-    if result["warnings"]:
-        print(f"  [validator] {len(result['warnings'])} issues found:", file=sys.stderr)
-        for w in result["warnings"][:5]:
-            print(f"    {w}", file=sys.stderr)
-
-    return result
-
-
 # ── Capa 3: Rescue orphaned text regions ───────────────────────────────────────
 
 def _rescue_orphaned_text_regions(
@@ -468,7 +297,6 @@ def _rescue_orphaned_text_regions(
     matcher,
     ocr_weight: float,
     spatial_weight: float,
-    position_weight: float,
     min_score: float,
 ) -> dict:
     """
@@ -549,7 +377,7 @@ def _rescue_orphaned_text_regions(
                 rescued[best_dlg_idx] = MatchResult(
                     dialogue_index=best_dlg_idx, region=region,
                     spatial_score=0.5, text_score=best_text_score,
-                    position_score=0.0, total_score=best_text_score * 0.8,
+                    total_score=best_text_score * 0.8,
                     ocr_text=ocr_text,
                 )
                 print(f"    [rescue] R{orphan['id']}: matched to unmatched D{best_dlg_idx} "
@@ -612,7 +440,6 @@ def _save_match_log(run, matches, dialogues, page_dets, orphaned, page_num, img_
             "scores": {
                 "spatial": round(m.spatial_score, 3),
                 "text": round(m.text_score, 3),
-                "position": round(m.position_score, 3),
                 "total": round(m.total_score, 3),
             },
             "ocr_text": getattr(m, "ocr_text", None),
@@ -708,7 +535,6 @@ def _save_debug_image(img, matches, dialogues, page_dets, orphaned, debug_dir, p
             draw.text((r.x1 + 3, r.y2 - 16), text_preview, fill=(200, 200, 200, 220), font=font_sm)
 
     # Draw unmatched regions (detected but not in matches or orphaned)
-    all_matched_regions = {id(m.region) for m in matches.values()}
     orphaned_ids = {det["id"] for det in orphaned}
     for det in page_dets.values():
         if det["id"] not in orphaned_ids:

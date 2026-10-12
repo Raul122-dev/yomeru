@@ -54,15 +54,13 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
             <div className="flex flex-col items-center gap-4 py-10">
               <p className="text-sm text-[hsl(var(--text-muted))] text-center max-w-md">
                 Run the Hungarian algorithm independently (without VLM region assignments) to see 
-                how it matches dialogues to regions using only spatial proximity, OCR text similarity, 
-                and position zone scoring.
+                how it matches dialogues to regions using only spatial proximity and OCR text similarity.
               </p>
               <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] p-4 text-xs space-y-2 max-w-md">
                 <p className="font-medium text-[hsl(var(--text-primary))]">How the algorithm works:</p>
                 <ul className="space-y-1 text-[hsl(var(--text-muted))] list-disc list-inside">
                   <li><strong>Spatial score (40%)</strong> — Overlap between the VLM's bbox hint and each detected region + center containment check</li>
                   <li><strong>Text score (40%)</strong> — OCR each region, then trigram Jaccard similarity between OCR text and dialogue text</li>
-                  <li><strong>Position score (20%)</strong> — 9-zone grid distance between region center and VLM's text_position hint</li>
                   <li><strong>Assignment</strong> — Builds an NxM cost matrix, solves with <code>scipy.linear_sum_assignment</code> (Hungarian) for optimal 1-to-1 mapping</li>
                   <li><strong>Threshold</strong> — Matches below 0.05 total score are discarded</li>
                 </ul>
@@ -113,7 +111,6 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                         <th className="px-3 py-2 text-left font-medium">Region</th>
                         <th className="px-3 py-2 text-center font-medium">Spatial</th>
                         <th className="px-3 py-2 text-center font-medium">Text</th>
-                        <th className="px-3 py-2 text-center font-medium">Position</th>
                         <th className="px-3 py-2 text-center font-medium">Total</th>
                         <th className="px-3 py-2 text-center font-medium">VLM</th>
                       </tr>
@@ -140,9 +137,6 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                           </td>
                           <td className="px-3 py-2 text-center">
                             <ScoreCell value={m.scores.text} />
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <ScoreCell value={m.scores.position} />
                           </td>
                           <td className="px-3 py-2 text-center">
                             <ScoreCell value={m.scores.total} bold />

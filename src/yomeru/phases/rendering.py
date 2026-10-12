@@ -37,7 +37,6 @@ def run(
     """
     meta = run.meta()
     use_translation = options.get("use_translation", True)
-    source_language = options.get("source_language", meta.get("source_language", "auto"))
 
     from yomeru.core import artifacts
 
@@ -89,7 +88,6 @@ def run(
 
             matches_data = artifacts.effective_matches(run, page_num, log)
             dialogues = analysis.get("dialogues", [])
-            source_lang = analysis.get("source_language", source_language)
 
             overrides = artifacts.load_render_overrides(run, page_num)
 

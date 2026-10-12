@@ -109,7 +109,6 @@ def _inpaint_lama(image: Image.Image, mask: np.ndarray) -> Image.Image:
             # This preserves full-res detail in non-inpainted areas
             orig_arr = np.array(image)
             result_arr = np.array(result_upscaled)
-            mask_bool = mask > 0
             # Dilate mask slightly to blend edges
             import cv2
             blend_mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)

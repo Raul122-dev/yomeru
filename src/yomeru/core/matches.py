@@ -59,7 +59,7 @@ def build_matches_from_refined(refined: list[dict], log: dict) -> list[dict]:
                 "region_id": region_id,
                 "match_type": ov.get("match_type", "manual"),
                 "region": region,
-                "scores": {"spatial": 1.0, "text": 1.0, "position": 1.0, "total": 1.0},
+                "scores": {"spatial": 1.0, "text": 1.0, "total": 1.0},
                 "dialogue_text": ov.get("dialogue_text", ""),
             })
 

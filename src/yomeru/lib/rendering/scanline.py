@@ -402,7 +402,6 @@ def scanline_layout(
     #    Use scanlines only for X positioning (width at each height).
     #    Y positioning is pure bbox centering for consistent visual result.
     num_lines = len(positioned)
-    total_available = len(all_segments)
 
     x1, y1, x2, y2 = bbox
     bbox_height = y2 - y1
@@ -419,8 +418,6 @@ def scanline_layout(
     # For each line, find the scanline segment closest to its Y position
     # to determine the available width for X centering
     result_lines: list[PositionedLine] = []
-    words = text.split() if not is_cjk_text(text) else list(text.replace(" ", ""))
-    word_idx = 0
 
     for line_idx in range(num_lines):
         line_y = start_y + line_idx * lh

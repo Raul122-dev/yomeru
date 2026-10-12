@@ -93,7 +93,7 @@ export interface PipelineSettings {
   translation_model: ModelRef;
   language: { source: string; target: string; comic_format: string };
   detection: { backend: string; options: Record<string, unknown>; threshold: number };
-  matching: { ocr_weight: number; spatial_weight: number; position_weight: number; min_score: number };
+  matching: { ocr_weight: number; spatial_weight: number; min_score: number };
   inpainting: { backend: string; options: Record<string, unknown> };
   rendering: { use_translation: boolean };
 }
@@ -153,7 +153,7 @@ export interface MatchEvent {
     label: string;
     score: number;
   };
-  scores: { spatial: number; text: number; position: number; total: number };
+  scores: { spatial: number; text: number; total: number };
   ocr_text: string | null;
   dialogue_text: string;
 }

@@ -104,7 +104,6 @@ Stable identification rules:
       "text_translated": <string — ONLY if translation was requested>,
       "tone": <string — see modifier table above, default "neutral">,
       "bubble_type": <"speech" | "thought" | "narration" | "sfx" | "internal">,
-      "text_position": <"top-left" | "top-center" | "top-right" | "center-left" | "center" | "center-right" | "bottom-left" | "bottom-center" | "bottom-right">,
       "region_id": <int | null — if numbered regions are shown, set this to the region number containing this bubble; otherwise null>,
       "font_style": <"bold" | "regular" | "thought" | "narration" — visual weight: bold for action/SFX/shouting, regular for normal speech, thought for internal monologue, narration for caption boxes>,
       "skip": <boolean — true if this text should NOT be typeset automatically; see skip rules below>,
@@ -154,7 +153,6 @@ If you can see numbered boxes on the image but set all `region_id` to null, your
 
 `bbox`: always provide as a fallback — `[x1, y1, x2, y2]` in pixel coordinates of the image you see.
 If you cannot determine the bubble's location, set bbox to null.
-`text_position`: always provide this — rough position of the bubble within the full page (9-zone grid).
 
 ### Empty/minimal pages
 

@@ -90,8 +90,6 @@ export function PipelineSettingsForm({
           hint="How much the text read by OCR counts" onChange={(v) => set("matching", { ocr_weight: v })} />
         <Slider label="spatial weight" value={value.matching.spatial_weight} min={0} max={1} step={0.05}
           hint="How much the box position counts" onChange={(v) => set("matching", { spatial_weight: v })} />
-        <Slider label="reading-order weight" value={value.matching.position_weight} min={0} max={1} step={0.05}
-          onChange={(v) => set("matching", { position_weight: v })} />
         <Slider label="minimum score" value={value.matching.min_score} min={0} max={0.5} step={0.01}
           hint="Matches below this are discarded" onChange={(v) => set("matching", { min_score: v })} />
       </section>

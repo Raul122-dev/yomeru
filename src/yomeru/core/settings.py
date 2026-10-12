@@ -94,7 +94,6 @@ class DetectionSettings(BaseModel):
 class MatchingSettings(BaseModel):
     ocr_weight: float = Field(default=0.4, ge=0, le=1)
     spatial_weight: float = Field(default=0.4, ge=0, le=1)
-    position_weight: float = Field(default=0.2, ge=0, le=1)
     min_score: float = Field(default=0.05, ge=0, le=1)
 
 
@@ -203,7 +202,7 @@ def _migrate_v1(old: dict) -> dict:
             "comic_format": defaults.get("format", "auto"),
         },
         "detection": {k: det[k] for k in ("backend", "threshold") if k in det},
-        "matching": {k: mat[k] for k in ("ocr_weight", "spatial_weight", "position_weight", "min_score") if k in mat},
+        "matching": {k: mat[k] for k in ("ocr_weight", "spatial_weight", "min_score") if k in mat},
         "inpainting": {"backend": inp.get("backend", "auto")},
         "rendering": {"use_translation": ren.get("use_translation", True)},
     }

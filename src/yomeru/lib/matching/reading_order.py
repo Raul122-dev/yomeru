@@ -67,7 +67,6 @@ class ReadingOrderMatcher:
                 region=region,
                 spatial_score=1.0,
                 text_score=0.0,
-                position_score=1.0,
                 total_score=0.8,  # High confidence for reading-order match
                 ocr_text="",
             )

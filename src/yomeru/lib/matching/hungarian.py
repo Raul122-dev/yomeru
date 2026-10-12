@@ -4,10 +4,9 @@ Hungarian matching backend.
 Optimal one-to-one assignment of dialogues to detected regions using
 scipy's linear_sum_assignment. Greedy fallback when scipy is unavailable.
 
-Score matrix columns (configurable weights):
-  - spatial  : bbox overlap + center proximity
-  - text     : OCR trigram similarity (dialogue text vs region OCR)
-  - position : 9-zone page position hint from VLM
+Score = spatial * spatial_weight + text * ocr_weight
+  - spatial : overlap of the region with the VLM's bbox hint (+ centre inside)
+  - text    : OCR trigram similarity (dialogue text vs region OCR)
 
 See SPEC.md for the full input/output contract.
 """
@@ -28,28 +27,6 @@ from ..detection import TextRegion
 from .ocr import ocr_region
 
 
-# 9-zone grid: text_position → (col 0-2, row 0-2)
-_ZONE_MAP = {
-    "top-left":      (0, 0), "top-center":    (1, 0), "top-right":    (2, 0),
-    "center-left":   (0, 1), "center":        (1, 1), "center-right": (2, 1),
-    "bottom-left":   (0, 2), "bottom-center": (1, 2), "bottom-right": (2, 2),
-}
-
-
-def _zone_score(region: TextRegion, text_position: str | None, img_w: int, img_h: int) -> float:
-    if not text_position:
-        return 0.0
-    zone = _ZONE_MAP.get(text_position.lower().strip())
-    if zone is None:
-        return 0.0
-    exp_cx = (zone[0] + 0.5) / 3.0 * img_w
-    exp_cy = (zone[1] + 0.5) / 3.0 * img_h
-    rcx, rcy = region.center
-    dist = ((rcx - exp_cx) ** 2 + (rcy - exp_cy) ** 2) ** 0.5
-    max_dist = (img_w ** 2 + img_h ** 2) ** 0.5
-    return max(0.0, 1.0 - dist / (max_dist * 0.5))
-
-
 class HungarianMatcher:
     """
     Optimal dialogue-to-region matcher using the Hungarian algorithm.
@@ -67,7 +44,6 @@ class HungarianMatcher:
         source_language: str = "auto",
         ocr_weight: float = 0.4,
         spatial_weight: float = 0.4,
-        position_weight: float = 0.2,
         min_score: float = 0.05,
     ) -> dict[int, "MatchResult"]:
         """Assign dialogues to regions. Returns {dialogue_index: MatchResult}."""
@@ -79,7 +55,6 @@ class HungarianMatcher:
             source_language=source_language,
             ocr_weight=ocr_weight,
             spatial_weight=spatial_weight,
-            position_weight=position_weight,
             min_score=min_score,
         )
 
@@ -96,7 +71,6 @@ def _match_dialogues_to_regions(
     source_language: str = "auto",
     ocr_weight: float = 0.4,
     spatial_weight: float = 0.4,
-    position_weight: float = 0.2,
     min_score: float = 0.05,
 ) -> dict[int, MatchResult]:
     """
@@ -107,7 +81,6 @@ def _match_dialogues_to_regions(
     if not regions or not dialogues:
         return {}
 
-    img_w, img_h = image.size
     n_dlg, n_reg = len(dialogues), len(regions)
 
     # ── OCR cache: run once per region ───────────────────────────────────────
@@ -123,11 +96,9 @@ def _match_dialogues_to_regions(
     scores      = np.zeros((n_dlg, n_reg))
     spatial_mat = np.zeros((n_dlg, n_reg))
     text_mat    = np.zeros((n_dlg, n_reg))
-    pos_mat     = np.zeros((n_dlg, n_reg))
 
     for i, (dlg, hint) in enumerate(zip(dialogues, hint_bboxes)):
         vlm_text   = dlg.get("text", "").strip()
-        text_pos   = dlg.get("text_position")
         hint_valid = (
             hint is not None
             and (hint[2] - hint[0]) * (hint[3] - hint[1]) > 100
@@ -155,12 +126,9 @@ def _match_dialogues_to_regions(
                         re.sub(r"[^\w]", "", ocr_t.lower()),
                     ))
 
-            pz = _zone_score(region, text_pos, img_w, img_h)
-
             spatial_mat[i, j] = sp
             text_mat[i, j]    = tx
-            pos_mat[i, j]     = pz
-            scores[i, j]      = sp * spatial_weight + tx * ocr_weight + pz * position_weight
+            scores[i, j]      = sp * spatial_weight + tx * ocr_weight
 
     # ── Hungarian assignment ──────────────────────────────────────────────────
     try:
@@ -181,13 +149,12 @@ def _match_dialogues_to_regions(
             dialogue_index=int(dlg_i), region=regions[reg_j],
             spatial_score=float(spatial_mat[dlg_i, reg_j]),
             text_score=float(text_mat[dlg_i, reg_j]),
-            position_score=float(pos_mat[dlg_i, reg_j]),
             total_score=score, ocr_text=ocr_t,
         )
         print(
             f"  [match] dlg {dlg_i} → reg {reg_j} "
             f"sp={spatial_mat[dlg_i,reg_j]:.2f} tx={text_mat[dlg_i,reg_j]:.2f} "
-            f"pz={pos_mat[dlg_i,reg_j]:.2f} tot={score:.2f}",
+            f"tot={score:.2f}",
             file=sys.stderr,
         )
 

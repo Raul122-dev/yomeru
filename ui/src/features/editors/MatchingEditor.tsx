@@ -47,7 +47,7 @@ interface EditableMatch {
   match_type: "direct" | "fallback" | "manual";
   dialogue_text: string;
   region: { x1: number; y1: number; x2: number; y2: number; label: string };
-  scores?: { spatial: number; text: number; position: number; total: number };
+  scores?: { spatial: number; text: number; total: number };
   ocr_text?: string | null;
 }
 

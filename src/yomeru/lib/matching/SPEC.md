@@ -7,13 +7,12 @@ Assign each dialogue entry to its corresponding detected text region.
 | Field              | Type               | Description                                                                   |
 | ------------------ | ------------------ | ----------------------------------------------------------------------------- |
 | `image`            | `PIL.Image.Image`  | Full page image (used for OCR on regions)                                     |
-| `dialogues`        | `list[dict]`       | VLM-parsed dialogue dicts (with `region_id`, `bbox`, `text`, `text_position`) |
+| `dialogues`        | `list[dict]`       | VLM-parsed dialogue dicts (with `region_id`, `bbox`, `text`) |
 | `regions`          | `list[TextRegion]` | Detected regions from the detection stage                                     |
 | `saved_detections` | `dict[int, dict]`  | `{region_id: region_dict}` from `page_detections.json`                        |
 | `source_language`  | `str`              | Source language for OCR (e.g. `"Japanese"`, `"English"`)                      |
 | `ocr_weight`       | `float`            | Weight for OCR text similarity score (0–1)                                    |
 | `spatial_weight`   | `float`            | Weight for bbox spatial overlap score (0–1)                                   |
-| `position_weight`  | `float`            | Weight for 9-zone position hint score (0–1)                                   |
 | `min_score`        | `float`            | Reject matches below this combined score                                      |
 
 ## Output
@@ -26,7 +25,6 @@ Assign each dialogue entry to its corresponding detected text region.
 | `region`         | `TextRegion` | The matched region                 |
 | `spatial_score`  | `float`      | Overlap-based score component      |
 | `text_score`     | `float`      | OCR trigram similarity component   |
-| `position_score` | `float`      | 9-zone position hint component     |
 | `total_score`    | `float`      | Weighted sum of the above          |
 | `ocr_text`       | `str`        | OCR text extracted from the region |
 

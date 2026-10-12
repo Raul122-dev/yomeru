@@ -12,7 +12,7 @@ Phase order: detection → analysis → matching → inpainting → rendering
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, Callable
+from typing import Any, Literal, Callable
 
 PhaseStatus = Literal["pending", "running", "done", "failed", "partial"]
 PhaseName = Literal["detection", "analysis", "matching", "inpainting", "rendering"]

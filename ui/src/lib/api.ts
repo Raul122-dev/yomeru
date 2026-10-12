@@ -263,7 +263,7 @@ export interface AlgorithmMatchResult {
     region_id: number | null;
     region_label: string | null;
     region_bbox: [number, number, number, number];
-    scores: { spatial: number; text: number; position: number; total: number };
+    scores: { spatial: number; text: number; total: number };
     ocr_text: string | null;
     vlm_region_id: number | null;
     agrees_with_vlm: boolean;
