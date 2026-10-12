@@ -138,6 +138,7 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
     all_layouts: list[tuple] = []
     events: list[dict] = []
     layout_event: list[dict] = []  # parallel to all_layouts
+    container_owner: dict[tuple, int] = {}
 
     def skip_event(dlg_i: int, m: dict, reason: str, text: str = "") -> None:
         events.append({"dialogue_index": dlg_i, "region_id": m.get("region_id"),
@@ -399,15 +400,34 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
                 from yomeru.lib.rendering.angle_detect import detect_text_angle
                 text_angle = detect_text_angle(original_img, text_bbox)
 
+            # One dialogue per bubble container: two matches resolving to the
+            # same container used to be drawn on top of each other. Keep the
+            # likelier one (not an SFX, longer text); the other is reported.
+            prev = container_owner.get(bubble_bbox) if not is_free else None
+            if prev is not None:
+                pev = layout_event[prev]
+                mine = (bubble_type != "sfx", len(clean_text))
+                theirs = (pev["bubble_type"] != "sfx", len(pev["text"]))
+                if mine <= theirs:
+                    skip_event(dlg_i, m, "same_container", text)
+                    continue
+                pev.update(status="skip", skip_reason="same_container")
+                all_layouts[prev] = None
             all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, lang_code_for_this_match))
+            if not is_free:
+                container_owner[bubble_bbox] = len(all_layouts) - 1
             ev = {"dialogue_index": dlg_i, "region_id": m.get("region_id"), "status": "ok",
                   "text": text, "font_style": style, "tone": tone, "bubble_type": bubble_type,
-                  "bbox": list(bubble_bbox), "box_size": [bubble_w, bubble_h],
+                  "bbox": list(bubble_bbox), "box_size": [bubble_w, bubble_h], "free": is_free,
                   "size_fixed": bool(size_override)}
             events.append(ev)
             layout_event.append(ev)
         else:
             skip_event(dlg_i, m, "no_fit", text)
+
+    keep = [k for k, lay in enumerate(all_layouts) if lay is not None]
+    all_layouts = [all_layouts[k] for k in keep]
+    layout_event = [layout_event[k] for k in keep]
 
     # ── Font consistency: normalize sizes toward page median ─────────────────
     if len(all_layouts) > 2:

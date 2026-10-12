@@ -82,3 +82,27 @@ def test_hyphenation_uses_the_drawn_language(run):
     finally:
         mp.undo()
     assert seen and set(seen) == {"es"}
+
+
+def test_two_dialogues_never_share_a_bubble(tmp_path, monkeypatch):
+    """Two matches resolving to the same container were drawn on top of each
+    other (Bocchi p2: drummer + bassist text in one box; Chainsaw Man p2:
+    'MATAR A UN DEMONIO' over 'GRRRR'). One per container; the other is
+    reported as skipped 'same_container'."""
+    src = GOLDEN.parent.parent / "zz_e2e_test" / "input"
+    if not src.exists():
+        pytest.skip("golden zz_e2e_test not captured")
+    import yomeru.core.runs as runs
+    monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
+    shutil.copytree(src, tmp_path / "zz_e2e_test")
+    r = runs.Run.load("zz_e2e_test")
+    assert r is not None
+    from yomeru.phases.runner import _get_phase_fn
+    from yomeru.api.routes.phases import _phase_options
+    for phase in ("matching", "inpainting"):
+        assert _get_phase_fn(phase)(r, _phase_options(r, phase)).status == "done"
+    from yomeru.lib.rendering.scanline_engine import render_page
+    ev = render_page(r, 2).events
+    boxes = [tuple(e["bbox"]) for e in ev if e["status"] == "ok" and not e["free"]]
+    assert len(boxes) == len(set(boxes))
+    assert any(e.get("skip_reason") == "same_container" for e in ev)
