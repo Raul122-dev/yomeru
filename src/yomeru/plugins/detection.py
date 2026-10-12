@@ -29,9 +29,10 @@ class OgkaluBackend:
 
     def detect(self, image: Image.Image, threshold: float) -> list[dict]:
         """Regions as dicts (x1..y2, label, score) above `threshold`, in model order."""
+        # The threshold must reach the model's post-processing: it used to be
+        # called with its default 0.5, so settings below 0.5 never had an effect.
         return [
             {"x1": r.x1, "y1": r.y1, "x2": r.x2, "y2": r.y2, "label": r.label, "score": r.score}
-            for r in self.detector.detect(image)
-            if r.score >= threshold
+            for r in self.detector.detect(image, threshold=threshold)
         ]
 

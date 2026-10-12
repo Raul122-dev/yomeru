@@ -31,3 +31,23 @@ def test_backend_instances_are_cached_per_options():
     _, a = get_backend("inpainting", "classic", {"free_text": "opencv"})
     _, b = get_backend("inpainting", "classic", {"free_text": "opencv"})
     assert a is b
+
+
+def test_detection_threshold_reaches_the_model(monkeypatch):
+    """B-ARQ-1: the setting was applied after ogkalu's own 0.5 cut, so anything
+    below 0.5 never had an effect. The threshold must be passed to the model."""
+    from yomeru.lib.detection import TextRegion
+    from yomeru.lib.detection.ogkalu import OgkaluDetector
+
+    seen = {}
+
+    def fake_detect(self, image, threshold=0.5):
+        seen["threshold"] = threshold
+        return [TextRegion(1, 1, 5, 5, "text_free", 0.45)] if threshold <= 0.45 else []
+
+    monkeypatch.setattr(OgkaluDetector, "detect", fake_detect)
+    from PIL import Image
+    _, backend = get_backend("detection", "ogkalu")
+    out = backend.detect(Image.new("RGB", (10, 10)), threshold=0.4)
+    assert seen["threshold"] == 0.4
+    assert [r["score"] for r in out] == [0.45]
