@@ -116,9 +116,10 @@ def _execute(work: Path, run_id: str) -> dict:
         for log in sorted(dbg.glob("p*_render_log.json")):
             p = log.name[1:3]
             data = json.loads(log.read_text())
-            out["matches"][p] = [
-                (m["dialogue_index"], m["region_id"], m["match_type"]) for m in data["s3_matching"]["matches"]
-            ]
+            # Assignment set (order of the log list is not behaviour)
+            out["matches"][p] = sorted(
+                [m["dialogue_index"], m["region_id"], m["match_type"]] for m in data["s3_matching"]["matches"]
+            )
             out["inpaint"][p] = _px(dbg / f"p{p}_s4_inpainted.jpg")
             out["render"][p] = _px(dbg / f"p{p}_scanline_production.jpg")
         return out
@@ -175,7 +176,7 @@ def check() -> int:
         exp = g / "expected"
         if json.loads(json.dumps(_strip_scores(out["detections"]))) != json.loads((exp / "detections.json").read_text()):
             failures.append(f"{rid}: detections differ")
-        exp_matches = json.loads((exp / "matches.json").read_text())
+        exp_matches = {k: sorted(v) for k, v in json.loads((exp / "matches.json").read_text()).items()}
         got_matches = json.loads(json.dumps(out["matches"]))
         if got_matches != exp_matches:
             failures.append(f"{rid}: matches differ\n   expected {exp_matches}\n   got      {got_matches}")

@@ -106,6 +106,7 @@ async def create_run(
         if ext not in IMAGE_EXTS:
             continue
         stem = re.sub(r"[^\w.-]+", "_", stem).strip("._") or "page"
+        stem = re.sub(r"^\d{3}_", "", stem) or "page"  # re-uploaded pages already carry NNN_
         saved += 1
         dest = safe_child(run.pages_dir(), f"{saved:03d}_{stem[:80]}{ext}")
         with open(dest, "wb") as out:

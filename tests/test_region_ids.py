@@ -148,3 +148,19 @@ def test_reading_order_fallback_does_not_grab_far_regions(client, monkeypatch):
     log = json.loads((out / "typeset" / "debug" / "p01_render_log.json").read_text())
     assert log["s3_matching"]["matches"] == []
     assert [o["region_id"] for o in log["s3_matching"]["orphaned"]] == [1]
+
+
+
+def test_region_id_pointing_at_a_bubble_maps_to_its_text_region():
+    """The VLM sometimes answers with the container's id. The dialogue must
+    land on the text_bubble inside, never on the container (overlapping text)."""
+    from yomeru.phases.matching import _text_region_of
+    dets = {
+        9: {"id": 9, "label": "bubble", "x1": 612, "y1": 579, "x2": 756, "y2": 760},
+        17: {"id": 17, "label": "text_bubble", "x1": 612, "y1": 623, "x2": 742, "y2": 720},
+        3: {"id": 3, "label": "text_bubble", "x1": 10, "y1": 10, "x2": 50, "y2": 50},
+        5: {"id": 5, "label": "bubble", "x1": 900, "y1": 900, "x2": 950, "y2": 950},
+    }
+    assert _text_region_of(9, dets) == 17
+    assert _text_region_of(3, dets) == 3
+    assert _text_region_of(5, dets) is None   # empty container → fallback path

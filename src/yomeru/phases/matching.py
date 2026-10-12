@@ -86,26 +86,39 @@ def run(
             unresolved: list[int] = []
             used_region_ids: set[int] = set()
 
+            # Two passes: ids that point at a text region claim first; ids that
+            # point at a bubble container then take the text region inside it
+            # (typesetting into the container drew over that region's own
+            # dialogue) — unless a direct claim already owns it, in which case
+            # the container itself is kept, as before.
+            def claim(i: int, rid_int: int) -> None:
+                used_region_ids.add(rid_int)
+                matches[i] = MatchResult(
+                    dialogue_index=i, region=_region_from_det(page_dets[rid_int], img_w, img_h),
+                    spatial_score=1.0, text_score=1.0, total_score=1.0,
+                )
+
+            via_container: list[tuple[int, int]] = []
             for i, dlg in enumerate(dialogues):
                 if dlg.get("skip"):
                     continue
                 rid = dlg.get("region_id")
-                if rid is not None and int(rid) in page_dets:
-                    rid_int = int(rid)
-                    # Prevent duplicate: same region assigned to multiple dialogues
-                    if rid_int in used_region_ids:
-                        unresolved.append(i)
-                        continue
-                    used_region_ids.add(rid_int)
-                    det = page_dets[rid_int]
-                    region = _region_from_det(det, img_w, img_h)
-                    matches[i] = MatchResult(
-                        dialogue_index=i, region=region,
-                        spatial_score=1.0, text_score=1.0,
-                        total_score=1.0,
-                    )
-                else:
+                if rid is None or int(rid) not in page_dets:
                     unresolved.append(i)
+                elif not is_text(page_dets[int(rid)].get("label")):
+                    via_container.append((i, int(rid)))
+                elif int(rid) in used_region_ids:
+                    unresolved.append(i)  # same region claimed twice
+                else:
+                    claim(i, int(rid))
+            for i, container in via_container:
+                inner = _text_region_of(container, page_dets)
+                target = inner if inner is not None and inner not in used_region_ids else container
+                if target in used_region_ids:
+                    unresolved.append(i)
+                else:
+                    claim(i, target)
+            unresolved.sort()
 
             print(f"    [matching] after Step 1: {len(matches)} matches, {len(unresolved)} unresolved", file=sys.stderr)
             if unresolved:
@@ -273,6 +286,26 @@ def run(
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _text_region_of(rid: int, page_dets: dict[int, dict]) -> int | None:
+    """`rid` itself if it is a text region; for a bubble container, the text
+    region whose centre lies inside it (largest overlap); None if it has none."""
+    det = page_dets[rid]
+    if is_text(det.get("label")):
+        return rid
+    best, best_area = None, 0
+    for tid, t in page_dets.items():
+        if not is_text(t.get("label")):
+            continue
+        cx, cy = (t["x1"] + t["x2"]) / 2, (t["y1"] + t["y2"]) / 2
+        if not (det["x1"] <= cx <= det["x2"] and det["y1"] <= cy <= det["y2"]):
+            continue
+        ix = max(0, min(det["x2"], t["x2"]) - max(det["x1"], t["x1"]))
+        iy = max(0, min(det["y2"], t["y2"]) - max(det["y1"], t["y1"]))
+        if ix * iy > best_area:
+            best, best_area = tid, ix * iy
+    return best
+
 
 def _right_to_left(comic_format: str, source_lang: str) -> bool:
     """Reading direction: the format decides (manga RTL; manhwa/manhua/comic
