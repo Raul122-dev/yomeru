@@ -20,7 +20,8 @@ def detect_text_angle(
     Detect the rotation angle of text in a region.
 
     Uses centroid line-fitting on text pixels for robust angle detection.
-    Returns angle in degrees (positive = clockwise tilt, negative = counter-clockwise).
+    Returns angle in degrees, counter-clockwise positive (text rising to the right),
+    i.e. PIL's Image.rotate convention.
     Only returns non-zero for significant rotations (>3°).
     """
     x1, y1, x2, y2 = bbox

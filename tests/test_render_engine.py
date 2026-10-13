@@ -151,3 +151,25 @@ def test_font_search_takes_the_largest_size_that_fits():
     assert got[2] == ["x", "y"]
     # nothing fits → None (caller falls back)
     assert largest_fitting_layout([30], [0.9], lambda s, wf: ("f", ["a"] * 9, lh), usable_h=100) is None
+
+
+
+@pytest.mark.parametrize("rot", [15, -15])
+def test_free_text_rotation_follows_the_detected_tilt(rot):
+    """R1: detect_text_angle and the engine's rotate() disagreed on the sign:
+    text rising to the right was redrawn falling to the right."""
+    from PIL import ImageDraw
+    from yomeru.lib.rendering.angle_detect import detect_text_angle
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.scanline import PositionedLine
+    from yomeru.lib.rendering.scanline_engine import _render_scanline_rotated
+    font = _get_font("bold", 40)
+    src = Image.new("RGB", (600, 300), "white")
+    ImageDraw.Draw(src).text((60, 120), "HELLO WORLD TEXT", fill="black", font=font)
+    tilted = src.rotate(rot, fillcolor="white")
+    angle = detect_text_angle(tilted, (0, 0, 600, 300))
+    out = Image.new("RGB", (600, 300), "white")
+    lines = [PositionedLine(text="HELLO WORLD TEXT", x=60, y=120, width=480)]
+    _render_scanline_rotated(ImageDraw.Draw(out), out, lines, font, 40, (0, 0, 0), None, 0, angle, (0, 0, 600, 300))
+    redetected = detect_text_angle(out, (0, 0, 600, 300))
+    assert redetected * rot > 0, (rot, angle, redetected)

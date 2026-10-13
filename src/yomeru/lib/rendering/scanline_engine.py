@@ -32,6 +32,7 @@ from yomeru.lib.rendering.scanline import (
 )
 from yomeru.lib.rendering.text_layout import (
     measure_line_height, measure_width, LANG_MAP, extract_embedded_breaks, wrap_text,
+    is_cjk_text,
 )
 
 
@@ -280,8 +281,11 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
         horiz_max_font = max(8, bubble_w // max(len(max(words, key=len)) if words else 1, 1))
         vert_potential_font = min(bubble_w - 10, bubble_h // max(char_count, 1) - 2) if char_count > 0 else 0
 
+        # Stacking one glyph per line only reads naturally in CJK scripts; Latin
+        # text became '¡/N/O/!' columns.
         use_vertical = (
-            is_short_text
+            is_cjk_text(clean_text)
+            and is_short_text
             and vert_potential_font > horiz_max_font * 1.5  # vertical gives ≥50% larger font
             and vert_potential_font >= 12  # minimum legible size
             and bubble_h > bubble_w * 1.8
@@ -780,7 +784,10 @@ def _render_scanline_rotated(draw, base_img, positioned, font, size, text_color,
             cdraw.text((local_x, local_y), pl.text, font=font, fill=text_color + (255,))
 
     # Rotate the canvas
-    rotated = canvas.rotate(-angle, expand=True, resample=Image.BICUBIC)
+    # detect_text_angle returns degrees counter-clockwise (text rising to the
+    # right is positive), which is PIL's rotate convention: same sign. It used
+    # to be negated, so tilted free text was drawn tilted the other way.
+    rotated = canvas.rotate(angle, expand=True, resample=Image.BICUBIC)
 
     # Compute paste position (center rotated block on original text center)
     cx = (min_x + max_x) // 2
