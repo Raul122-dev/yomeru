@@ -126,12 +126,26 @@ export interface TypesetStatus {
 }
 
 /** A registered technique of a phase (GET /config/backends/{phase}). */
+export interface BackendOptionSchema {
+  type?: "string" | "number" | "integer" | "boolean";
+  enum?: string[];
+  default?: unknown;
+  title?: string;
+  description?: string;
+  minimum?: number;
+  maximum?: number;
+  json_schema_extra_hidden?: boolean;
+}
+
 export interface BackendInfo {
   name: string;
   description: string;
   needs_gpu: boolean;
   version: string;
-  options: { properties?: Record<string, { enum?: string[]; default?: unknown; title?: string; description?: string }> };
+  schema_version: number;
+  compatible: boolean;
+  defaults: Record<string, unknown>;
+  options: { properties?: Record<string, BackendOptionSchema> };
 }
 
 export interface DetectionRegion {

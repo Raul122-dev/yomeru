@@ -26,6 +26,11 @@ from pydantic import BaseModel
 
 PhaseName = Literal["detection", "analysis", "matching", "inpainting", "rendering"]
 
+# Version of the contract between yomeru and its plugins (core/contracts +
+# this registry). A plugin declares the range it supports in `api`; bump the
+# major when a contract changes incompatibly.
+PLUGIN_API = 1
+
 # Modules that register the built-in backends (imported lazily, on first lookup)
 _BUILTINS: dict[str, list[str]] = {
     "detection": ["yomeru.plugins.detection"],
@@ -43,8 +48,26 @@ class BackendSpec:
     factory: Callable[[BaseModel], Any]
     options_model: type[BaseModel]
     needs_gpu: bool
-    version: str
+    version: str                       # the plugin's own version (shown, stored in run snapshots)
     description: str
+    schema_version: int = 1            # version of its options model
+    migrate: Callable[[int, dict], dict] | None = None  # (from_version, options) -> options of from_version+1
+    api: tuple[int, int] = (1, 2)      # supported PLUGIN_API range [min, max)
+
+    @property
+    def compatible(self) -> bool:
+        return self.api[0] <= PLUGIN_API < self.api[1]
+
+    def upgrade(self, options: dict, from_version: int) -> dict:
+        """Stored options of an older schema version → current, step by step."""
+        if from_version > self.schema_version:
+            raise ValueError(f"{self.phase} backend '{self.name}' options are from a newer version "
+                             f"({from_version} > {self.schema_version}); update the plugin")
+        for v in range(from_version, self.schema_version):
+            if self.migrate is None:
+                raise ValueError(f"{self.phase} backend '{self.name}' has no migration from v{v}")
+            options = self.migrate(v, dict(options))
+        return options
 
 
 _REGISTRY: dict[str, dict[str, BackendSpec]] = {}
@@ -57,13 +80,21 @@ class UnknownBackend(ValueError):
 
 
 def register(phase: PhaseName, name: str, *, options: type[BaseModel], needs_gpu: bool = False,
-             version: str = "1", description: str = ""):
-    """Class/factory decorator: make a backend selectable as `<phase>.backend = name`."""
+             version: str = "1.0.0", description: str = "", schema_version: int = 1,
+             migrate: Callable[[int, dict], dict] | None = None, api: tuple[int, int] = (1, 2)):
+    """Class/factory decorator: make a backend selectable as `<phase>.backend = name`.
+
+    schema_version/migrate: bump `schema_version` when the options model changes
+    incompatibly and give `migrate(from_version, options)` that upgrades one
+    step; stored settings and run snapshots carry the version they were saved with.
+    api: range of PLUGIN_API this backend works with; outside it the backend is
+    listed as incompatible and cannot be selected."""
     def deco(factory):
         _REGISTRY.setdefault(phase, {})[name] = BackendSpec(
             phase=phase, name=name, factory=factory, options_model=options,
             needs_gpu=needs_gpu, version=version,
             description=description or (factory.__doc__ or "").strip().split("\n")[0],
+            schema_version=schema_version, migrate=migrate, api=api,
         )
         return factory
     return deco
@@ -89,6 +120,8 @@ def get_spec(phase: PhaseName, name: str) -> BackendSpec:
 def get_backend(phase: PhaseName, name: str, options: dict | None = None) -> tuple[BackendSpec, Any]:
     """Validated, cached backend instance (one per phase/name/options)."""
     spec = get_spec(phase, name)
+    if not spec.compatible:
+        raise UnknownBackend(f"{phase} backend '{name}' needs plugin API {spec.api}, yomeru has {PLUGIN_API}")
     opts = spec.options_model.model_validate(options or {})
     key = (phase, name, opts.model_dump_json())
     with _lock:
@@ -101,6 +134,8 @@ def list_backends(phase: PhaseName) -> list[dict]:
     """For the settings UI: name, description and the options schema."""
     return [
         {"name": s.name, "description": s.description, "needs_gpu": s.needs_gpu,
-         "version": s.version, "options": s.options_model.model_json_schema()}
+         "version": s.version, "schema_version": s.schema_version, "compatible": s.compatible,
+         "options": s.options_model.model_json_schema(),
+         "defaults": s.options_model().model_dump()}
         for s in specs(phase).values()
     ]

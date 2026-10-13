@@ -24,7 +24,7 @@ class CascadeOptions(BaseModel):
                               description="How much the text read by OCR counts")
     spatial_weight: float = Field(default=0.4, ge=0, le=1, title="Spatial weight",
                                   description="How much the box position counts")
-    min_score: float = Field(default=0.05, ge=0, le=1, title="Minimum score",
+    min_score: float = Field(default=0.05, ge=0, le=0.5, title="Minimum score",
                              description="Matches below this are discarded")
 
 

@@ -15,6 +15,7 @@ from yomeru.core.settings import (
     Preset,
     Protocol,
     _deep_merge,
+    require_available,
     is_unchanged_secret,
     new_connection_id,
     public_config,
@@ -109,7 +110,7 @@ def update_settings(patch: dict[str, Any]):
     """Deep-merge a partial PipelineSettings into the global settings."""
     def fn(cfg: AppConfig):
         merged = _deep_merge(cfg.settings.model_dump(), patch)
-        cfg.settings = PipelineSettings.model_validate(merged)
+        cfg.settings = require_available(PipelineSettings.model_validate(merged))
     try:
         return public_config(store.update(fn))
     except ValueError as e:
@@ -126,8 +127,11 @@ class PresetIn(BaseModel):
 @router.post("/presets", status_code=201)
 def create_preset(body: PresetIn):
     def fn(cfg: AppConfig):
-        cfg.presets.append(Preset(name=body.name, settings=body.settings or cfg.settings))
-    return public_config(store.update(fn))
+        cfg.presets.append(Preset(name=body.name, settings=require_available(body.settings or cfg.settings)))
+    try:
+        return public_config(store.update(fn))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 @router.put("/presets/{pid}")
@@ -138,8 +142,11 @@ def update_preset(pid: str, body: PresetIn):
             raise HTTPException(404, f"preset {pid!r} not found")
         preset.name = body.name
         if body.settings is not None:
-            preset.settings = body.settings
-    return public_config(store.update(fn))
+            preset.settings = require_available(body.settings)
+    try:
+        return public_config(store.update(fn))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 @router.delete("/presets/{pid}")

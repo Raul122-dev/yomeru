@@ -21,7 +21,7 @@ import sys
 import threading
 import time
 import uuid
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -70,31 +70,67 @@ class LanguageSettings(BaseModel):
     comic_format: str = "auto"
 
 
-class DetectionSettings(BaseModel):
+class PhaseBackend(BaseModel):
+    """A phase's technique: a registered backend (yomeru/plugins) + its options.
+
+    Stored as an envelope {backend, options, schema_version, plugin_version}:
+    - options are validated by the backend's own pydantic model (defaults fill
+      new keys) after upgrading older `schema_version`s with its `migrate`;
+    - plugin_version records which build produced a run (shown, not enforced);
+    - a backend that is not installed (third-party removed) keeps its options
+      untouched and is flagged `available=False` instead of failing the whole
+      config: old runs stay viewable; running that phase reports it.
+    """
+    _phase: ClassVar[str] = ""
+    _default: ClassVar[str] = ""
+
+    backend: str = ""
+    options: dict = Field(default_factory=dict)
+    schema_version: int = 0           # 0 = saved before versioning (treated as 1)
+    plugin_version: str = ""
+    available: bool = Field(default=True, exclude=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_backend(cls, data):
+        if isinstance(data, dict) and not data.get("backend"):
+            data = {**data, "backend": cls._default}
+        return data
+
+    @model_validator(mode="after")
+    def _resolve(self):
+        from yomeru.plugins import UnknownBackend, get_spec
+        try:
+            spec = get_spec(self._phase, self.backend)
+        except UnknownBackend:
+            if not self.backend:
+                raise
+            self.available = False   # keep stored options as they are
+            return self
+        opts = spec.upgrade(self.options, max(1, self.schema_version))
+        self.options = spec.options_model.model_validate(opts).model_dump()
+        self.schema_version = spec.schema_version
+        self.plugin_version = spec.version
+        return self
+
+
+class DetectionSettings(PhaseBackend):
     """Detector = a registered backend. It must emit the core/labels vocabulary
     (bubble / text_bubble / text_free): every later phase is keyed on it."""
-    backend: str = "ogkalu"
-    options: dict = Field(default_factory=dict)
+    _phase: ClassVar[str] = "detection"
+    _default: ClassVar[str] = "ogkalu"
     threshold: float = Field(default=0.4, ge=0.05, le=0.95)
 
     @field_validator("backend", mode="before")
     @classmethod
     def _legacy(cls, v: object) -> object:
         # "auto" / retired "ctd" in old configs and runs → the default detector
-        return "ogkalu" if v in (None, "auto", "ctd") else v
-
-    @model_validator(mode="after")
-    def _known_backend(self):
-        from yomeru.plugins import get_spec
-        spec = get_spec("detection", self.backend)
-        self.options = spec.options_model.model_validate(self.options).model_dump()
-        return self
+        return "ogkalu" if v in (None, "", "auto", "ctd") else v
 
 
-class MatchingSettings(BaseModel):
-    """Matching technique = a registered backend (yomeru/plugins) + its options."""
-    backend: str = "cascade"
-    options: dict = Field(default_factory=dict)
+class MatchingSettings(PhaseBackend):
+    _phase: ClassVar[str] = "matching"
+    _default: ClassVar[str] = "cascade"
 
     @model_validator(mode="before")
     @classmethod
@@ -106,18 +142,10 @@ class MatchingSettings(BaseModel):
             data = {"backend": "cascade", "options": knobs}
         return data
 
-    @model_validator(mode="after")
-    def _known_backend(self):
-        from yomeru.plugins import get_spec
-        spec = get_spec("matching", self.backend)  # raises UnknownBackend
-        self.options = spec.options_model.model_validate(self.options).model_dump()
-        return self
 
-
-class InpaintingSettings(BaseModel):
-    """Inpainting technique = a registered backend (yomeru/plugins) + its options."""
-    backend: str = "classic"
-    options: dict = Field(default_factory=dict)
+class InpaintingSettings(PhaseBackend):
+    _phase: ClassVar[str] = "inpainting"
+    _default: ClassVar[str] = "classic"
 
     @model_validator(mode="before")
     @classmethod
@@ -129,40 +157,17 @@ class InpaintingSettings(BaseModel):
                     "options": {"free_text": "opencv" if data["backend"] == "opencv" else "lama"}}
         return data
 
-    @model_validator(mode="after")
-    def _known_backend(self):
-        from yomeru.plugins import get_spec
-        spec = get_spec("inpainting", self.backend)  # raises UnknownBackend
-        self.options = spec.options_model.model_validate(self.options).model_dump()
-        return self
 
-
-class RenderingSettings(BaseModel):
-    """Rendering technique = a registered backend (yomeru/plugins) + its options."""
+class RenderingSettings(PhaseBackend):
+    _phase: ClassVar[str] = "rendering"
+    _default: ClassVar[str] = "scanline"
     use_translation: bool = True
-    backend: str = "scanline"
-    options: dict = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _known_backend(self):
-        from yomeru.plugins import get_spec
-        spec = get_spec("rendering", self.backend)  # raises UnknownBackend
-        self.options = spec.options_model.model_validate(self.options).model_dump()
-        return self
 
 
-class AnalysisSettings(BaseModel):
-    """Analysis technique = a registered backend (yomeru/plugins) + its options.
-    The model it calls is `PipelineSettings.analysis_model`."""
-    backend: str = "vlm"
-    options: dict = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _known_backend(self):
-        from yomeru.plugins import get_spec
-        spec = get_spec("analysis", self.backend)  # raises UnknownBackend
-        self.options = spec.options_model.model_validate(self.options).model_dump()
-        return self
+class AnalysisSettings(PhaseBackend):
+    """The model it calls is `PipelineSettings.analysis_model`."""
+    _phase: ClassVar[str] = "analysis"
+    _default: ClassVar[str] = "vlm"
 
 
 class PipelineSettings(BaseModel):
@@ -175,6 +180,18 @@ class PipelineSettings(BaseModel):
     matching: MatchingSettings = Field(default_factory=MatchingSettings)
     inpainting: InpaintingSettings = Field(default_factory=InpaintingSettings)
     rendering: RenderingSettings = Field(default_factory=RenderingSettings)
+
+
+PHASE_FIELDS = ("analysis", "detection", "matching", "inpainting", "rendering")
+
+
+def require_available(settings: "PipelineSettings") -> "PipelineSettings":
+    """New defaults/presets may only pick installed backends (old run snapshots
+    may reference removed ones and still load)."""
+    missing = [f"{p}: '{getattr(settings, p).backend}'" for p in PHASE_FIELDS if not getattr(settings, p).available]
+    if missing:
+        raise ValueError("backend not installed — " + ", ".join(missing))
+    return settings
 
 
 class Preset(BaseModel):
