@@ -136,9 +136,18 @@ def test_render_overrides_round_trip_and_explicit_unskip(client):
 
 def test_font_search_takes_the_largest_size_that_fits():
     """R8: a size that fits (fill <= 0.95) is never discarded for a smaller one
-    to hit a 0.35-0.85 fill band ('¿CUÁNTO FUE ESO DE NUEVO?' fit at 21 but
-    ended at 18)."""
-    import inspect
-    from yomeru.lib.rendering import scanline_engine as eng
-    src = inspect.getsource(eng.render_page)
-    assert "min_fill" not in src and "max_fill" not in src
+    to hit a 0.35-0.85 fill band ('¿CUÁNTO FUE ESO DE NUEVO?' fit at 21 with
+    fill 0.90 and ended at 18)."""
+    from yomeru.lib.rendering.scanline_engine import largest_fitting_layout
+    lh = 20
+    # size 21 → 3 lines (fill 0.90); size 18 → 2 lines (fill 0.60, inside the old band)
+    layouts = {(24, 0.9): None, (21, 0.9): ["a", "b", "c"], (18, 0.9): ["a", "b"]}
+    got = largest_fitting_layout([24, 21, 18], [0.9, 0.7], lambda s, wf: (
+        ("font", layouts[(s, wf)], lh) if layouts.get((s, wf)) else None), usable_h=66)
+    assert got is not None and got[0] == 21
+    # at the same size the widest factor (fewest lines) wins
+    two = {(30, 0.9): ["x", "y"], (30, 0.7): ["x", "y", "z"]}
+    got = largest_fitting_layout([30], [0.9, 0.7], lambda s, wf: ("f", two[(s, wf)], lh), usable_h=200)
+    assert got[2] == ["x", "y"]
+    # nothing fits → None (caller falls back)
+    assert largest_fitting_layout([30], [0.9], lambda s, wf: ("f", ["a"] * 9, lh), usable_h=100) is None

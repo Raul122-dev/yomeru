@@ -66,6 +66,22 @@ def input_paths(run: Run, page_num: int) -> list[Path]:
     ]
 
 
+def largest_fitting_layout(sizes, width_factors, try_layout, usable_h: int, max_fill: float = 0.95):
+    """First (size, font, lines) — sizes descending, widest factor first — whose
+    text block fits in `max_fill` of the usable height. `try_layout(size, wf)`
+    returns (font, lines, line_height) or None. Legibility first: a larger size
+    that fits always wins; fewer, wider lines win at equal size."""
+    for size in sizes:
+        for wf in width_factors:
+            got = try_layout(size, wf)
+            if got is None:
+                continue
+            font, lines, lh = got
+            if len(lines) * lh / usable_h <= max_fill:
+                return (size, font, lines)
+    return None
+
+
 def is_cached(run: Run, page_num: int) -> bool:
     preview, production = output_paths(run, page_num)
     if not (preview.exists() and production.exists()):
@@ -341,21 +357,19 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
         # fails. The old search optimised for a vertical-fill band (0.35-0.85)
         # and discarded larger sizes that fit, giving small text with many breaks.
         if best_layout is None:
-            usable_h = max(1, bubble_h - scan_padding * 2)
-            for try_size in range(max_size, MIN_FONT, -3):
-                font = _get_font(style, try_size)
-                lh = measure_line_height(font, try_size)
-                for wf in width_factors:
-                    positioned = scanline_layout(
-                        original_img, bubble_bbox, clean_text, font, try_size,
-                        lang_code_for_this_match, padding=scan_padding, width_factor=wf,
-                        precomputed_contour=bubble_contours.get(bubble_bbox),
-                    )
-                    if positioned and len(positioned) * lh / usable_h <= 0.95:
-                        best_layout = (try_size, font, positioned)
-                        break
-                if best_layout is not None:
-                    break
+            def _try(size: int, wf: float):
+                font = _get_font(style, size)
+                pos = scanline_layout(
+                    original_img, bubble_bbox, clean_text, font, size,
+                    lang_code_for_this_match, padding=scan_padding, width_factor=wf,
+                    precomputed_contour=bubble_contours.get(bubble_bbox),
+                )
+                return (font, pos, measure_line_height(font, size)) if pos else None
+
+            best_layout = largest_fitting_layout(
+                range(max_size, MIN_FONT, -3), width_factors, _try,
+                usable_h=max(1, bubble_h - scan_padding * 2),
+            )
 
         # FALLBACK: if scanline failed, use simple bbox centered rendering
         if best_layout is None:
