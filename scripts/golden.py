@@ -120,8 +120,8 @@ def _execute(work: Path, run_id: str) -> dict:
             out["matches"][p] = sorted(
                 [m["dialogue_index"], m["region_id"], m["match_type"]] for m in data["s3_matching"]["matches"]
             )
-            out["inpaint"][p] = _px(dbg / f"p{p}_s4_inpainted.jpg")
-            out["render"][p] = _px(dbg / f"p{p}_scanline_production.jpg")
+            out["inpaint"][p] = _px(dbg / f"p{p}_s4_inpainted.png")
+            out["render"][p] = _px(dbg / f"p{p}_scanline_production.png")
         return out
     finally:
         runs.RUNS_DIR = original_runs_dir

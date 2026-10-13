@@ -173,3 +173,24 @@ def test_free_text_rotation_follows_the_detected_tilt(rot):
     _render_scanline_rotated(ImageDraw.Draw(out), out, lines, font, 40, (0, 0, 0), None, 0, angle, (0, 0, 600, 300))
     redetected = detect_text_angle(out, (0, 0, 600, 300))
     assert redetected * rot > 0, (rot, angle, redetected)
+
+
+
+def test_intermediates_are_lossless_with_legacy_fallback(tmp_path):
+    """I5: inpainted and production renders are PNG (the page went through JPEG
+    twice before the final copy); runs from before keep working via the .jpg."""
+    from types import SimpleNamespace
+    from PIL import Image as _I
+    from yomeru.core import artifacts
+    assert artifacts.S4_INPAINTED.endswith(".png") and artifacts.SCANLINE_PRODUCTION.endswith(".png")
+    run = SimpleNamespace(dir=tmp_path)
+    dbg = tmp_path / "output" / "typeset" / "debug"; dbg.mkdir(parents=True)
+    old = dbg / "p01_s4_inpainted.jpg"; _I.new("RGB", (4, 4)).save(old)
+    from unittest.mock import patch
+    with patch.object(artifacts, "debug_dir", lambda r: dbg):
+        assert artifacts.existing_page_artifact(run, 1, artifacts.S4_INPAINTED) == old
+        img = _I.new("RGB", (8, 8), (12, 200, 37))
+        new = artifacts.page_artifact(run, 1, artifacts.S4_INPAINTED)
+        artifacts.save_lossless(img, new)
+        assert artifacts.existing_page_artifact(run, 1, artifacts.S4_INPAINTED) == new
+        assert _I.open(new).getpixel((3, 3)) == (12, 200, 37)

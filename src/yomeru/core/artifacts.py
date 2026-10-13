@@ -36,10 +36,13 @@ MASK_REFINED = "mask_refined.png"
 MASK_CURRENT = "mask_current.png"
 RENDER_OVERRIDES = "render_overrides.json"
 S3_MATCHING = "s3_matching.jpg"
-S4_INPAINTED = "s4_inpainted.jpg"
+# Intermediates are lossless (PNG): the page used to go through JPEG twice
+# (inpainted q88, then render q90) before the final copy.
+S4_INPAINTED = "s4_inpainted.png"
 S4_MASK_DEBUG = "s4_mask_debug.jpg"
 SCANLINE_PREVIEW = "scanline_preview.jpg"
-SCANLINE_PRODUCTION = "scanline_production.jpg"
+SCANLINE_PRODUCTION = "scanline_production.png"
+_LEGACY_JPG = {S4_INPAINTED: "s4_inpainted.jpg"}  # runs made before the PNG switch
 ALGO_ONLY = "algo_only.jpg"
 
 _log_locks: dict[str, threading.Lock] = {}
@@ -74,6 +77,23 @@ def debug_dir(run: "Run", create: bool = False) -> Path:
 def page_artifact(run: "Run", page: int, name: str) -> Path:
     """Path of a per-page artifact: typeset/debug/pNN_<name>."""
     return debug_dir(run) / f"p{page:02d}_{name}"
+
+
+def existing_page_artifact(run: "Run", page: int, name: str) -> Path:
+    """Like page_artifact, falling back to the legacy JPEG name of old runs."""
+    p = page_artifact(run, page, name)
+    if not p.exists() and name in _LEGACY_JPG:
+        legacy = page_artifact(run, page, _LEGACY_JPG[name])
+        if legacy.exists():
+            return legacy
+    return p
+
+
+def save_lossless(img, path: Path) -> None:
+    """Atomic lossless save of an intermediate (fast PNG)."""
+    tmp = path.with_name(path.stem + ".tmp" + path.suffix)
+    img.convert("RGB").save(str(tmp), format="PNG", compress_level=1)
+    tmp.replace(path)
 
 
 # ── Effective inputs (user edits resolved) ────────────────────────────────────

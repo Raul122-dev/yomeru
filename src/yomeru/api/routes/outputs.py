@@ -106,6 +106,10 @@ def get_debug_image(run_id: str, filename: str, request: Request, w: int | None 
         path = safe_child(artifacts.debug_dir(run), filename)
     except ValueError:
         raise HTTPException(400, "invalid filename")
+    if not path.is_file() and path.suffix == ".png":
+        legacy = path.with_suffix(".jpg")  # runs made before intermediates went PNG
+        if legacy.is_file():
+            path = legacy
     if not path.is_file():
         raise HTTPException(404, "debug image not found")
     return serve_image(request, path, w)

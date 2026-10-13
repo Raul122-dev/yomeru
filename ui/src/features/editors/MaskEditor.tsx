@@ -80,9 +80,10 @@ export function MaskEditor({
   // Load background (original page image) and inpainted reference
   const pageUrl = editorImageUrl(pageImageUrl(runId, filename));
   const [bgImage] = useImage(pageUrl, "anonymous");
+  // Server falls back to the legacy .jpg name for runs made before the PNG switch
   const inpaintedUrl = editorImageUrl(debugImageUrl(
     runId,
-    `p${String(pageNum).padStart(2, "0")}_s4_inpainted.jpg`,
+    `p${String(pageNum).padStart(2, "0")}_s4_inpainted.png`,
   ));
   const [inpaintedImg] = useImage(inpaintedUrl, "anonymous");
   const pad = String(pageNum).padStart(2, "0");

@@ -6,7 +6,7 @@ Orchestrator only: the technique is a registered backend
 
 Input:  effective matches (render log + refined matches), skipped dialogues,
         the user's mask edit (pNN_mask_refined.png)
-Output: typeset/debug/pNN_s4_inpainted.jpg, pNN_mask_current.png,
+Output: typeset/debug/pNN_s4_inpainted.png, pNN_mask_current.png,
         pNN_s4_mask_debug.jpg, render_log.s4_inpainting
 """
 from __future__ import annotations
@@ -86,7 +86,8 @@ def run(
                     str(artifacts.page_artifact(run, page_num, artifacts.S4_MASK_DEBUG)), quality=90)
             # Starting point of the mask editor (auto + edits)
             Image.fromarray(res.mask).save(artifacts.page_artifact(run, page_num, artifacts.MASK_CURRENT))
-            res.image.save(str(artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED)), quality=88)
+            artifacts.save_lossless(res.image, artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED))
+            artifacts.page_artifact(run, page_num, "s4_inpainted.jpg").unlink(missing_ok=True)  # stale legacy copy
             artifacts.update_render_log(run, page_num, "s4_inpainting", res.stats)
 
             mask_pixels = res.stats.get("mask_pixels", 0)

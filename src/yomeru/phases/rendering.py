@@ -69,7 +69,7 @@ def run(
                     scan_file.unlink()
 
             # Check prerequisites
-            if not artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED).exists():
+            if not artifacts.existing_page_artifact(run, page_num, artifacts.S4_INPAINTED).exists():
                 on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No inpainted image"})
                 results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No inpainted image"))
                 continue
@@ -88,12 +88,12 @@ def run(
                 rendered = render_page(run, page_num, use_translation=use_translation)
             scanline_prod = rendered.production_path
 
-            import shutil
+            # The only lossy encode: final page in the source's format
             out_path = typeset_dir / page_path.name
-            if out_path.suffix.lower() in (".jpg", ".jpeg"):
-                shutil.copy2(str(scanline_prod), str(out_path))
-            else:
-                with Image.open(scanline_prod) as im:
+            with Image.open(scanline_prod) as im:
+                if out_path.suffix.lower() in (".jpg", ".jpeg"):
+                    im.convert("RGB").save(str(out_path), quality=95, subsampling=0)
+                else:
                     im.save(str(out_path))
             # The engine's own records: what was really drawn (size, lines, box)
             ok_count = sum(1 for e in rendered.events if e["status"] == "ok")

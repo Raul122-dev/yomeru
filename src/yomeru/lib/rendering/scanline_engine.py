@@ -59,7 +59,8 @@ def input_paths(run: Run, page_num: int) -> list[Path]:
     """Files whose change makes a cached render stale."""
     a = artifacts
     return [a.page_artifact(run, page_num, n) for n in
-            (a.S4_INPAINTED, a.RENDER_LOG, a.MATCHES_REFINED, a.RENDER_OVERRIDES)] + [
+            (a.RENDER_LOG, a.MATCHES_REFINED, a.RENDER_OVERRIDES)] + [
+        a.existing_page_artifact(run, page_num, a.S4_INPAINTED),
         run.active_analyses_file(),
         run.output_dir() / "edits.json",       # merged into the dialogues
         run.active_detections_file(),          # bubble containers
@@ -93,7 +94,7 @@ def is_cached(run: Run, page_num: int) -> bool:
 
 def render_page(run: Run, page_num: int, use_translation: bool | None = None) -> RenderOutput:
     """Render one page; writes preview + production images atomically."""
-    inpainted_path = artifacts.page_artifact(run, page_num, artifacts.S4_INPAINTED)
+    inpainted_path = artifacts.existing_page_artifact(run, page_num, artifacts.S4_INPAINTED)
     if not inpainted_path.exists():
         raise RenderInputMissing("No inpainted image for this page")
 
@@ -744,6 +745,9 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
 
 
 def _save_atomic(img: Image.Image, path: Path) -> None:
+    if path.suffix.lower() == ".png":
+        artifacts.save_lossless(img, path)
+        return
     tmp = path.with_name(path.stem + ".tmp" + path.suffix)
     img.save(str(tmp), quality=90)
     tmp.replace(path)
