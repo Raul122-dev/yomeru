@@ -158,3 +158,41 @@ def test_region_id_pointing_at_a_bubble_maps_to_its_text_region():
     assert _text_region_of(9, dets) == 17
     assert _text_region_of(3, dets) == 3
     assert _text_region_of(5, dets) is None   # empty container → fallback path
+
+
+
+def test_ocr_corrects_region_ids_shifted_along_a_chain(monkeypatch):
+    """The VLM can point each dialogue at the NEXT one's bubble (qwen3.5:9b on
+    Chainsaw Man p1; Gemini on Bocchi p2: the drummer's text was drawn in the
+    bassist's box and the drummer's box kept its English). OCR of the claimed
+    regions contradicts the ids → dialogues are reassigned by text. When OCR
+    agrees, nothing moves."""
+    from PIL import Image
+    from yomeru.core.contracts import MatchRequest
+    from yomeru.lib.matching import build_matcher
+    from yomeru.lib.matching.cascade import match_page
+
+    regions = {
+        1: {"id": 1, "x1": 0, "y1": 0, "x2": 100, "y2": 50, "label": "text_bubble", "score": 1},
+        2: {"id": 2, "x1": 0, "y1": 100, "x2": 100, "y2": 150, "label": "text_bubble", "score": 1},
+        3: {"id": 3, "x1": 0, "y1": 200, "x2": 100, "y2": 250, "label": "text_bubble", "score": 1},
+    }
+    printed = {(0, 0, 100, 50): "I SOLD ONE OF MY BALLS TOO.",
+               (0, 100, 100, 150): "HOW MUCH WAS THAT AGAIN?",
+               (0, 200, 100, 250): "100 GRAND WASN'T IT?"}
+    monkeypatch.setattr("yomeru.lib.matching.ocr.ocr_region", lambda img, bb, lang="auto": printed[tuple(bb)])
+    monkeypatch.setattr("yomeru.lib.matching.hungarian.ocr_region", lambda img, bb, *a, **k: printed[tuple(bb)])
+
+    def run(ids):
+        dlgs = [{"text": t, "region_id": r} for t, r in zip(
+            ["I SOLD ONE OF MY BALLS TOO.", "HOW MUCH WAS THAT AGAIN?", "100 GRAND WASN'T IT?"], ids)]
+        res = match_page(MatchRequest(image=Image.new("RGB", (100, 300)), detections=regions, dialogues=dlgs,
+                                      source_language="English", comic_format="manga"),
+                         build_matcher("hungarian"), 0.4, 0.4, 0.05)
+        return {i: (m.region.y1 // 100) + 1 for i, m in res.matches.items()}, [o["id"] for o in res.orphaned]
+
+    # shifted chain: D0 has no claim of its own region, D1→R1, D2→R2 ; R3 left orphaned
+    got, orphans = run([None, 1, 2])
+    assert got == {0: 1, 1: 2, 2: 3} and orphans == []
+    # VLM right → untouched
+    assert run([1, 2, 3]) == ({0: 1, 1: 2, 2: 3}, [])

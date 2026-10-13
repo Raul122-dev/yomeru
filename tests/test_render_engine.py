@@ -102,6 +102,16 @@ def test_two_dialogues_never_share_a_bubble(tmp_path, monkeypatch):
     from yomeru.api.routes.phases import _phase_options
     for phase in ("matching", "inpainting"):
         assert _get_phase_fn(phase)(r, _phase_options(r, phase)).status == "done"
+    # Matching now fixes Bocchi p2 upstream (OCR check of region ids), so force
+    # the original collision: point the drummer's match at the bassist's region.
+    from yomeru.core import artifacts
+    log = artifacts.load_render_log(r, 2)
+    ms = log["s3_matching"]["matches"]
+    drummer = next(m for m in ms if m["dialogue_text"].startswith("THE DRUMMER"))
+    bassist = next(m for m in ms if m["dialogue_text"].startswith("THE BASSIST"))
+    b = bassist["region"]   # a different box inside the bassist's container
+    drummer["region"] = {**b, "x1": b["x1"] + 4, "y1": b["y1"] + 4, "x2": b["x2"] - 4, "y2": b["y2"] - 4}
+    artifacts.write_render_log(r, 2, log)
     from yomeru.lib.rendering.scanline_engine import render_page
     ev = render_page(r, 2).events
     boxes = [tuple(e["bbox"]) for e in ev if e["status"] == "ok" and not e["free"]]

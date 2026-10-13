@@ -71,6 +71,10 @@ def match_page(req: MatchRequest, matcher, ocr_weight: float, spatial_weight: fl
             claim(i, target)
     unresolved.sort()
 
+    # ── Step 2: OCR check of the VLM's region ids ────────────────────────
+    _verify_direct_claims(matches, used_region_ids, dialogues, page_dets, img, source_lang, img_w, img_h)
+    unresolved = [i for i in unresolved if i not in matches]
+
     print(f"    [matching] after Step 1: {len(matches)} matches, {len(unresolved)} unresolved", file=sys.stderr)
     if unresolved:
         print(f"    [matching] unresolved dialogues: {unresolved}", file=sys.stderr)
@@ -277,6 +281,86 @@ def _to_pixel_bbox(bbox, img_w, img_h, analysis_w, analysis_h):
 
 
 # ── Capa 3: Rescue orphaned text regions ───────────────────────────────────────
+
+VERIFY_MIN_OCR = 4      # characters of OCR needed to trust a reading
+VERIFY_STRONG = 0.7     # OCR clearly says this dialogue
+VERIFY_WEAK = 0.3       # OCR clearly does NOT say the assigned dialogue
+
+
+def _verify_direct_claims(matches, used_region_ids, dialogues, page_dets, img, source_lang, img_w, img_h):
+    """The VLM's region_ids can be shifted along a chain of bubbles (qwen3.5:9b
+    on Chainsaw Man p1: each dialogue pointed at the NEXT one's bubble, the
+    first one's bubble was left orphaned and kept its English text). Read each
+    claimed text region with OCR; when a reading clearly contradicts its
+    dialogue and clearly matches another one, reassign the dialogues involved
+    by text (optimal assignment over their regions + unclaimed text regions).
+    Pages where OCR agrees, or can't read, are left exactly as the VLM said."""
+    from yomeru.lib.matching.ocr import ocr_region
+    from yomeru.lib.matching import MatchResult
+
+    def text_region(rid: int) -> int | None:
+        return rid if is_text(page_dets[rid].get("label")) else _text_region_of(rid, page_dets)
+
+    claimed = {}  # dialogue → region id it claims (text region for containers)
+    for i, m in matches.items():
+        rid = next((k for k, d in page_dets.items()
+                    if (d["x1"], d["y1"], d["x2"], d["y2"]) == (m.region.x1, m.region.y1, m.region.x2, m.region.y2)), None)
+        if rid is not None:
+            claimed[i] = rid
+    ocr_cache: dict[int, str] = {}
+
+    def read(rid: int) -> str:
+        if rid not in ocr_cache:
+            r = page_dets[rid]
+            ocr_cache[rid] = (ocr_region(img, (r["x1"], r["y1"], r["x2"], r["y2"]), source_lang) or "").strip()
+        return ocr_cache[rid]
+
+    def sim(rid: int | None, i: int) -> float:
+        if rid is None:
+            return 0.0
+        t = read(rid)
+        return _text_containment_score(t, dialogues[i].get("text", "")) if len(t) >= VERIFY_MIN_OCR else 0.0
+
+    texts = [i for i in claimed if dialogues[i].get("text")]
+    unclaimed = [i for i, d in enumerate(dialogues)
+                 if i not in matches and not d.get("skip") and d.get("text")]
+    suspects = set()
+    for i in texts:
+        tr = text_region(claimed[i])
+        if tr is None or len(read(tr)) < VERIFY_MIN_OCR or sim(tr, i) >= VERIFY_WEAK:
+            continue
+        if any(sim(tr, j) >= VERIFY_STRONG for j in texts + unclaimed if j != i):
+            suspects.add(i)
+    if not suspects:
+        return
+
+    # Dialogues involved: the suspects + whoever OCR says owns their regions
+    involved = set(suspects)
+    for i in suspects:
+        tr = text_region(claimed[i])
+        involved |= {j for j in texts + unclaimed if sim(tr, j) >= VERIFY_STRONG}
+    owned = {text_region(claimed[i]) for i in claimed} - {None}
+    free = [k for k, d in page_dets.items() if is_text(d.get("label")) and k not in owned]
+    pool = sorted({text_region(claimed[i]) for i in involved if i in claimed} - {None} | set(free))
+    order = sorted(involved)
+
+    import numpy as np
+    from scipy.optimize import linear_sum_assignment
+    cost = np.array([[-sim(r, i) for r in pool] for i in order])
+    rows, cols = linear_sum_assignment(cost)
+    moved = []
+    for ri, ci in zip(rows, cols):
+        i, rid = order[ri], pool[ci]
+        if -cost[ri, ci] < VERIFY_STRONG or (i in claimed and text_region(claimed[i]) == rid):
+            continue
+        matches[i] = MatchResult(dialogue_index=i, region=_region_from_det(page_dets[rid], img_w, img_h),
+                                 spatial_score=1.0, text_score=round(-float(cost[ri, ci]), 3),
+                                 total_score=0.99, ocr_text=read(rid))
+        used_region_ids.add(rid)
+        moved.append(f"D{i}→R{rid}")
+    if moved:
+        print(f"    [matching] OCR disagreed with the VLM's region ids; reassigned {', '.join(moved)}", file=sys.stderr)
+
 
 def _rescue_orphaned_text_regions(
     orphaned_text: list[dict],
