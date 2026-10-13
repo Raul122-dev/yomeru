@@ -121,7 +121,17 @@ class InpaintingSettings(BaseModel):
 
 
 class RenderingSettings(BaseModel):
+    """Rendering technique = a registered backend (yomeru/plugins) + its options."""
     use_translation: bool = True
+    backend: str = "scanline"
+    options: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _known_backend(self):
+        from yomeru.plugins import get_spec
+        spec = get_spec("rendering", self.backend)  # raises UnknownBackend
+        self.options = spec.options_model.model_validate(self.options).model_dump()
+        return self
 
 
 class PipelineSettings(BaseModel):

@@ -2,7 +2,7 @@
 Phase contracts — typed inputs/outputs exchanged between phases and backends.
 
 A backend (see yomeru.plugins) only ever sees these objects: never a Run, a
-path or meta.json. Contracts for matching, analysis and rendering are added
+path or meta.json. Contracts for matching and analysis are added
 when those phases become backends (vault "Yomeru - Flujo de datos y backends").
 """
 from __future__ import annotations
@@ -69,3 +69,28 @@ class InpaintResult:
     mask: np.ndarray                   # final combined mask (uint8 0/255) → mask editor
     stats: dict = field(default_factory=dict)            # → render_log.s4_inpainting
     debug: dict[str, Image.Image] = field(default_factory=dict)  # name → image
+
+
+
+# ── Rendering ─────────────────────────────────────────────────────────────────
+
+@dataclass
+class RenderRequest:
+    """One page to typeset, with every user edit already resolved."""
+    inpainted: Image.Image             # text-free page (inpainting output), RGB
+    original: Image.Image              # source page, RGB (bubble outlines are visible here)
+    matches: list[dict]                # effective matches: {dialogue_index, region_id, region{x1..y2,label}}
+    dialogues: list[dict]              # analysis dialogues (edits merged): text, text_translated, tone, bubble_type...
+    overrides: dict[int, dict]         # render editor overrides by dialogue_index
+    skipped: set[int]                  # dialogue indices not to draw (editor > VLM)
+    containers: list[tuple[int, int, int, int]]  # bubble / text_bubble boxes (file order)
+    use_translation: bool              # False = draw the original text (layout check)
+    lang_code: str                     # hyphenation language of the DRAWN text (pyphen code)
+
+
+@dataclass
+class RenderResult:
+    image: Image.Image                 # final page, same size as the input
+    events: list[dict]                 # one per match: status ok/skip (+reason), text, font_size, lines, bbox → render log
+    layouts: int = 0
+    preview: Image.Image | None = None  # optional debug view (e.g. contours drawn)

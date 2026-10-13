@@ -21,7 +21,6 @@ from pydantic import BaseModel
 
 from yomeru.core.runs import Run
 from yomeru.phases import PHASE_ORDER, PHASE_DEPS
-from yomeru.core.gpu import gpu_lock
 from yomeru.phases.runner import (
     PhaseError, active_job, check_dependencies, request_cancel, run_all, run_phase, start_job,
 )
@@ -307,8 +306,7 @@ def _ensure_rendered(run: Run, page_num: int, force: bool) -> None:
     from yomeru.lib.rendering.scanline_engine import RenderInputMissing, is_cached, render_page
     if force or not is_cached(run, page_num):
         try:
-            with gpu_lock():
-                render_page(run, page_num)
+            render_page(run, page_num)  # takes the GPU lock only if its backend needs it
         except RenderInputMissing as e:
             raise HTTPException(404, str(e))
 
@@ -431,7 +429,7 @@ def _phase_options(run: Run, phase: str) -> dict:
     if phase == "inpainting":
         return {"backend": st.inpainting.backend, "backend_options": st.inpainting.options}
     if phase == "rendering":
-        return {"source_language": lang.source, "target_language": lang.target,
+        return {"backend": st.rendering.backend, "backend_options": st.rendering.options,
                 "use_translation": st.rendering.use_translation}
     return {}
 

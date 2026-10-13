@@ -28,9 +28,13 @@ def run(
     Render translated text into inpainted bubble regions.
 
     Options:
+        backend: rendering backend name (yomeru/plugins/rendering.py)
+        backend_options: dict validated by that backend's options model
         use_translation: bool = True   (False renders the original text — layout check)
     """
     use_translation = options.get("use_translation", True)
+    backend = options.get("backend", "scanline")
+    backend_options = options.get("backend_options")
 
     from yomeru.core import artifacts
 
@@ -46,7 +50,7 @@ def run(
 
     total = len(analyses)
     on_progress({"type": "phase_progress", "phase": "rendering", "total": total, "processed": 0})
-    print(f"\n[rendering] {total} pages, engine=scanline", file=sys.stderr)
+    print(f"\n[rendering] {total} pages, backend={backend}", file=sys.stderr)
 
     results: list[PageResult] = []
 
@@ -82,10 +86,10 @@ def run(
 
             # Scanline engine renders the page; a failure here fails the page
             # (it used to be logged as a warning and the page counted as done).
-            from yomeru.core.gpu import gpu_lock
             from yomeru.lib.rendering.scanline_engine import render_page
-            with gpu_lock():
-                rendered = render_page(run, page_num, use_translation=use_translation)
+            # the facade takes the GPU lock only if the backend needs it
+            rendered = render_page(run, page_num, use_translation=use_translation,
+                                   backend=backend, backend_options=backend_options)
             scanline_prod = rendered.production_path
 
             # The only lossy encode: final page in the source's format

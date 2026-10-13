@@ -95,7 +95,7 @@ export interface PipelineSettings {
   detection: { backend: string; options: Record<string, unknown>; threshold: number };
   matching: { ocr_weight: number; spatial_weight: number; min_score: number };
   inpainting: { backend: string; options: Record<string, unknown> };
-  rendering: { use_translation: boolean };
+  rendering: { use_translation: boolean; backend: string; options: Record<string, unknown> };
 }
 
 export interface Preset {

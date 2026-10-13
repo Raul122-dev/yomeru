@@ -177,53 +177,90 @@ def is_cached(run: Run, page_num: int) -> bool:
     return not any(f.exists() and f.stat().st_mtime > mtime for f in input_paths(run, page_num))
 
 
-def render_page(run: Run, page_num: int, use_translation: bool | None = None) -> RenderOutput:
-    """Render one page; writes preview + production images atomically."""
+def build_request(run: Run, page_num: int, use_translation: bool | None = None):
+    """Everything the render needs for one page, resolved from the run's files
+    (edits, refined matches, overrides, settings). Backends only see this."""
+    from yomeru.core.contracts import RenderRequest
+    from yomeru.core.settings import run_settings
+
     inpainted_path = artifacts.existing_page_artifact(run, page_num, artifacts.S4_INPAINTED)
     if not inpainted_path.exists():
         raise RenderInputMissing("No inpainted image for this page")
-
-    with Image.open(inpainted_path) as _im:
-        img = _im.convert("RGB")
-
-    # Resolution-relative font floor
-    img_max_side = max(img.size)
-    MIN_FONT = max(8, img_max_side // 150)
-
-    # Load ORIGINAL page image (for bubble contour detection — has visible borders)
     all_pages = list_page_files(run.pages_dir())
     if page_num < 1 or page_num > len(all_pages):
         raise RenderInputMissing(f"Page {page_num} not found")
-    with Image.open(all_pages[page_num - 1]) as _im:
-        original_img = _im.convert("RGB")
-
-    # Load matching data
     log = artifacts.load_render_log(run, page_num)
     if log is None:
         raise RenderInputMissing("No render log for this page")
-    matches = artifacts.effective_matches(run, page_num, log)
+
+    with Image.open(inpainted_path) as _im:
+        img = _im.convert("RGB")
+    with Image.open(all_pages[page_num - 1]) as _im:
+        original_img = _im.convert("RGB")
 
     page_analysis = artifacts.page_analysis(artifacts.load_analyses(run), page_num)
-    dialogues = page_analysis.get("dialogues", [])
-    overrides = artifacts.load_render_overrides(run, page_num)
-    skipped_set = artifacts.skipped_dialogues(page_analysis, overrides)
-
-    # Bubble containers from the active (possibly edited) detections, in file order
-    bubble_regions = [
-        (r["x1"], r["y1"], r["x2"], r["y2"])
-        for r in artifacts.load_detections(run).get(page_num, {}).values() if r.get("label") in CONTAINER_LABELS
-    ]
-
-    from yomeru.core.settings import run_settings
     st = run_settings(run.meta())
     if use_translation is None:
         use_translation = st.rendering.use_translation
-
     # Hyphenation rules of the language being DRAWN: the target language for
     # translations (was the source language → Spanish split with en_US rules),
     # the source language when rendering the original text.
     drawn_lang = st.language.target if use_translation else page_analysis.get("source_language", "auto")
-    lang_code = LANG_MAP.get(drawn_lang, "en_US")
+    return RenderRequest(
+        inpainted=img,
+        original=original_img,
+        matches=artifacts.effective_matches(run, page_num, log),
+        dialogues=page_analysis.get("dialogues", []),
+        overrides=artifacts.load_render_overrides(run, page_num),
+        skipped=artifacts.skipped_dialogues(page_analysis, artifacts.load_render_overrides(run, page_num)),
+        # Bubble containers from the active (possibly edited) detections, in file order
+        containers=[
+            (r["x1"], r["y1"], r["x2"], r["y2"])
+            for r in artifacts.load_detections(run).get(page_num, {}).values() if r.get("label") in CONTAINER_LABELS
+        ],
+        use_translation=use_translation,
+        lang_code=LANG_MAP.get(drawn_lang, "en_US"),
+    )
+
+
+def render_page(run: Run, page_num: int, use_translation: bool | None = None,
+                backend: str | None = None, backend_options: dict | None = None) -> RenderOutput:
+    """Render one page with the run's rendering backend; writes preview +
+    production images atomically. Facade used by the phase, the preview
+    endpoints and tests."""
+    from yomeru.core.settings import run_settings
+    from yomeru.plugins import get_backend
+
+    from contextlib import nullcontext
+    from yomeru.core.gpu import gpu_lock
+
+    req = build_request(run, page_num, use_translation)
+    st = run_settings(run.meta()).rendering
+    spec, be = get_backend("rendering", backend or st.backend, backend_options if backend else st.options)
+    with (gpu_lock() if spec.needs_gpu else nullcontext()):
+        res = be.render_page(req)
+    preview_path, production_path = output_paths(run, page_num)
+    if res.preview is not None:
+        _save_atomic(res.preview, preview_path)
+    _save_atomic(res.image, production_path)
+    return RenderOutput(preview_path, production_path, res.layouts, res.events)
+
+
+def layout_and_draw(req):
+    """The scanline technique: pure function of the request (no run, no files)."""
+    from yomeru.core.contracts import RenderResult
+
+    img = req.inpainted
+    original_img = req.original
+    # Resolution-relative font floor
+    MIN_FONT = max(8, max(img.size) // 150)
+    matches = req.matches
+    dialogues = req.dialogues
+    overrides = req.overrides
+    skipped_set = req.skipped
+    bubble_regions = list(req.containers)
+    use_translation = req.use_translation
+    lang_code = req.lang_code
 
     # Pre-compute contours for all bubbles (expensive, cache once)
     bubble_contours: dict[tuple[int, int, int, int], object] = {}
@@ -760,14 +797,7 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
             if len(pts) > 2:
                 draw.polygon([tuple(p) for p in pts], outline=(0, 200, 0))
 
-    preview_path, production_path = output_paths(run, page_num)
-    _save_atomic(result_img, preview_path)
-
     # Production version (no contours) — reuse resolved layouts
-    prod_img = img.copy()
-    prod_draw = ImageDraw.Draw(prod_img)
-
-    # Save production version (without contours) — reuse resolved layouts
     prod_img = img.copy()
     prod_draw = ImageDraw.Draw(prod_img)
 
@@ -787,14 +817,12 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
                     outline_color if is_free else None, outline_w,
                 )
 
-    _save_atomic(prod_img, production_path)
-
-    # Final size and lines after median normalisation + collision nudging
+    # Final size and lines after harmonisation + collision nudging
     for ev, ((size, _font, positioned), *_rest) in zip(layout_event, all_layouts):
         ev["font_size"] = size
         ev["lines"] = [pl.text for pl in positioned]
     events.sort(key=lambda e: e["dialogue_index"])
-    return RenderOutput(preview_path, production_path, len(all_layouts), events)
+    return RenderResult(image=prod_img, preview=result_img, events=events, layouts=len(all_layouts))
 
 
 def _save_atomic(img: Image.Image, path: Path) -> None:

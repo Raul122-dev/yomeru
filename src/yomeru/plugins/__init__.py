@@ -30,6 +30,7 @@ PhaseName = Literal["detection", "analysis", "matching", "inpainting", "renderin
 _BUILTINS: dict[str, list[str]] = {
     "detection": ["yomeru.plugins.detection"],
     "inpainting": ["yomeru.plugins.inpainting"],
+    "rendering": ["yomeru.plugins.rendering"],
 }
 
 

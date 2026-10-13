@@ -102,6 +102,12 @@ export function PipelineSettingsForm({
           value={value.inpainting}
           onChange={(v) => onChange({ ...value, inpainting: v })}
         />
+        <BackendPicker
+          phase="rendering"
+          label="rendering"
+          value={value.rendering}
+          onChange={(v) => onChange({ ...value, rendering: { ...value.rendering, ...v } })}
+        />
         <Switch
           label="Render translated text"
           hint="Off renders the original text (useful to check the layout)"

@@ -51,3 +51,66 @@ def test_detection_threshold_reaches_the_model(monkeypatch):
     out = backend.detect(Image.new("RGB", (10, 10)), threshold=0.4)
     assert seen["threshold"] == 0.4
     assert [r["score"] for r in out] == [0.45]
+
+
+
+def test_rendering_backend_is_swappable(tmp_path, monkeypatch):
+    """Rendering is a registered backend: a new technique gets the same
+    RenderRequest (edits resolved) and its RenderResult is what the phase
+    writes — without touching the engine or the phase."""
+    import shutil
+    from pathlib import Path
+    from PIL import Image
+    from pydantic import BaseModel
+    from yomeru.core.contracts import RenderRequest, RenderResult
+    from yomeru.core.settings import RenderingSettings
+    from yomeru.plugins import register
+    import yomeru.core.runs as runs
+
+    assert "scanline" in [b["name"] for b in list_backends("rendering")]
+    assert RenderingSettings().backend == "scanline"
+    with pytest.raises(ValueError):
+        RenderingSettings.model_validate({"backend": "nope"})
+
+    seen = {}
+
+    class NoOpts(BaseModel):
+        pass
+
+    from yomeru.plugins import _REGISTRY
+    monkeypatch.setitem(_REGISTRY, "rendering", dict(_REGISTRY.get("rendering") or {}))  # undone after the test
+
+    @register("rendering", "_test_fill", options=NoOpts)
+    class Fill:
+        def __init__(self, options): pass
+
+        def render_page(self, req: RenderRequest) -> RenderResult:
+            seen["req"] = req
+            return RenderResult(image=Image.new("RGB", req.inpainted.size, (1, 2, 3)),
+                                events=[{"dialogue_index": 0, "status": "ok"}])
+
+    src = Path(__file__).resolve().parents[1] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
+    if not src.exists():
+        pytest.skip("golden d4c17c9bf8f5 not captured")
+    monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
+    shutil.copytree(src, tmp_path / "r")
+    run = runs.Run.load("r")
+    # matching + inpainting on the frozen detections/analysis (OCR stubbed: no models)
+    import yomeru.lib.matching.hungarian as hung
+    import yomeru.lib.matching.ocr as ocr
+    monkeypatch.setattr(hung, "ocr_region", lambda *a, **k: "", raising=False)
+    monkeypatch.setattr(ocr, "ocr_region", lambda *a, **k: "", raising=False)
+    from yomeru.api.routes.phases import _phase_options
+    from yomeru.phases.matching import run as match
+    from yomeru.phases.inpainting import run as inpaint
+    match(run, _phase_options(run, "matching"), page_scope=[1])
+    inpaint(run, {"backend": "classic", "backend_options": {"free_text": "opencv"}}, page_scope=[1])
+    from yomeru.phases.rendering import run as render
+    res = render(run, {"backend": "_test_fill"}, page_scope=[1])
+    assert res.status == "done"
+    r = seen["req"]
+    assert r.lang_code == "es" and r.matches and r.dialogues and r.containers
+    from yomeru.core import artifacts
+    out = Image.open(artifacts.page_artifact(run, 1, artifacts.SCANLINE_PRODUCTION))
+    assert out.getpixel((0, 0)) == (1, 2, 3)
+    assert artifacts.load_render_log(run, 1)["s5_rendering"]["renders"] == [{"dialogue_index": 0, "status": "ok"}]
