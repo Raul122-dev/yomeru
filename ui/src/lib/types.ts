@@ -137,6 +137,18 @@ export interface BackendOptionSchema {
   json_schema_extra_hidden?: boolean;
 }
 
+export interface LocalModelsInfo {
+  running: boolean;
+  version?: string;
+  error?: string;
+  server: string;
+  models: { name: string; size_gb: number; vision: boolean | null }[];
+  gpu: { name: string; total_gb: number; free_gb: number } | null;
+  suggested: { tag: string; note: string };
+  catalogue: { tag: string; min_vram_gb: number; note: string }[];
+  pulls: Record<string, { status: string; completed: number; total: number; done: boolean; error: string | null }>;
+}
+
 export interface BackendInfo {
   name: string;
   description: string;

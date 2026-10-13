@@ -167,6 +167,76 @@ def get_backends(phase: str):
     return list_backends(phase)  # type: ignore[arg-type]
 
 
+# ── local vision models (Ollama on this machine) ────────────────────────────
+
+_pulls: dict[str, dict] = {}   # model tag → {status, completed, total, error, done}
+_pulls_lock = __import__("threading").Lock()
+
+
+@router.get("/local-models")
+def local_models(server: str | None = None):
+    """Model server status, installed models, GPU memory and the suggested model."""
+    from yomeru.lib.local_models import CATALOGUE, OLLAMA_URL, gpu_memory, ollama_status, suggest_model
+    st = ollama_status(server or OLLAMA_URL)
+    gpu = gpu_memory()
+    sug = suggest_model(gpu and gpu["free_gb"])
+    with _pulls_lock:
+        pulls = {k: dict(v) for k, v in _pulls.items() if not v.get("done") or v.get("error")}
+    return {
+        **st,
+        "server": server or OLLAMA_URL,
+        "gpu": gpu,
+        "suggested": {"tag": sug.tag, "note": sug.note},
+        "catalogue": [{"tag": c.tag, "min_vram_gb": c.min_vram_gb, "note": c.note} for c in CATALOGUE],
+        "pulls": pulls,
+    }
+
+
+class PullIn(BaseModel):
+    model: str
+    server: str | None = None
+
+
+@router.post("/local-models/pull", status_code=202)
+def local_models_pull(body: PullIn):
+    """Start downloading a model in the background; poll GET /local-models."""
+    import threading
+    from yomeru.lib.local_models import OLLAMA_URL, LocalModelError, pull
+
+    name = body.model.strip()
+    if not name:
+        raise HTTPException(422, "model is required")
+    with _pulls_lock:
+        cur = _pulls.get(name)
+        if cur and not cur.get("done"):
+            return {"started": False, "model": name}
+        _pulls[name] = {"status": "starting", "completed": 0, "total": 0, "done": False, "error": None}
+
+    layers: dict[str, tuple[int, int]] = {}   # digest → (completed, total): one bar for all files
+
+    def progress(ev: dict) -> None:
+        with _pulls_lock:
+            p = _pulls[name]
+            status = ev.get("status", p["status"])
+            p["status"] = "downloading" if status.startswith("pulling ") and ev.get("digest") else status
+            if ev.get("digest") and ev.get("total"):
+                layers[ev["digest"]] = (ev.get("completed", 0), ev["total"])
+                p["completed"] = sum(c for c, _ in layers.values())
+                p["total"] = sum(t for _, t in layers.values())
+
+    def work() -> None:
+        try:
+            pull(name, body.server or OLLAMA_URL, on_progress=progress)
+            with _pulls_lock:
+                _pulls[name].update(done=True, status="success")
+        except (LocalModelError, Exception) as e:  # noqa: BLE001 — reported to the UI
+            with _pulls_lock:
+                _pulls[name].update(done=True, error=str(e))
+
+    threading.Thread(target=work, daemon=True, name=f"pull-{name}").start()
+    return {"started": True, "model": name}
+
+
 @router.get("/formats")
 def list_formats():
     return [

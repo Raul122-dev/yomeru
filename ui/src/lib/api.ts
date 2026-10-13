@@ -20,6 +20,7 @@ import type {
   Run,
   StageLog,
   BackendInfo,
+  LocalModelsInfo,
   TypesetStatus,
 } from "./types";
 
@@ -288,6 +289,15 @@ export const saveMask = (id: str, page: number, maskDataUrl: str) =>
 /** Registered techniques for a phase (yomeru/plugins), with their options schema. */
 export const getBackends = (phase: PhaseName) =>
   req<BackendInfo[]>(`/config/backends/${phase}`);
+/** Local model server (Ollama): status, installed models, GPU, suggestion, downloads. */
+export const getLocalModels = (server?: string) =>
+  req<LocalModelsInfo>(`/config/local-models${server ? `?server=${encodeURIComponent(server)}` : ""}`);
+export const pullLocalModel = (model: string, server?: string) =>
+  req<{ started: boolean; model: string }>(`/config/local-models/pull`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, server }),
+  });
 export const getTypesetStatus = (id: str) =>
   req<TypesetStatus>(`/runs/${id}/typeset/status`);
 export const typesetPageUrl = (id: str, filename: str) =>

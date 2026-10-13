@@ -8,6 +8,7 @@ import { Switch } from "../../components/ui/Switch";
 import { Slider } from "../../components/ui/Slider";
 import { ModelPicker } from "./ModelPicker";
 import { BackendPicker } from "./BackendPicker";
+import { LocalModelPanel } from "./LocalModelPanel";
 
 /** Editor for a full PipelineSettings — used for global settings and presets. */
 export function PipelineSettingsForm({
@@ -31,13 +32,19 @@ export function PipelineSettingsForm({
           value={value.analysis ?? { backend: "vlm", options: {} }}
           onChange={(v) => onChange({ ...value, analysis: v })}
         />
-        <ModelPicker
+        {value.analysis?.backend === "local" && (
+          <LocalModelPanel
+            server={value.analysis.options?.server as string | undefined}
+            model={value.analysis.options?.model as string | undefined}
+          />
+        )}
+        {value.analysis?.backend !== "local" && <ModelPicker
           label="vision model"
           hint="Reads each page and translates. Must accept images."
           value={value.analysis_model}
           onChange={(m) => onChange({ ...value, analysis_model: m })}
           requireVision
-        />
+        />}
         <ModelPicker
           label="translation model (optional)"
           hint="A separate text model for the translation step. Leave empty to translate with the vision model."
