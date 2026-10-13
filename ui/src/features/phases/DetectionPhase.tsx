@@ -66,7 +66,7 @@ export function DetectionPhase({ runId, pages }: DetectionPhaseProps) {
       <PhaseHeader
         runId={runId}
         title="Detection"
-        description="Finds speech bubbles and text on every page. Fix boxes before analysis for better results."
+        description="Finds speech bubbles and text on every page. Fix boxes before reading for better results."
         status={v.status}
         canRun={v.canRun}
         onRun={() => void v.start()}

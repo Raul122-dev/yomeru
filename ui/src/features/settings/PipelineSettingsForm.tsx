@@ -27,12 +27,12 @@ export function PipelineSettingsForm({
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Models</h3>
         <BackendPicker
           phase="analysis"
-          label="analysis technique"
+          label="read & translate technique"
           value={value.analysis ?? { backend: "vlm", options: {} }}
           onChange={(v) => onChange({ ...value, analysis: v })}
         />
         <ModelPicker
-          label="analysis model"
+          label="vision model"
           hint="Reads each page and translates. Must accept images."
           value={value.analysis_model}
           onChange={(m) => onChange({ ...value, analysis_model: m })}
@@ -40,7 +40,7 @@ export function PipelineSettingsForm({
         />
         <ModelPicker
           label="translation model (optional)"
-          hint="A separate text model for the translation step. Leave empty to translate with the analysis model."
+          hint="A separate text model for the translation step. Leave empty to translate with the vision model."
           value={value.translation_model}
           onChange={(m) => onChange({ ...value, translation_model: m })}
           allowNone

@@ -1,7 +1,7 @@
 /**
  * PhaseBar — the run's pipeline rail.
  *
- * Five steps in order, grouped as Image analysis (detection, analysis) and
+ * Five steps in order, grouped as Reading (detection, read & translate) and
  * Typesetting (matching, inpainting, rendering). A step can be opened once it
  * has started or every earlier step is complete.
  */
@@ -32,7 +32,7 @@ interface Group {
 const PHASE_ORDER: Phase[] = ["detection", "analysis", "matching", "inpainting", "rendering"];
 const LABELS: Record<Phase, string> = {
   detection: "Detection",
-  analysis: "Analysis",
+  analysis: "Read & translate",
   matching: "Matching",
   inpainting: "Inpainting",
   rendering: "Rendering",
@@ -59,7 +59,7 @@ export function buildGroups(run: Run): Group[] {
     clickable: isPhaseClickable(key, statuses),
   });
   return [
-    { label: "Image analysis", phases: [sub("detection"), sub("analysis")] },
+    { label: "Reading", phases: [sub("detection"), sub("analysis")] },
     { label: "Typesetting", phases: [sub("matching"), sub("inpainting"), sub("rendering")] },
   ];
 }

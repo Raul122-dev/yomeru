@@ -41,7 +41,7 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
       />
 
       {!v.hasOutput ? (
-        <EmptyState>Run matching once analysis is done to review which line goes in which bubble.</EmptyState>
+        <EmptyState>Run matching once read & translate is done to review which line goes in which bubble.</EmptyState>
       ) : v.pageLogs.length === 0 ? (
         <EmptyState>No matching output yet.</EmptyState>
       ) : (

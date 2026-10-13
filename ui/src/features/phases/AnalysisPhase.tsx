@@ -193,7 +193,7 @@ export function AnalysisPhase({ runId, pages }: AnalysisPhaseProps) {
     <div className="flex flex-col gap-4">
       <PhaseHeader
         runId={runId}
-        title="Analysis"
+        title="Read & translate"
         description={`Reads every page with the vision model and translates it${modelLabel ? ` — ${modelLabel} · ${v.run?.model}` : v.run?.model ? ` — ${v.run.model}` : ""}.`}
         status={v.status}
         canRun={v.canRun}
