@@ -99,8 +99,16 @@ def page_analysis(analyses: list[dict], page: int) -> dict:
     return next((a for a in analyses if a.get("page_number") == page), {})
 
 
-def skipped_dialogues(analysis: dict) -> set[int]:
-    return {i for i, d in enumerate(analysis.get("dialogues", [])) if d.get("skip")}
+def skipped_dialogues(analysis: dict, overrides: dict[int, dict] | None = None) -> set[int]:
+    """Dialogues not to typeset (nor erase): the render editor's explicit
+    skip True/False wins over the VLM's suggestion."""
+    overrides = overrides or {}
+    out = set()
+    for i, d in enumerate(analysis.get("dialogues", [])):
+        o = overrides.get(i, {})
+        if (o["skip"] if "skip" in o else d.get("skip")):
+            out.add(i)
+    return out
 
 
 def load_render_log(run: "Run", page: int) -> dict | None:

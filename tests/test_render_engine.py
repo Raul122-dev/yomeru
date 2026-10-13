@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from tests.test_region_ids import client  # noqa: F401 (fixture)
 from PIL import Image
 
 GOLDEN = Path(__file__).resolve().parents[1] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
@@ -106,3 +107,28 @@ def test_two_dialogues_never_share_a_bubble(tmp_path, monkeypatch):
     boxes = [tuple(e["bbox"]) for e in ev if e["status"] == "ok" and not e["free"]]
     assert len(boxes) == len(set(boxes))
     assert any(e.get("skip_reason") == "same_container" for e in ev)
+
+
+
+def test_render_overrides_round_trip_and_explicit_unskip(client):
+    """R3: the editor loads saved overrides (GET) and an explicit skip=False beats
+    the VLM's skip; R9: edits.json invalidates the render cache."""
+    import io, json
+    from PIL import Image as _I
+    buf = io.BytesIO(); _I.new("RGB", (40, 60), "white").save(buf, "PNG")
+    rid = client.post("/api/runs", data={"name": "t", "auto_start": "false"},
+                      files=[("files", ("p.png", buf.getvalue(), "image/png"))]).json()["id"]
+    body = {"render_overrides": [{"dialogue_index": 0, "skip": False}, {"dialogue_index": 2, "font_size_override": 20}]}
+    assert client.put(f"/api/runs/{rid}/typeset/renders/1", json=body).status_code == 200
+    got = client.get(f"/api/runs/{rid}/typeset/renders/1").json()["render_overrides"]
+    assert {o["dialogue_index"] for o in got} == {0, 2}
+
+    from yomeru.core import artifacts
+    from yomeru.core.runs import Run
+    run = Run.load(rid); assert run is not None
+    analysis = {"dialogues": [{"skip": True}, {"skip": True}, {}]}
+    assert artifacts.skipped_dialogues(analysis, artifacts.load_render_overrides(run, 1)) == {1}
+
+    from yomeru.lib.rendering.scanline_engine import input_paths
+    names = {p.name for p in input_paths(run, 1)}
+    assert {"edits.json", "meta.json", "page_detections.json"} <= names

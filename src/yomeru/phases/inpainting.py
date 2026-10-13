@@ -64,7 +64,8 @@ def run(
         try:
             img = Image.open(page_path).convert("RGB")
             log = artifacts.load_render_log(run, page_num) or {}
-            skipped = artifacts.skipped_dialogues(artifacts.page_analysis(analyses, page_num))
+            skipped = artifacts.skipped_dialogues(artifacts.page_analysis(analyses, page_num),
+                                                  artifacts.load_render_overrides(run, page_num))
             targets = [
                 InpaintTarget(
                     bbox=(m["region"]["x1"], m["region"]["y1"], m["region"]["x2"], m["region"]["y2"]),

@@ -213,9 +213,17 @@ class RenderOverridesBody(BaseModel):
     render_overrides: list[RenderOverrideItem] = []
 
 
+@router.get("/{run_id}/typeset/renders/{page_num}")
+def get_render_overrides(run_id: str, page_num: int):
+    """Saved render overrides for a page — the editor's starting state."""
+    run = _get_run(run_id)
+    return {"render_overrides": list(artifacts.load_render_overrides(run, page_num).values())}
+
+
 @router.put("/{run_id}/typeset/renders/{page_num}")
 def save_render_overrides(run_id: str, page_num: int, body: RenderOverridesBody):
-    """Persist render overrides for a page (consumed by rendering phase)."""
+    """Replace the page's render overrides with the full list (the editor loads
+    the saved state first, so the list it sends is complete)."""
     run = _get_run(run_id)
     artifacts.debug_dir(run, create=True)
     overrides_file = artifacts.page_artifact(run, page_num, artifacts.RENDER_OVERRIDES)

@@ -10,7 +10,7 @@
  * Overrides saved to: typeset/debug/p{N:02}_render_overrides.json
  * Consumed by: stages/rendering/pil.py per-dialogue render
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   RefreshCw,
   Save,
@@ -73,6 +73,12 @@ async function saveRenderOverrides(
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+async function loadRenderOverrides(runId: string, pageNum: number): Promise<RenderOverride[]> {
+  const res = await fetch(`/api/runs/${runId}/typeset/renders/${pageNum}`);
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()).render_overrides ?? [];
 }
 
 // ── dialogue row ──────────────────────────────────────────────────────────────
@@ -291,9 +297,25 @@ export function RenderEditor({
   const [overrides, setOverrides] = useState<
     Record<number, Partial<RenderOverride>>
   >({});
+  const [saved, setSaved] = useState<Record<number, Partial<RenderOverride>>>({});
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Start from what is saved: a save sends the full list, so starting empty
+  // used to silently erase earlier overrides.
+  useEffect(() => {
+    let alive = true;
+    loadRenderOverrides(runId, pageNum)
+      .then((list) => {
+        if (!alive) return;
+        const map = Object.fromEntries(list.map(({ dialogue_index, ...rest }) => [dialogue_index, rest]));
+        setSaved(map);
+        setOverrides(map);
+      })
+      .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
+    return () => { alive = false; };
+  }, [runId, pageNum]);
 
   const { progress: rerunProgress, start: startRerun } = useScopedPhaseRunner({
     runId,
@@ -329,6 +351,7 @@ export function RenderEditor({
     setError(null);
     try {
       await saveRenderOverrides(runId, pageNum, buildOverrideList());
+      setSaved(overrides);
       setIsDirty(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -351,7 +374,7 @@ export function RenderEditor({
   };
 
   const handleRevert = () => {
-    setOverrides({});
+    setOverrides(saved);
     setIsDirty(false);
     setError(null);
   };

@@ -58,7 +58,12 @@ def input_paths(run: Run, page_num: int) -> list[Path]:
     """Files whose change makes a cached render stale."""
     a = artifacts
     return [a.page_artifact(run, page_num, n) for n in
-            (a.S4_INPAINTED, a.RENDER_LOG, a.MATCHES_REFINED, a.RENDER_OVERRIDES)] + [run.active_analyses_file()]
+            (a.S4_INPAINTED, a.RENDER_LOG, a.MATCHES_REFINED, a.RENDER_OVERRIDES)] + [
+        run.active_analyses_file(),
+        run.output_dir() / "edits.json",       # merged into the dialogues
+        run.active_detections_file(),          # bubble containers
+        run.dir / "meta.json",                 # settings: use_translation, target language
+    ]
 
 
 def is_cached(run: Run, page_num: int) -> bool:
@@ -98,6 +103,7 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
     page_analysis = artifacts.page_analysis(artifacts.load_analyses(run), page_num)
     dialogues = page_analysis.get("dialogues", [])
     overrides = artifacts.load_render_overrides(run, page_num)
+    skipped_set = artifacts.skipped_dialogues(page_analysis, overrides)
 
     # Bubble containers from the active (possibly edited) detections, in file order
     bubble_regions = [
@@ -157,7 +163,7 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
         ovr = overrides.get(dlg_i, {})
 
         # Skip (override or VLM-suggested)
-        if ovr.get("skip") or dlg.get("skip"):
+        if dlg_i in skipped_set:
             skip_event(dlg_i, m, ovr.get("skip_reason") or dlg.get("skip_reason") or "skipped")
             continue
 
