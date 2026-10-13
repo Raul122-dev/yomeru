@@ -119,6 +119,52 @@ def _stream(rm: ResolvedModel, system: str, text: str, b64: str, mime: str) -> I
         raise LLMError(f"{rm.label}: reply cut off at {MAX_OUTPUT_TOKENS} output tokens")
 
 
+def complete_text(rm: ResolvedModel, system: str, text: str, json_schema: dict | None = None,
+                  on_token: Callable[[str], None] | None = None) -> str:
+    """Text-only call (translation step). `json_schema` asks OpenAI-compatible
+    APIs for a structured reply when they support it; the reply is parsed and
+    validated by the caller either way."""
+    chunks: list[str] = []
+    try:
+        if rm.connection.protocol == "anthropic":
+            client = _anthropic_client(rm.connection)
+            with client.messages.stream(model=rm.model, max_tokens=MAX_OUTPUT_TOKENS, system=system,
+                                        messages=[{"role": "user", "content": text}]) as stream:
+                for tok in stream.text_stream:
+                    chunks.append(tok)
+                    if on_token:
+                        on_token(tok)
+                final = stream.get_final_message()
+            if final.stop_reason == "max_tokens":
+                raise LLMError(f"{rm.label}: reply cut off at {MAX_OUTPUT_TOKENS} output tokens")
+            return "".join(chunks)
+        client = _openai_client(rm.connection)
+        kw: dict = {}
+        if json_schema is not None:
+            kw["response_format"] = {"type": "json_schema",
+                                     "json_schema": {"name": "reply", "schema": json_schema}}
+        stream = client.chat.completions.create(
+            model=rm.model, max_tokens=MAX_OUTPUT_TOKENS, stream=True,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": text}], **kw)
+        finish = None
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            c = chunk.choices[0]
+            finish = c.finish_reason or finish
+            if c.delta and c.delta.content:
+                chunks.append(c.delta.content)
+                if on_token:
+                    on_token(c.delta.content)
+        if finish == "length":
+            raise LLMError(f"{rm.label}: reply cut off at {MAX_OUTPUT_TOKENS} output tokens")
+        return "".join(chunks)
+    except LLMError:
+        raise
+    except Exception as e:
+        raise LLMError(f"{rm.label}: {type(e).__name__}: {e}") from e
+
+
 def list_models(conn: Connection) -> list[dict]:
     """Models the connection exposes. `vision` is True/False when the API says so, else None."""
     try:

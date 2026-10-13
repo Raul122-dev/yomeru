@@ -56,7 +56,7 @@ class LocalOptions(BaseModel):
                         description="Let reasoning models think before answering (slower)")
 
 
-def _reply_schema() -> dict:
+def _reply_schema(read_only: bool = False) -> dict:
     """JSON schema the local model must follow (Ollama `format`).
 
     Not PageAnalysis' own schema: that one has no required keys and no
@@ -85,13 +85,22 @@ def _reply_schema() -> dict:
         # the first dialogue's skip:true ("decorative_title") onto all of them.
         "required": ["region_id", "text", "text_translated", "bubble_type"],
     }
+    if read_only:  # the translator only gets words: ask for what the image adds instead
+        # No null escape hatches: a 9B model answered speaker null / tone
+        # "neutral" for every line when null was allowed.
+        dialogue["properties"].pop("text_translated")
+        dialogue["properties"].update(speaker_id=s(40), addressee=s(40), intent=s(120))
+        dialogue["required"] = ["region_id", "text", "speaker_id", "addressee", "tone", "intent", "bubble_type"]
     character = {
         "type": "object",
         "properties": {"id": s(40), "description": s(160),
                        "emotional_state": s(60), "last_action": s(120)},
         "required": ["id", "description", "emotional_state", "last_action"],
     }
-    return {
+    if read_only:
+        character["properties"].update(speech_register=s(80), relations=s(120))
+        character["required"] += ["speech_register", "relations"]
+    out = {
         "type": "object",
         "properties": {
             "panel_count": {"type": "integer"},
@@ -104,6 +113,9 @@ def _reply_schema() -> dict:
         },
         "required": ["panel_count", "dialogues", "characters_seen", "scene", "page_summary"],
     }
+    if read_only:
+        out["properties"]["characters_seen"]["minItems"] = 1
+    return out
 
 
 @register("analysis", "local", options=LocalOptions, needs_gpu=True,
@@ -138,10 +150,11 @@ class LocalAnalyzer:
         from yomeru.lib.local_models import chat_vision
         o = self.options
         name = self.resolved_model()
-        p = prepare(req, system=_load("system_compact.md"))
-        print(f"  → local {name}  lang={req.source_language} → {req.target_language}", file=sys.stderr)
+        p = prepare(req, system=_load("system_read.md" if req.read_only else "system_compact.md"))
+        print(f"  → local {name}  lang={req.source_language} → "
+              f"{'(read only)' if req.read_only else req.target_language}", file=sys.stderr)
         raw = chat_vision(name, p.system, p.user_text, p.image_b64,
-                          schema=_reply_schema() if o.structured_output else None,
+                          schema=_reply_schema(req.read_only) if o.structured_output else None,
                           num_ctx=o.context, think=o.think, base_url=o.server, on_token=on_token)
         return parse_reply(raw, req, f"local · {name}")
 

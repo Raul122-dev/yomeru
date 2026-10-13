@@ -164,16 +164,29 @@ class RenderingSettings(PhaseBackend):
     use_translation: bool = True
 
 
+class SeparateTranslation(BaseModel):
+    """Read & translate in two steps (off by default = one model does both).
+
+    On: the reading model only transcribes and annotates context; a text
+    model then translates the whole chapter in blocks, with a style guide
+    (synopsis, character voices, glossary) built from the reading."""
+    enabled: bool = False
+    local: bool = False                       # local model (Ollama) instead of PipelineSettings.translation_model
+    local_model: str = "auto"
+    local_server: str = "http://127.0.0.1:11434"
+
+
 class AnalysisSettings(PhaseBackend):
     """The model it calls is `PipelineSettings.analysis_model`."""
     _phase: ClassVar[str] = "analysis"
     _default: ClassVar[str] = "vlm"
+    separate_translation: SeparateTranslation = Field(default_factory=SeparateTranslation)
 
 
 class PipelineSettings(BaseModel):
     """Everything a run needs. This is what presets and run snapshots store."""
     analysis_model: ModelRef = Field(default_factory=ModelRef)
-    translation_model: ModelRef = Field(default_factory=ModelRef)  # empty → analysis model translates
+    translation_model: ModelRef = Field(default_factory=ModelRef)  # API model for separate translation
     language: LanguageSettings = Field(default_factory=LanguageSettings)
     analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
     detection: DetectionSettings = Field(default_factory=DetectionSettings)

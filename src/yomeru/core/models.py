@@ -94,6 +94,11 @@ class Dialogue(BaseModel):
     # bbox: legacy fallback (0.0–1.0 fractions of model-space image).
     # Still parsed if the VLM returns it, used as hint when region_id is absent.
     bbox: list[float] | None = None
+    # Context for a separate translation step (read-only mode): who the line
+    # is said to, and what is going on as it is said (sarcasm, threat, joke,
+    # "while starting the chainsaw"). Not used by the all-in-one mode.
+    addressee: str | None = Field(default=None, exclude_if=lambda v: v is None)
+    intent: str | None = Field(default=None, exclude_if=lambda v: v is None)
 
     @field_validator("bbox", mode="before")
     @classmethod
@@ -146,6 +151,10 @@ class CharacterState(BaseModel):
     description: str = ""
     emotional_state: str = "neutral"
     last_action: str = ""
+    # How they talk (formal/keigo, casual, rough, childish…) and who they are
+    # to others — read-only mode, feeds the translator's voice sheets.
+    speech_register: str = Field(default="", exclude_if=lambda v: not v)
+    relations: str = Field(default="", exclude_if=lambda v: not v)
 
     @model_validator(mode="before")
     @classmethod
@@ -158,7 +167,7 @@ class CharacterState(BaseModel):
         if isinstance(v, int): return f"char_{v}"
         return str(v).strip() if v else "unknown"
 
-    @field_validator("description", "emotional_state", "last_action", mode="before")
+    @field_validator("description", "emotional_state", "last_action", "speech_register", "relations", mode="before")
     @classmethod
     def coerce_str(cls, v: object) -> str:
         """Model sometimes returns null for optional string fields — coerce to empty string."""

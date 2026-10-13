@@ -168,6 +168,45 @@ def chat_vision(
     return "".join(chunks)
 
 
+def chat_text(
+    name: str,
+    system: str,
+    text: str,
+    *,
+    schema: dict | None = None,
+    num_ctx: int = 16384,
+    keep_alive: str = "5m",
+    base_url: str = OLLAMA_URL,
+    on_token: Callable[[str], None] | None = None,
+) -> str:
+    """Text-only chat (translation step), same streaming/limits as chat_vision."""
+    body: dict = {
+        "model": name, "stream": True, "keep_alive": keep_alive, "think": False,
+        "options": {"num_ctx": num_ctx, "temperature": 0.3},
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}],
+    }
+    if schema is not None:
+        body["format"] = schema
+    chunks: list[str] = []
+    done_reason = None
+    try:
+        for ev in _stream_chat(base_url, body):
+            if "error" in ev:
+                raise LocalModelError(f"{name}: {ev['error']}")
+            tok = (ev.get("message") or {}).get("content") or ""
+            if tok:
+                chunks.append(tok)
+                if on_token:
+                    on_token(tok)
+            if ev.get("done"):
+                done_reason = ev.get("done_reason")
+    except httpx.ConnectError as e:
+        raise LocalModelError(f"no model server at {base_url} — is Ollama running?") from e
+    if done_reason == "length":
+        raise LocalModelError(f"{name}: reply cut off (context {num_ctx} tokens)")
+    return "".join(chunks)
+
+
 def _stream_chat(base_url: str, body: dict) -> Iterator[dict]:
     with _client(base_url) as c, c.stream("POST", "/api/chat", json=body) as r:
         if r.status_code == 404:

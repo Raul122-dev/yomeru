@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { getFormats } from "../../lib/api";
-import type { PipelineSettings } from "../../lib/types";
+import type { PipelineSettings, SeparateTranslation } from "../../lib/types";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "../../lib/languages";
 import { Select } from "../../components/ui/input";
 import { Switch } from "../../components/ui/Switch";
@@ -21,6 +21,13 @@ export function PipelineSettingsForm({
   const { data: formats = [] } = useQuery({ queryKey: ["formats"], queryFn: getFormats });
   const set = <K extends keyof PipelineSettings>(k: K, patch: Partial<PipelineSettings[K]>) =>
     onChange({ ...value, [k]: { ...value[k], ...patch } });
+  const analysis = value.analysis ?? { backend: "vlm", options: {} };
+  const sep: SeparateTranslation = {
+    enabled: false, local: false, local_model: "auto", local_server: "http://127.0.0.1:11434",
+    ...analysis.separate_translation,
+  };
+  const setSep = (patch: Partial<SeparateTranslation>) =>
+    onChange({ ...value, analysis: { ...analysis, separate_translation: { ...sep, ...patch } } });
 
   return (
     <div className="flex flex-col gap-6">
@@ -30,7 +37,7 @@ export function PipelineSettingsForm({
           phase="analysis"
           label="read & translate technique"
           value={value.analysis ?? { backend: "vlm", options: {} }}
-          onChange={(v) => onChange({ ...value, analysis: v })}
+          onChange={(v) => onChange({ ...value, analysis: { ...analysis, ...v } })}
         />
         {value.analysis?.backend === "local" && (
           <LocalModelPanel
@@ -45,13 +52,37 @@ export function PipelineSettingsForm({
           onChange={(m) => onChange({ ...value, analysis_model: m })}
           requireVision
         />}
-        <ModelPicker
-          label="translation model (optional)"
-          hint="A separate text model for the translation step. Leave empty to translate with the vision model."
-          value={value.translation_model}
-          onChange={(m) => onChange({ ...value, translation_model: m })}
-          allowNone
+        <Switch
+          label="Separate reading and translation"
+          hint="Off: one model reads and translates each page (default). On: the vision model only reads and notes the context (who speaks to whom, tone, intent, how each character talks); a text model then translates the whole chapter with a style guide and glossary. Helps smaller/local models; an extra model call."
+          checked={!!sep.enabled}
+          onCheckedChange={(on) => setSep({ enabled: on })}
         />
+        {sep.enabled && (
+          <div className="ml-1 flex flex-col gap-3 border-l border-[hsl(var(--border))] pl-4">
+            <Select
+              label="translation model"
+              value={sep.local ? "local" : "api"}
+              onChange={(e) => setSep({ local: e.target.value === "local" })}
+            >
+              <option value="api">API (a connection)</option>
+              <option value="local">Local — experimental</option>
+            </Select>
+            {sep.local ? (
+              <LocalModelPanel server={sep.local_server} model={sep.local_model} />
+            ) : (
+              <ModelPicker
+                label="text model"
+                hint="Translates the whole chapter from what the vision model read. Any chat model works; it doesn't need vision."
+                value={value.translation_model}
+                onChange={(m) => onChange({ ...value, translation_model: m })}
+              />
+            )}
+            {!sep.local && !(value.translation_model.connection_id && value.translation_model.model) && (
+              <p className="text-xs text-[hsl(var(--warning))]">Pick a text model — runs won't start without one.</p>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="flex flex-col gap-4">

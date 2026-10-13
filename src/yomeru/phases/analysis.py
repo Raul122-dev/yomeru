@@ -52,6 +52,8 @@ def run(
     ui_language = options.get("ui_language", meta.get("ui_language", "English"))
     global_context = options.get("global_context", meta.get("global_context", ""))
     page_context = options.get("page_context", "")
+    translation = options.get("translation") or {}
+    separate = bool(translation.get("enabled"))
 
     output_dir = run.output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -106,6 +108,7 @@ def run(
                     ui_language=ui_language,
                     global_context=global_context,
                     page_context=page_context,
+                    read_only=separate,
                 ), model=model, on_token=on_token)
 
             elapsed = time.time() - t0
@@ -145,6 +148,15 @@ def run(
     fresh = [a for a in analyses if not page_scope or a.page_number in page_scope]
     _save_analyses(fresh, output_dir, all_pages, source_language, is_scoped=bool(page_scope))
     _save_context(ctx, output_dir)
+
+    if separate and any(r.success for r in results):
+        try:
+            translate_run(run, translation, source_language, target_language, global_context, on_progress)
+        except Exception as e:
+            print(f"[analysis] translation failed: {e}", file=sys.stderr)
+            return PhaseResult(phase="analysis", status="failed", total_pages=total,
+                               processed_pages=sum(r.success for r in results), failed_pages=[],
+                               page_results=results, error=f"Reading done, translation failed: {e}")
 
     done = sum(1 for r in results if r.success)
     failed = [r.page_num for r in results if not r.success]
@@ -282,3 +294,48 @@ def _save_context(ctx, output_dir: Path) -> None:
     (output_dir / "context.json").write_text(
         json.dumps(ctx.model_dump(), indent=2, ensure_ascii=False)
     )
+
+
+def translate_run(run: Run, translation: dict, source_language: str, target_language: str,
+                  global_context: str, on_progress: ProgressCallback = null_progress) -> dict:
+    """Second step of Read & translate (separate translation): the whole
+    chapter, from the reading's text + context, into output/translations.json.
+    Can be re-run alone (another language or model) without reading again."""
+    from yomeru.lib.translation import ChapterInput, translate_chapter
+
+    pages = [a for a in artifacts.load_analyses(run)]
+    if translation.get("local"):
+        from yomeru.core.gpu import gpu_lock
+        from yomeru.lib import local_models as lm
+        name = translation.get("local_model") or "auto"
+        if name == "auto":
+            g = lm.gpu_memory()
+            name = lm.suggest_model(g and g["free_gb"]).tag
+        server = translation.get("local_server") or lm.OLLAMA_URL
+
+        def ask(system: str, user: str, schema: dict) -> str:
+            with gpu_lock():
+                return lm.chat_text(name, system, user, schema=schema, num_ctx=16384, base_url=server)
+        label = f"local/{name}"
+    else:
+        from yomeru.core.llm import complete_text, resolve_model
+        from yomeru.core.settings import ModelRef
+        rm = resolve_model(ModelRef.model_validate(translation.get("model") or {}))
+
+        def ask(system: str, user: str, schema: dict) -> str:
+            return complete_text(rm, system, user, json_schema=schema)
+        label = rm.label
+
+    print(f"[translate] {label}  {source_language} → {target_language}", file=sys.stderr)
+    on_progress({"type": "phase_progress", "phase": "analysis", "step": "translate", "label": label})
+    res = translate_chapter(
+        ChapterInput(source_language=source_language, target_language=target_language,
+                     pages=pages, global_context=global_context),
+        ask, on_progress=lambda m: on_progress({"type": "step", "phase": "analysis", "step": "translate", "message": m}))
+    if translation.get("local"):
+        lm.unload(name, server)
+    out = {"model": label, "target_language": target_language, "style": res.style,
+           "review": res.review, "lines": res.lines}
+    (run.output_dir() / artifacts.TRANSLATIONS).write_text(json.dumps(out, indent=2, ensure_ascii=False))
+    print(f"[translate] {len(res.lines)} lines, {len(res.review)} to review", file=sys.stderr)
+    return out

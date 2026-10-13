@@ -404,6 +404,30 @@ def _validate_phase(phase: str) -> None:
         raise HTTPException(400, detail=f"Invalid phase: '{phase}'. Must be one of {PHASE_ORDER}")
 
 
+@router.post("/{run_id}/translate")
+def retranslate(run_id: str):
+    """Re-run only the translation step of Read & translate (separate
+    translation on): another language or model, without reading again."""
+    from yomeru.core.settings import run_settings
+    run = _get_run(run_id)
+    if not run.active_analyses_file().exists():
+        raise HTTPException(400, "read the pages first")
+    st = run_settings(run.meta())
+    sep = st.analysis.separate_translation
+    if not sep.enabled:
+        raise HTTPException(400, "separate translation is off for this run")
+    if not (sep.local or st.translation_model.is_set()):
+        raise HTTPException(400, "no translation model configured")
+    opts = _phase_options(run, "analysis")
+    from yomeru.phases.analysis import translate_run
+
+    def job(emit):
+        translate_run(run, opts["translation"], opts["source_language"], opts["target_language"],
+                      opts["global_context"], emit)
+    _launch(run, "analysis", job, first_phase="analysis")
+    return {"status": "started", "phase": "analysis", "step": "translate", "run_id": run_id}
+
+
 def _phase_options(run: Run, phase: str) -> dict:
     """Options for one phase, from the run's settings snapshot."""
     from yomeru.core.settings import run_settings
@@ -417,6 +441,8 @@ def _phase_options(run: Run, phase: str) -> dict:
         return {
             "backend": st.analysis.backend, "backend_options": st.analysis.options,
             "model": st.analysis_model.model_dump(),
+            "translation": {**st.analysis.separate_translation.model_dump(),
+                            "model": st.translation_model.model_dump()},
             "comic_format": lang.comic_format,
             "source_language": lang.source,
             "target_language": lang.target,

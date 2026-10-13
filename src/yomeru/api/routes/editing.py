@@ -90,14 +90,10 @@ def revert_page_detections(run_id: str, page_num: int):
 def get_analyses(run_id: str):
     """Return all page analyses with user edits merged on top."""
     run = _get_run(run_id)
-    f = run.active_analyses_file()
-    if not f.exists():
+    if not run.active_analyses_file().exists():
         raise HTTPException(404, "analyses not ready")
-    original = json.loads(f.read_text())
-    # Merge user edits (skip toggles, translation edits, etc.)
-    from yomeru.core.annotations import AnnotationStore
-    store = AnnotationStore(run.output_dir())
-    return store.merged_analyses(original)
+    # separate translation + user edits (skip toggles, translation edits…)
+    return artifacts.load_analyses(run)
 
 
 @router.put("/{run_id}/analyses/{page_num}/refined")

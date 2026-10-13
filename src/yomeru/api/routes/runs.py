@@ -96,6 +96,10 @@ async def create_run(
     if effective.analysis.backend != "local" and not effective.analysis_model.is_set():
         raise HTTPException(400, "no model provider configured — add a connection and pick a vision model "
                                  "in Settings, or choose the experimental local mode")
+    sep = effective.analysis.separate_translation
+    if sep.enabled and not (sep.local or effective.translation_model.is_set()):
+        raise HTTPException(400, "separate translation is on but has no model — pick a translation model "
+                                 "(API or local) in Settings, or turn separate translation off")
 
     run = Run.create(name=name, settings=effective, global_context=global_context,
                      preset_id=preset_id or None)

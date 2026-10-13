@@ -28,6 +28,7 @@ def _build_language_block(
     source_language: str,
     target_language: str | None,
     ui_language: str,
+    read_only: bool = False,
 ) -> str:
     lines: list[str] = []
 
@@ -37,7 +38,9 @@ def _build_language_block(
     else:
         lines.append("**Source language: auto-detect** — extract text verbatim in whatever language is written.")
 
-    if target_language:
+    if read_only:
+        lines.append("\n**Do not translate** — a separate step translates the whole chapter from what you extract.")
+    elif target_language:
         lines.append(f"\n**Translation: {source_language} → {target_language}**")
         lines.append(f"For every dialogue, include `text_translated` with an accurate {target_language} translation.")
         lines.append("Preserve tone and register. Adapt SFX phonetically.")
@@ -163,6 +166,7 @@ def _build_user_text(
     global_context: str = "",
     page_context: str = "",
     image_size: tuple[int, int] | None = None,
+    read_only: bool = False,
 ) -> str:
     parts: list[str] = []
 
@@ -172,7 +176,7 @@ def _build_user_text(
         parts.append(fmt_text)
 
     # 2. language instructions
-    lang_block = _build_language_block(source_language, target_language, ui_language)
+    lang_block = _build_language_block(source_language, target_language, ui_language, read_only)
     parts.append(lang_block)
 
     # 3. global manga context
@@ -282,6 +286,10 @@ class PreparedPage:
 
 
 def prepare(req, system: str | None = None) -> PreparedPage:
+    """`req.read_only`: the separate-translation mode — no translation asked,
+    reading prompt (system_read.md) unless the caller passes its own."""
+    if getattr(req, "read_only", False) and system is None:
+        system = _load("system_read.md")
     """Prompt + annotated image for a page: the numbered region badges drawn on
     it, the region list, languages, format and the story so far."""
     page_number = req.page_number
@@ -305,7 +313,8 @@ def prepare(req, system: str | None = None) -> PreparedPage:
         comic_format=req.comic_format,
         previous_context=req.previous_context,
         source_language=req.source_language,
-        target_language=req.target_language,
+        target_language=None if getattr(req, "read_only", False) else req.target_language,
+        read_only=getattr(req, "read_only", False),
         ui_language=req.ui_language,
         global_context=req.global_context,
         page_context=req.page_context,
@@ -349,6 +358,11 @@ def parse_reply(raw: str, req, label: str) -> PageAnalysis:
 
     data = _parse(raw)
     data["page_number"] = page_number
+    # Entries without any text are not dialogues (a small model filled the
+    # ○ container boxes with empty entries); they would only claim regions.
+    if isinstance(data.get("dialogues"), list):
+        data["dialogues"] = [d for d in data["dialogues"]
+                             if not isinstance(d, dict) or str(d.get("text") or "").strip()]
     result = PageAnalysis(**data)
 
     # Post-validate: warn if detection was run but model returned no region_ids

@@ -92,7 +92,11 @@ export interface PipelineSettings {
   analysis_model: ModelRef;
   translation_model: ModelRef;
   language: { source: string; target: string; comic_format: string };
-  analysis: { backend: string; options: Record<string, unknown> };
+  analysis: {
+    backend: string;
+    options: Record<string, unknown>;
+    separate_translation?: SeparateTranslation;
+  };
   detection: { backend: string; options: Record<string, unknown>; threshold: number };
   matching: { backend: string; options: { ocr_weight?: number; spatial_weight?: number; min_score?: number } & Record<string, unknown> };
   inpainting: { backend: string; options: Record<string, unknown> };
@@ -247,4 +251,11 @@ export interface StageLog {
 export interface FontInfo {
   name: string;
   size_kb: number;
+}
+
+export interface SeparateTranslation {
+  enabled: boolean;
+  local: boolean;
+  local_model: string;
+  local_server: string;
 }

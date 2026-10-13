@@ -106,13 +106,33 @@ def load_detections(run: "Run") -> dict[int, dict[int, dict]]:
     return {e["page_number"]: {r["id"]: r for r in e["regions"]} for e in json.loads(f.read_text())}
 
 
+TRANSLATIONS = "translations.json"
+
+
+def load_translations(run: "Run") -> dict:
+    """Separate-translation output: {model, target_language, style, review,
+    lines: {"p{page}.d{index}": text}}; {} when the run translated inline."""
+    f = run.output_dir() / TRANSLATIONS
+    return json.loads(f.read_text()) if f.exists() else {}
+
+
 def load_analyses(run: "Run") -> list[dict]:
-    """Active analyses merged with the user's edits.json."""
+    """Active analyses with the final text of each line: the user's edits
+    (edits.json) > the separate translation step > the reading's own
+    `text_translated`."""
     f = run.active_analyses_file()
     if not f.exists():
         return []
+    raw = json.loads(f.read_text())
+    lines = load_translations(run).get("lines") or {}
+    if lines:
+        for a in raw:
+            for i, d in enumerate(a.get("dialogues", [])):
+                t = lines.get(f"p{a.get('page_number')}.d{i}")
+                if t:
+                    d["text_translated"] = t
     from yomeru.core.annotations import AnnotationStore
-    return AnnotationStore(run.output_dir()).merged_analyses(json.loads(f.read_text()))
+    return AnnotationStore(run.output_dir()).merged_analyses(raw)
 
 
 def page_analysis(analyses: list[dict], page: int) -> dict:
