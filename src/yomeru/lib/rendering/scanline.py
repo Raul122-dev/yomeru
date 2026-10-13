@@ -29,17 +29,6 @@ from .text_layout import (
 )
 
 
-@dataclass
-class ScanlineSegment:
-    """A horizontal segment of available space at a given Y."""
-    y: int
-    x_start: int
-    x_end: int
-
-    @property
-    def width(self) -> int:
-        return self.x_end - self.x_start
-
 
 @dataclass
 class PositionedLine:
@@ -203,154 +192,87 @@ def erode_contour(
     return largest
 
 
-def compute_scanlines(
-    contour: np.ndarray,
-    line_height: int,
-    bbox: tuple[int, int, int, int],
-) -> list[ScanlineSegment]:
-    """
-    Compute horizontal scanline segments within the contour.
-
-    For each line_y (spaced by line_height), finds the intersection
-    of a horizontal ray with the contour polygon.
-
-    Returns list of ScanlineSegment with available width per line.
-    """
-    x1, y1, x2, y2 = bbox
-
-    # Get vertical extent of contour
-    contour_points = contour.reshape(-1, 2)
-    cy_min = int(contour_points[:, 1].min())
-    cy_max = int(contour_points[:, 1].max())
-
-    segments: list[ScanlineSegment] = []
-
-    # Create filled mask for fast scanline queries
-    mask_y1 = cy_min
-    mask_y2 = cy_max
-    mask_x1 = int(contour_points[:, 0].min())
-    mask_x2 = int(contour_points[:, 0].max())
-    mask_h = mask_y2 - mask_y1 + 1
-    mask_w = mask_x2 - mask_x1 + 1
-
-    if mask_h < 5 or mask_w < 5:
-        return segments
-
-    mask = np.zeros((mask_h, mask_w), dtype=np.uint8)
-    shifted = contour.reshape(-1, 2) - np.array([mask_x1, mask_y1])
-    cv2.fillPoly(mask, [shifted.astype(np.int32)], 255)
-
-    # Scan from top to bottom with line_height step
-    # Start half a line_height from top for vertical centering
-    start_y = cy_min + line_height // 2
-
-    for scan_y in range(start_y, cy_max - line_height // 4, line_height):
-        local_y = scan_y - mask_y1
-        if local_y < 0 or local_y >= mask_h:
-            continue
-
-        # Get the row from the mask
-        row = mask[local_y]
-
-        # Find continuous white segments
-        in_segment = False
-        seg_start = 0
-
-        for px in range(mask_w):
-            if row[px] > 127 and not in_segment:
-                in_segment = True
-                seg_start = px
-            elif row[px] <= 127 and in_segment:
-                in_segment = False
-                seg_x1 = mask_x1 + seg_start
-                seg_x2 = mask_x1 + px
-                if seg_x2 - seg_x1 >= 20:  # minimum segment width
-                    segments.append(ScanlineSegment(y=scan_y, x_start=seg_x1, x_end=seg_x2))
-
-        # Handle segment that extends to end of row
-        if in_segment:
-            seg_x1 = mask_x1 + seg_start
-            seg_x2 = mask_x1 + mask_w
-            if seg_x2 - seg_x1 >= 20:
-                segments.append(ScanlineSegment(y=scan_y, x_start=seg_x1, x_end=seg_x2))
-
-    return segments
+def _line_span(mask: np.ndarray, top: int, lh: int, cx: int) -> tuple[int, int] | None:
+    """Horizontal span usable by a line occupying rows [top, top+lh) of the
+    filled mask: the run around the bubble's centre x, intersected over the
+    line's glyph rows (so ascenders/descenders don't hit a curving edge).
+    One span per line — a concave row no longer yields two overlapping lines."""
+    h, w = mask.shape
+    lo, hi = 0, w
+    for y in (top + lh // 5, top + lh // 2, top + (4 * lh) // 5):
+        if y < 0 or y >= h:
+            return None
+        row = mask[y] > 0
+        if not row.any():
+            return None
+        x = cx if 0 <= cx < w and row[cx] else int(np.flatnonzero(row)[np.argmin(np.abs(np.flatnonzero(row) - cx))])
+        l = x
+        while l > 0 and row[l - 1]:
+            l -= 1
+        r = x
+        while r < w - 1 and row[r + 1]:
+            r += 1
+        lo, hi = max(lo, l), min(hi, r + 1)
+    return (lo, hi) if hi - lo >= 20 else None
 
 
-def variable_width_wrap(
-    text: str,
-    segments: list[ScanlineSegment],
-    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
-    lang_code: str | None,
-    min_segment_width: int = 30,
-    width_factor: float = 1.0,
-) -> list[PositionedLine] | None:
-    """
-    Wrap text using variable widths from scanline segments.
+MIN_SPLIT_LEN = 8  # words of 7 letters or fewer are never split (unless forced)
 
-    Greedy algorithm: fills each segment's width before moving to next line.
-    Skips segments that are too narrow.
-    width_factor: scale available width (0.5-1.0) to force more lines.
 
-    Returns positioned lines or None if text doesn't fit.
-    """
-    if not segments or not text.strip():
-        return None
+def _splittable(word: str, protected: frozenset[str], force: bool) -> bool:
+    """Proper names (words carried over verbatim from the source text) and
+    short words are kept whole; `force` (nothing fits otherwise) only keeps
+    names whole."""
+    from .text_layout import _split_word_punct
+    root = _split_word_punct(word)[1]
+    if root.upper() in protected:
+        return False
+    return force or len(root) >= MIN_SPLIT_LEN
 
-    is_cjk = is_cjk_text(text)
-    words: list[str]
 
-    if is_cjk:
-        # CJK: each character is a word
-        words = list(text.replace(" ", ""))
-    else:
-        words = text.split()
+def _wrap_into(words: list[str], widths: list[int], font, is_cjk: bool, hyph,
+               protected: frozenset[str] = frozenset(), force: bool = False) -> list[str] | None:
+    """Fit the words into exactly these line widths (top to bottom). Search over
+    break points, fullest line first, so a long word can move to a wider row
+    instead of failing (greedy filling pushed 'MILLONES.' onto the narrow
+    bottom row). A word that fits no row whole may be split at a syllable
+    (Latin, never names/short words unless forced). None if impossible."""
+    from functools import lru_cache
+    from .text_layout import _try_hyphenate
+    join = (lambda a, b: a + b) if is_cjk else (lambda a, b: f"{a} {b}" if a else b)
+    n_lines = len(widths)
 
-    if not words:
-        return None
-
-    lines: list[PositionedLine] = []
-    word_idx = 0
-
-    for seg in segments:
-        if word_idx >= len(words):
-            break
-
-        if seg.width < min_segment_width:
-            continue
-
-        available_w = int(seg.width * width_factor)
-        current = ""
-
-        while word_idx < len(words):
-            word = words[word_idx]
-            if is_cjk:
-                candidate = current + word
-            else:
-                candidate = (current + " " + word).strip() if current else word
-
-            if measure_width(candidate, font) <= available_w:
-                current = candidate
-                word_idx += 1
-            else:
+    @lru_cache(maxsize=None)
+    def go(i: int, carry: str, line: int) -> tuple[str, ...] | None:
+        # carry: tail of a split word that must start this line
+        if i >= len(words) and not carry:
+            return () if line == n_lines else None
+        if line >= n_lines:
+            return None
+        w = widths[line]
+        queue = ([carry] if carry else []) + list(words[i:])
+        consumed_offset = 1 if carry else 0
+        cur = ""
+        options = []
+        for k, word in enumerate(queue):
+            cand = join(cur, word)
+            if measure_width(cand, font) > w:
+                if not cur and not is_cjk and _splittable(word, protected, force):
+                    head, rest = _try_hyphenate(word, hyph, font, w, min_root_len=4)
+                    if head:
+                        nxt_i = i + (k + 1 - consumed_offset)
+                        options.append((head, nxt_i, rest))
                 break
+            cur = cand
+            options.append((cur, i + (k + 1 - consumed_offset), ""))
+        for text, nxt_i, nxt_carry in reversed(options):  # fullest line first
+            tail = go(nxt_i, nxt_carry, line + 1)
+            if tail is not None:
+                return (text,) + tail
+        return None
 
-        if current.strip():
-            # Center the line within the segment
-            line_w = measure_width(current, font)
-            line_x = seg.x_start + (seg.width - line_w) // 2
-            lines.append(PositionedLine(
-                text=current.strip(),
-                x=line_x,
-                y=seg.y,
-                width=seg.width,
-            ))
-
-    # Check if all words were placed
-    if word_idx < len(words):
-        return None  # Text doesn't fit
-
-    return lines if lines else None
+    got = go(0, "", 0)
+    return list(got) if got else None
 
 
 def scanline_layout(
@@ -363,83 +285,64 @@ def scanline_layout(
     padding: int = 12,
     width_factor: float = 1.0,
     precomputed_contour: np.ndarray | None = None,
+    hyphenate: bool | str = True,
+    protected: frozenset[str] = frozenset(),
 ) -> list[PositionedLine] | None:
-    """
-    Full scanline layout pipeline:
-    1. Extract bubble contour from ORIGINAL image (or use precomputed)
-    2. Erode for padding
-    3. Compute scanlines
-    4. Variable-width wrap
-    5. Vertically center the text block
+    """Lay text inside the bubble's (eroded) contour, centre-first.
 
-    Returns positioned lines or None if layout fails.
+    For N = 1, 2, ... lines: centre an N-line block on the bubble's centroid,
+    take the contour's width at each of those lines, and wrap the words into
+    exactly those widths (syllable split only when a word can't fit a line).
+    The first N that fits wins — fewest breaks. The old version wrapped with
+    widths measured from the contour's TOP and then re-centred the block on
+    the bbox, so lines landed on rows of a different width ('YA / CONOCES /
+    EL / ...' in 5 lines; overflow on narrow rows).
     """
     lh = measure_line_height(font, font_size)
-
-    # 1. Extract contour (or use cached)
     contour = precomputed_contour if precomputed_contour is not None else extract_bubble_contour(image, bbox)
     if contour is None:
         return None
-
-    # 2. Erode for padding
     eroded = erode_contour(contour, padding=padding)
     if eroded is None:
         return None
 
-    # 3. Compute ALL scanlines (densely, every pixel row)
-    #    We'll select the right subset for vertical centering later
-    all_segments = compute_scanlines(eroded, lh, bbox)
-    if not all_segments:
+    pts = eroded.reshape(-1, 2)
+    ox, oy = int(pts[:, 0].min()), int(pts[:, 1].min())
+    mw, mh = int(pts[:, 0].max()) - ox + 1, int(pts[:, 1].max()) - oy + 1
+    if mw < 5 or mh < 5:
         return None
-
-    # 4. First pass: determine how many lines we need
-    #    Try wrapping with the full set of segments
-    positioned = variable_width_wrap(text, all_segments, font, lang_code, width_factor=width_factor)
-    if not positioned:
+    mask = np.zeros((mh, mw), dtype=np.uint8)
+    cv2.fillPoly(mask, [(pts - np.array([ox, oy])).astype(np.int32)], 255)
+    m = cv2.moments(mask, binaryImage=True)
+    if not m["m00"]:
         return None
+    cx, cy = int(m["m10"] / m["m00"]), int(m["m01"] / m["m00"])
 
-    # 5. Vertical centering: center text block within the BUBBLE BBOX
-    #    Use scanlines only for X positioning (width at each height).
-    #    Y positioning is pure bbox centering for consistent visual result.
-    num_lines = len(positioned)
-
-    x1, y1, x2, y2 = bbox
-    bbox_height = y2 - y1
-    text_block_h = num_lines * lh
-    # Visual compensation: font ascender is larger than descender,
-    # making text appear slightly high. Shift down by (ascender - descender) / 4
+    is_cjk = is_cjk_text(text)
+    words = list(text.replace(" ", "")) if is_cjk else text.split()
+    if not words:
+        return None
+    from .text_layout import _get_hyphenator
+    hyph = None if is_cjk or not lang_code or not hyphenate else _get_hyphenator(lang_code, aggressive=True)
     try:
         asc, desc = font.getmetrics()
         visual_offset = (asc - abs(desc)) // 4
     except Exception:
         visual_offset = lh // 8
-    start_y = y1 + (bbox_height - text_block_h) // 2 + visual_offset
 
-    # For each line, find the scanline segment closest to its Y position
-    # to determine the available width for X centering
-    result_lines: list[PositionedLine] = []
-
-    for line_idx in range(num_lines):
-        line_y = start_y + line_idx * lh
-
-        # Find the scanline segment closest to this Y
-        best_seg = None
-        best_dist = float("inf")
-        for seg in all_segments:
-            dist = abs(seg.y - line_y)
-            if dist < best_dist:
-                best_dist = dist
-                best_seg = seg
-
-        if best_seg is None:
-            best_seg = all_segments[len(all_segments) // 2]  # fallback to middle
-
-        # Use the text from the original wrap for this line
-        if line_idx < len(positioned):
-            line_text = positioned[line_idx].text
-            line_w = measure_width(line_text, font)
-            # Center horizontally within the segment width
-            line_x = best_seg.x_start + (best_seg.width - line_w) // 2
-            result_lines.append(PositionedLine(text=line_text, x=line_x, y=line_y, width=best_seg.width))
-
-    return result_lines if result_lines else positioned
+    for n in range(1, max(1, mh // lh) + 1):
+        top = cy - (n * lh) // 2 + visual_offset
+        top = min(max(top, 0), max(0, mh - n * lh))
+        spans = [_line_span(mask, top + i * lh, lh, cx) for i in range(n)]
+        if any(sp is None for sp in spans):
+            continue
+        lines = _wrap_into(words, [int((hi - lo) * width_factor) for lo, hi in spans], font, is_cjk, hyph,
+                           protected=protected, force=hyphenate == "force")
+        if lines is None:
+            continue
+        out = []
+        for i, (txt, (lo, hi)) in enumerate(zip(lines, spans)):
+            lw = measure_width(txt, font)
+            out.append(PositionedLine(text=txt, x=ox + lo + (hi - lo - lw) // 2, y=oy + top + i * lh, width=hi - lo))
+        return out
+    return None

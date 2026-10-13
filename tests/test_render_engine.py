@@ -194,3 +194,122 @@ def test_intermediates_are_lossless_with_legacy_fallback(tmp_path):
         artifacts.save_lossless(img, new)
         assert artifacts.existing_page_artifact(run, 1, artifacts.S4_INPAINTED) == new
         assert _I.open(new).getpixel((3, 3)) == (12, 200, 37)
+
+
+
+def _ellipse_contour(w=240, h=300):
+    import cv2
+    img = np.zeros((h + 40, w + 40), np.uint8)
+    cv2.ellipse(img, ((w + 40) // 2, (h + 40) // 2), (w // 2, h // 2), 0, 0, 360, 255, -1)
+    cs, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    return max(cs, key=cv2.contourArea)
+
+
+def test_scanline_wraps_centre_first():
+    """R5: widths were taken from the contour's top, then the block was
+    re-centred on the bbox: 'YA CONOCES EL TALADRO, ¡POCHITA!' at 35 in a
+    240x302 bubble came out in 5 lines. Centred on the bubble it takes 3."""
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.scanline import scanline_layout
+    font = _get_font("bold", 35)
+    c = _ellipse_contour()
+    lines = scanline_layout(Image.new("RGB", (280, 340), "white"), (20, 20, 260, 320),
+                            "YA CONOCES EL TALADRO, ¡POCHITA!", font, 35, "es", padding=12, precomputed_contour=c)
+    assert lines and len(lines) <= 3, [pl.text for pl in (lines or [])]
+    # the block sits around the centre and every line is inside its row
+    mid = sum(pl.y for pl in lines) / len(lines)
+    assert abs(mid + 20 - 170) < 45
+
+
+def test_scanline_hyphenates_instead_of_failing():
+    """R8: a word wider than the row made the whole size fail (no syllable
+    split in the contour path), dropping 'GRANDES.' down to 18 pt. 7-letter
+    words split only when forced (nothing fits whole)."""
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.scanline import scanline_layout
+    font = _get_font("bold", 27)
+    c = _ellipse_contour(121, 167)
+    lines = scanline_layout(Image.new("RGB", (161, 207), "white"), (20, 20, 141, 187),
+                            "300 GRANDES.", font, 27, "es", padding=7, precomputed_contour=c, hyphenate="force")
+    assert lines, "27 pt must fit with a syllable split"
+    assert "".join(pl.text for pl in lines).replace("-", "").replace(" ", "") == "300GRANDES."
+
+
+def test_scanline_one_line_per_row_in_concave_bubbles():
+    """R4: concave rows yielded several segments → two lines at the same y."""
+    import cv2
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.scanline import scanline_layout
+    img = np.zeros((300, 400), np.uint8)
+    cv2.ellipse(img, (110, 150), (90, 120), 0, 0, 360, 255, -1)
+    cv2.ellipse(img, (290, 150), (90, 120), 0, 0, 360, 255, -1)  # two lobes
+    cs, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    font = _get_font("bold", 24)
+    lines = scanline_layout(Image.new("RGB", (400, 300), "white"), (0, 0, 400, 300),
+                            "UNA FRASE PARA TRES LINEAS", font, 24, "es",
+                            padding=8, precomputed_contour=max(cs, key=cv2.contourArea))
+    assert lines
+    ys = [pl.y for pl in lines]
+    assert len(ys) == len(set(ys))
+
+
+
+def test_syllable_split_only_for_a_clear_size_gain():
+    """'¡¡GRA-CIAS!!' for +3 pt read worse than the whole word: split only when
+    it buys >= 25% more size (or nothing fits whole)."""
+    from yomeru.lib.rendering.scanline_engine import prefer_unsplit
+    assert prefer_unsplit((30, "f", ["GRACIAS"]), (33, "f", ["GRA-", "CIAS"]))[0] == 30
+    assert prefer_unsplit((18, "f", ["x"]), (27, "f", ["y-", "z"]))[0] == 27
+    assert prefer_unsplit(None, (27, "f", ["y-"]))[0] == 27
+
+
+
+def test_harmonize_double_bubbles_cap_and_floor():
+    """Joined bubbles (touching containers) share one size; a short line in a
+    huge bubble is capped near the page median; small outliers are lifted."""
+    from yomeru.lib.rendering.scanline_engine import harmonize_sizes, bubble_groups
+    boxes = [(0, 0, 100, 100), (90, 10, 200, 90), (400, 0, 500, 100), (600, 0, 700, 100), (800, 0, 900, 100)]
+    assert bubble_groups(boxes) == [[0, 1]]
+    plan = harmonize_sizes([36, 27, 30, 60, 15], boxes, [True] * 5, min_font=12)
+    assert plan[0] == (12, 27)            # double bubble: matches its partner
+    assert 1 not in plan                  # the partner sets the size
+    assert plan[3] == (12, int(30 * 1.45))  # capped
+    assert plan[4] == (16, int(30 * 0.7))   # lifted (only if it fits)
+    assert 2 not in plan
+    # user-fixed / non-contour layouts are never touched
+    assert harmonize_sizes([36, 27], boxes[:2], [False, True], 12) == {}
+
+
+def test_proper_names_are_never_split():
+    from yomeru.lib.rendering.scanline_engine import proper_names
+    from yomeru.lib.rendering.scanline import _wrap_into
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.text_layout import _get_hyphenator
+    names = proper_names("IWASHITA SHIMA", "IWASHITA SHIMA")
+    assert names == {"IWASHITA", "SHIMA"}
+    font = _get_font("bold", 30)
+    hyph = _get_hyphenator("es", aggressive=True)
+    narrow = [60, 60, 60]
+    assert _wrap_into(["IWASHITA", "SHIMA"], narrow, font, False, hyph, protected=names, force=True) is None
+    # short words stay whole unless forced
+    assert _wrap_into(["GRACIAS"], [70, 70], font, False, hyph) is None
+    assert _wrap_into(["GRACIAS"], [70, 70], font, False, hyph, force=True)
+
+
+
+def test_wrap_moves_long_word_to_a_wider_row():
+    """Greedy filling put 'MILLONES.' on the narrow bottom row of an oval and
+    split it ('MILLO-/NES.') — it fits whole on the wide middle row."""
+    from yomeru.lib.rendering.scanline import _wrap_into
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.text_layout import _get_hyphenator, measure_width
+    font = _get_font("bold", 24)
+    W = measure_width("MILLONES.", font)
+    # oval rows: narrow top, wide middle, narrow bottom
+    widths = [measure_width("FUE", font) + 4, measure_width("POR 1.2", font) + 4, W + 4, W - 15]
+    got = _wrap_into("FUE POR 1.2 MILLONES.".split(), widths[:3], font, False,
+                     _get_hyphenator("es", aggressive=True), force=True)
+    assert got == ["FUE", "POR 1.2", "MILLONES."], got
+    # greedy would have put 'POR' on the narrow top row and split MILLONES below
+    assert _wrap_into("FUE POR 1.2 MILLONES.".split(), [widths[2], widths[0], widths[3]], font, False,
+                      _get_hyphenator("es", aggressive=True), force=False) is None

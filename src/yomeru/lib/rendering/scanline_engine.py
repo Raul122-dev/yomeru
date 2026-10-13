@@ -84,6 +84,91 @@ def largest_fitting_layout(sizes, width_factors, try_layout, usable_h: int, max_
     return None
 
 
+HYPHEN_GAIN = 1.4
+
+
+MAX_OVER_MEDIAN = 1.45   # a short line in a big bubble shouldn't shout over the page
+MIN_UNDER_MEDIAN = 0.7   # small outliers are lifted toward the median when they fit
+TOUCH_GAP = 0            # px: containers must overlap to be one visual bubble (double bubbles)
+
+
+def bubble_groups(bboxes: list[tuple[int, int, int, int]], gap: int = TOUCH_GAP) -> list[list[int]]:
+    """Indices of containers that touch or overlap (double/joined bubbles)."""
+    n = len(bboxes)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(n):
+        ax1, ay1, ax2, ay2 = bboxes[i]
+        for j in range(i + 1, n):
+            bx1, by1, bx2, by2 = bboxes[j]
+            if ax1 - gap <= bx2 and bx1 - gap <= ax2 and ay1 - gap <= by2 and by1 - gap <= ay2:
+                parent[find(i)] = find(j)
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    return [g for g in groups.values() if len(g) > 1]
+
+
+def harmonize_sizes(sizes, bboxes, adjustable, min_font, joinable=None) -> dict[int, tuple[int, int]]:
+    """Target size window (lo, hi) per adjustable layout:
+    - joined bubbles share one size (the group's smallest: it is what fits);
+    - nothing exceeds MAX_OVER_MEDIAN x the page median;
+    - small outliers are lifted toward MIN_UNDER_MEDIAN x median (only if it fits).
+    Callers re-lay out inside the contour and keep the old layout otherwise."""
+    plan: dict[int, tuple[int, int]] = {}
+    if not sizes:
+        return plan
+    med = sorted(sizes)[len(sizes) // 2]
+    cap = int(med * MAX_OVER_MEDIAN)
+    floor = int(med * MIN_UNDER_MEDIAN)
+    want = list(sizes)
+    for i, s in enumerate(sizes):
+        if not adjustable[i]:
+            continue
+        if len(sizes) > 2 and s > cap:
+            want[i] = cap
+            plan[i] = (min_font, cap)
+        elif len(sizes) > 2 and s < floor:
+            plan[i] = (s + 1, floor)
+    joinable = joinable or [True] * len(sizes)
+    idx = [i for i in range(len(sizes)) if joinable[i]]
+    groups = [[idx[k] for k in g] for g in bubble_groups([bboxes[i] for i in idx])]
+    for g in groups:
+        target = min(want[i] for i in g)
+        for i in g:
+            if not adjustable[i]:
+                continue
+            if want[i] > target:
+                plan[i] = (min_font, target)
+            else:
+                plan.pop(i, None)  # the group's size-setter: no lift that would break the match
+    return plan
+
+
+def proper_names(source: str, drawn: str) -> frozenset[str]:
+    """Words the translation carries over verbatim from the source (names:
+    'IWASHITA', 'SHIMIZU', 'DENJI'). Never split at a syllable."""
+    import re
+    tok = lambda s: {w.upper() for w in re.findall(r"[^\W\d_]{3,}", s)}  # noqa: E731
+    return frozenset(tok(source) & tok(drawn))
+
+
+def prefer_unsplit(whole, split):
+    """Syllable splits only when they buy a clearly larger font (>= 40%):
+    '¡¡GRA-CIAS!!' or 'TRABA-JO' for +3 pt read worse than whole words."""
+    if whole is None:
+        return split
+    if split is not None and split[0] >= whole[0] * HYPHEN_GAIN:
+        return split
+    return whole
+
+
 def is_cached(run: Run, page_num: int) -> bool:
     preview, production = output_paths(run, page_num)
     if not (preview.exists() and production.exists()):
@@ -162,6 +247,7 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
     all_layouts: list[tuple] = []
     events: list[dict] = []
     layout_event: list[dict] = []  # parallel to all_layouts
+    layout_relayout: list = []     # parallel: contour re-search fn or None
     container_owner: dict[tuple, int] = {}
 
     def skip_event(dlg_i: int, m: dict, reason: str, text: str = "") -> None:
@@ -273,6 +359,7 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
         # (char-by-char top-to-bottom). Only for brief expressions (≤3 short words,
         # ≤12 chars total) — longer text uses normal horizontal layout with small font.
         best_layout = None
+        relayout = None  # contour re-search at other sizes (harmonisation pass)
         words = clean_text.strip().split()
         char_count = len(clean_text.replace(" ", ""))
         is_short_text = len(words) <= 3 and char_count <= 12
@@ -362,19 +449,32 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
         # fails. The old search optimised for a vertical-fill band (0.35-0.85)
         # and discarded larger sizes that fit, giving small text with many breaks.
         if best_layout is None:
-            def _try(size: int, wf: float):
-                font = _get_font(style, size)
-                pos = scanline_layout(
-                    original_img, bubble_bbox, clean_text, font, size,
-                    lang_code_for_this_match, padding=scan_padding, width_factor=wf,
-                    precomputed_contour=bubble_contours.get(bubble_bbox),
-                )
-                return (font, pos, measure_line_height(font, size)) if pos else None
+            protected = proper_names(dlg.get("text") or "", clean_text)
 
-            best_layout = largest_fitting_layout(
-                range(max_size, MIN_FONT, -3), width_factors, _try,
-                usable_h=max(1, bubble_h - scan_padding * 2),
-            )
+            # Bound by value: `relayout` is called after the loop (harmonisation)
+            def _try_with(hyphenate: bool | str, _style=style, _bb=bubble_bbox, _text=clean_text,
+                          _lang=lang_code_for_this_match, _pad=scan_padding, _prot=protected):
+                def _try(size: int, wf: float):
+                    font = _get_font(_style, size)
+                    pos = scanline_layout(
+                        original_img, _bb, _text, font, size, _lang, padding=_pad, width_factor=wf,
+                        precomputed_contour=bubble_contours.get(_bb), hyphenate=hyphenate, protected=_prot,
+                    )
+                    return (font, pos, measure_line_height(font, size)) if pos else None
+                return _try
+
+            usable_h = max(1, bubble_h - scan_padding * 2)
+
+            def _search(sizes, _wf=width_factors, _uh=usable_h, _t=_try_with):
+                whole = largest_fitting_layout(sizes, _wf, _t(False), usable_h=_uh)
+                split = largest_fitting_layout(sizes, _wf, _t(True), usable_h=_uh)
+                got = prefer_unsplit(whole, split)
+                if got is None:  # nothing fits whole: any split (never names)
+                    got = largest_fitting_layout(sizes, _wf, _t("force"), usable_h=_uh)
+                return got
+
+            best_layout = _search(range(max_size, MIN_FONT, -3))
+            relayout = _search
 
         # FALLBACK: if scanline failed, use simple bbox centered rendering
         if best_layout is None:
@@ -423,6 +523,7 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
             all_layouts.append((best_layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, lang_code_for_this_match))
             if not is_free:
                 container_owner[bubble_bbox] = len(all_layouts) - 1
+            layout_relayout.append(relayout)
             ev = {"dialogue_index": dlg_i, "region_id": m.get("region_id"), "status": "ok",
                   "text": text, "font_style": style, "tone": tone, "bubble_type": bubble_type,
                   "bbox": list(bubble_bbox), "box_size": [bubble_w, bubble_h], "free": is_free,
@@ -435,72 +536,24 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
     keep = [k for k, lay in enumerate(all_layouts) if lay is not None]
     all_layouts = [all_layouts[k] for k in keep]
     layout_event = [layout_event[k] for k in keep]
+    layout_relayout = [layout_relayout[k] for k in keep]
 
-    # ── Font consistency: normalize sizes toward page median ─────────────────
-    if len(all_layouts) > 2:
-        sizes = [layout[0][0] for layout in all_layouts]
-        target_size = sorted(sizes)[len(sizes) // 2]
-
-        for idx, ((size, font, positioned), is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, layout_lang_code) in enumerate(all_layouts):
-            if size >= target_size * 0.7 or target_size <= size:
-                continue
-            if layout_event[idx].get("size_fixed"):  # user chose this size
-                continue
-
-            # Skip vertical layouts (single-char-per-line) — they were sized intentionally
-            if positioned and all(len(pl.text) == 1 for pl in positioned):
-                continue
-
-            try:
-                target_font = font.font_variant(size=target_size)
-            except Exception:
-                continue
-
-            bubble_w = bubble_bbox[2] - bubble_bbox[0]
-            bubble_h = bubble_bbox[3] - bubble_bbox[1]
-            scan_padding = max(5, min(12, int(min(bubble_w, bubble_h) * 0.06)))
-            width_factors = (0.90, 0.75, 0.60, 0.45, 0.35, 0.25) if bubble_h > bubble_w * 1.8 else (0.90, 0.70, 0.55, 0.45)
-            replacement_layout = None
-            target_lh = measure_line_height(target_font, target_size)
-
-            for wf in width_factors:
-                candidate = scanline_layout(
-                    original_img, bubble_bbox, clean_text, target_font, target_size,
-                    layout_lang_code, padding=scan_padding, width_factor=wf,
-                    precomputed_contour=bubble_contours.get(bubble_bbox),
-                )
-                if not candidate:
-                    continue
-
-                text_h = len(candidate) * target_lh
-                v_fill = text_h / max(1, bubble_h - scan_padding * 2)
-                if v_fill > 0.95:
-                    continue
-
-                replacement_layout = (target_size, target_font, candidate)
-                if 0.4 <= v_fill <= 0.85:
-                    break
-
-            if replacement_layout is None:
-                pad = max(4, scan_padding)
-                bw = bubble_w - pad * 2
-                bh = bubble_h - pad * 2
-                if bw >= 10 and bh >= 10:
-                    max_lines = max(1, bh // target_lh)
-                    lines = wrap_text(clean_text, bw, max_lines, target_font, layout_lang_code)
-                    if lines:
-                        from yomeru.lib.rendering.scanline import PositionedLine
-                        total_h = len(lines) * target_lh
-                        start_y = bubble_bbox[1] + pad + (bh - total_h) // 2
-                        positioned_lines = []
-                        for li, line in enumerate(lines):
-                            lw = measure_width(line, target_font)
-                            lx = bubble_bbox[0] + pad + (bw - lw) // 2
-                            positioned_lines.append(PositionedLine(text=line, x=lx, y=start_y + li * target_lh, width=bw))
-                        replacement_layout = (target_size, target_font, positioned_lines)
-
-            if replacement_layout is not None:
-                all_layouts[idx] = (replacement_layout, is_free, text_color, outline_color, bubble_bbox, text_angle, clean_text, layout_lang_code)
+    # ── Font harmony (contour layouts only; never through the bbox fallback) ──
+    plan = harmonize_sizes(
+        sizes=[lay[0][0] for lay in all_layouts],
+        bboxes=[lay[4] for lay in all_layouts],
+        adjustable=[layout_relayout[i] is not None and not layout_event[i].get("size_fixed")
+                    and not layout_event[i].get("free") for i in range(len(all_layouts))],
+        min_font=MIN_FONT,
+        # only speech-like balloons join; narration boxes sit edge to edge
+        joinable=[layout_event[i].get("bubble_type") not in ("narration", "sfx") for i in range(len(all_layouts))],
+    )
+    for idx, (lo, hi) in plan.items():
+        cur = all_layouts[idx][0][0]
+        sizes = list(range(hi, lo - 1, -3)) if hi > cur else list(range(min(hi, cur), MIN_FONT, -3))
+        got = layout_relayout[idx](sizes)
+        if got is not None and lo <= got[0] <= hi:
+            all_layouts[idx] = (got, *all_layouts[idx][1:])
 
     # ── Pass 2: Resolve line-level collisions between regions ────────────────
     # For each layout, compute per-line bounding boxes
