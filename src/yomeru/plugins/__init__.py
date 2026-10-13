@@ -29,6 +29,7 @@ PhaseName = Literal["detection", "analysis", "matching", "inpainting", "renderin
 # Modules that register the built-in backends (imported lazily, on first lookup)
 _BUILTINS: dict[str, list[str]] = {
     "detection": ["yomeru.plugins.detection"],
+    "analysis": ["yomeru.plugins.analysis"],
     "matching": ["yomeru.plugins.matching"],
     "inpainting": ["yomeru.plugins.inpainting"],
     "rendering": ["yomeru.plugins.rendering"],

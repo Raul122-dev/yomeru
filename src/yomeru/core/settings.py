@@ -151,11 +151,26 @@ class RenderingSettings(BaseModel):
         return self
 
 
+class AnalysisSettings(BaseModel):
+    """Analysis technique = a registered backend (yomeru/plugins) + its options.
+    The model it calls is `PipelineSettings.analysis_model`."""
+    backend: str = "vlm"
+    options: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _known_backend(self):
+        from yomeru.plugins import get_spec
+        spec = get_spec("analysis", self.backend)  # raises UnknownBackend
+        self.options = spec.options_model.model_validate(self.options).model_dump()
+        return self
+
+
 class PipelineSettings(BaseModel):
     """Everything a run needs. This is what presets and run snapshots store."""
     analysis_model: ModelRef = Field(default_factory=ModelRef)
     translation_model: ModelRef = Field(default_factory=ModelRef)  # empty → analysis model translates
     language: LanguageSettings = Field(default_factory=LanguageSettings)
+    analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
     detection: DetectionSettings = Field(default_factory=DetectionSettings)
     matching: MatchingSettings = Field(default_factory=MatchingSettings)
     inpainting: InpaintingSettings = Field(default_factory=InpaintingSettings)

@@ -30,13 +30,18 @@ def run(
     Run VLM analysis on pages.
 
     Options (from the run's settings snapshot, see core/settings.py):
+        backend: analysis backend name (yomeru/plugins/analysis.py)
+        backend_options: dict validated by that backend's options model
         model: ModelRef dict    (connection_id + model)
     """
-    from yomeru.core.analyzer import analyze_page
+    from yomeru.core.contracts import AnalysisRequest
     from yomeru.core.models import ContextObject, PageAnalysis
+    from yomeru.plugins import get_backend
+    from PIL import Image
     from yomeru.core.logger import PipelineLogger
 
     meta = run.meta()
+    spec, backend = get_backend("analysis", options.get("backend", "vlm"), options.get("backend_options"))
     from yomeru.core.settings import ModelRef
     model = ModelRef.model_validate(options.get("model") or {})
     comic_format = options.get("comic_format", meta.get("comic_format", "auto"))
@@ -49,6 +54,7 @@ def run(
     output_dir = run.output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    detections = artifacts.load_detections(run)  # active (refined if edited)
     all_pages = artifacts.page_files(run)
     pages = all_pages if not page_scope else [(i, p) for i, p in all_pages if i in page_scope]
 
@@ -56,7 +62,7 @@ def run(
     log = PipelineLogger(total=total, model=model.model, comic_format=comic_format)
     log.run_start()
     on_progress({"type": "phase_progress", "phase": "analysis", "total": total, "processed": 0})
-    print(f"\n[analysis] {total} pages, model={model.connection_id}/{model.model}", file=sys.stderr)
+    print(f"\n[analysis] {total} pages, backend={spec.name}, model={model.connection_id}/{model.model}", file=sys.stderr)
 
     ctx = ContextObject()
     analyses: list[PageAnalysis] = []
@@ -85,20 +91,18 @@ def run(
                 log.token(t)
                 on_progress({"type": "token", "page": page_num, "token": t})
 
-            a = analyze_page(
-                image_path=page_path,
+            a = backend.analyze_page(AnalysisRequest(
+                image=Image.open(page_path).convert("RGB"),
                 page_number=page_num,
+                regions=list(detections.get(page_num, {}).values()),
                 previous_context=prev_context,
-                model=model,
                 comic_format=comic_format,
-                on_token=on_token,
                 source_language=source_language,
                 target_language=target_language,
                 ui_language=ui_language,
                 global_context=global_context,
                 page_context=page_context,
-                saved_detections_dir=output_dir,
-            )
+            ), model=model, on_token=on_token)
 
             elapsed = time.time() - t0
             ctx.update(a)

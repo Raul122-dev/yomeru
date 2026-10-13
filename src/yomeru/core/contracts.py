@@ -2,8 +2,7 @@
 Phase contracts — typed inputs/outputs exchanged between phases and backends.
 
 A backend (see yomeru.plugins) only ever sees these objects: never a Run, a
-path or meta.json. The contract for analysis is added
-when those phases become backends (vault "Yomeru - Flujo de datos y backends").
+path or meta.json. Every phase now has its contract here (vault "Yomeru - Flujo de datos y backends").
 """
 from __future__ import annotations
 
@@ -70,6 +69,24 @@ class InpaintResult:
     stats: dict = field(default_factory=dict)            # → render_log.s4_inpainting
     debug: dict[str, Image.Image] = field(default_factory=dict)  # name → image
 
+
+
+# ── Analysis ──────────────────────────────────────────────────────────────────
+
+@dataclass
+class AnalysisRequest:
+    """One page to read and translate. The model choice and connection are
+    resolved by the backend (it may not use a remote model at all)."""
+    image: Image.Image                 # original page, RGB
+    page_number: int
+    regions: list[dict]                # active detections (id, x1..y2, label, score) — the badges to cite
+    previous_context: str | None = None  # story so far (characters, recent pages), built by the phase
+    comic_format: str = "auto"
+    source_language: str = "auto"
+    target_language: str | None = None
+    ui_language: str = "English"       # language of descriptions (scene, summary)
+    global_context: str = ""           # user notes for the whole series
+    page_context: str = ""             # user note for this page
 
 
 # ── Matching ──────────────────────────────────────────────────────────────────

@@ -415,6 +415,7 @@ def _phase_options(run: Run, phase: str) -> dict:
                 "threshold": st.detection.threshold}
     if phase == "analysis":
         return {
+            "backend": st.analysis.backend, "backend_options": st.analysis.options,
             "model": st.analysis_model.model_dump(),
             "comic_format": lang.comic_format,
             "source_language": lang.source,

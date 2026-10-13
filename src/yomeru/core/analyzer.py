@@ -238,36 +238,6 @@ def _prepare_image_from_pil(img: "object") -> tuple[str, str, int, int]:
     return b64, "image/jpeg", model_w, model_h
 
 
-def _prepare_image(path: Path) -> tuple[str, str, int, int]:
-    """
-    Load image, resize to MAX_ANALYSIS_SIDE if needed, encode as JPEG.
-    Returns: (base64, mime, model_width, model_height)
-
-    model_width / model_height = what the model actually sees.
-    Store these in page_analyses.json so typesetting can scale bboxes
-    from model space back to the original full-resolution image.
-    """
-    from PIL import Image as _PIL
-    import io as _io
-
-    img = _PIL.open(path).convert("RGB")
-    orig_w, orig_h = img.size
-
-    max_dim = max(orig_w, orig_h)
-    if max_dim > MAX_ANALYSIS_SIDE:
-        scale = MAX_ANALYSIS_SIDE / max_dim
-        model_w = max(1, int(orig_w * scale))
-        model_h = max(1, int(orig_h * scale))
-        img = img.resize((model_w, model_h), _PIL.LANCZOS)  # type: ignore[attr-defined]
-    else:
-        model_w, model_h = orig_w, orig_h
-
-    buf = _io.BytesIO()
-    img.save(buf, format="JPEG", quality=92)
-    b64 = base64.standard_b64encode(buf.getvalue()).decode()
-    return b64, "image/jpeg", model_w, model_h
-
-
 def analyze_page(
     image_path: Path,
     page_number: int,
@@ -284,34 +254,52 @@ def analyze_page(
     # If set, load saved/refined detections instead of running detector
     saved_detections_dir: Path | None = None,
 ) -> PageAnalysis:
+    """Path-based wrapper (kept for callers outside the phase)."""
+    from PIL import Image as _PIL
+    from yomeru.core.contracts import AnalysisRequest
+    regions: list[dict] = []
+    if saved_detections_dir is not None:
+        from yomeru.core.annotator import load_page_detections_list
+        regions = load_page_detections_list(saved_detections_dir, page_number)
+    return analyze(AnalysisRequest(
+        image=_PIL.open(image_path).convert("RGB"), page_number=page_number, regions=regions,
+        previous_context=previous_context, comic_format=comic_format, source_language=source_language,
+        target_language=target_language, ui_language=ui_language, global_context=global_context,
+        page_context=page_context,
+    ), model=model, on_token=on_token)
+
+
+def analyze(req, model: "ModelRef | None" = None,
+            on_token: Callable[[str], None] | None = None) -> PageAnalysis:
+    """The `vlm` technique: one vision call per page (read + translate + scene).
+    Pure function of the request; the model call goes through core/llm."""
     from yomeru.core.llm import resolve_model, stream_vision
     rm = resolve_model(model or ModelRef())
+    page_number = req.page_number
+    previous_context = req.previous_context
+    comic_format = req.comic_format
+    source_language = req.source_language
+    target_language = req.target_language
+    ui_language = req.ui_language
+    global_context = req.global_context
+    page_context = req.page_context
 
-    # ── detection-first: annotate image before sending to VLM ─────────────────
+    # ── detection-first: numbered boxes drawn on the page + region list ───────
     detection_context = ""
-
-    if saved_detections_dir is not None:
-        # Phase 2 analysis-only mode: load saved/refined detections, don't re-run detector
+    raw_img = req.image
+    if req.regions:
         try:
-            from PIL import Image as _PIL_DET
-            from yomeru.core.annotator import annotate_from_detections, load_page_detections_list
-            raw_img = _PIL_DET.open(image_path).convert("RGB")
-            regions = load_page_detections_list(saved_detections_dir, page_number)
-            if regions:
-                annotated = annotate_from_detections(raw_img, regions)
-                n = len(regions)
-                print(f"  [analyzer] p{page_number}: {n} saved regions loaded", file=sys.stderr)
-                detection_context = _build_detection_context(regions, raw_img.size)
-                b64, mime, model_w, model_h = _prepare_image_from_pil(annotated.annotated_image)
-            else:
-                print(f"  [analyzer] p{page_number}: no saved detections, using original image", file=sys.stderr)
-                b64, mime, model_w, model_h = _prepare_image(image_path)
+            from yomeru.core.annotator import annotate_from_detections
+            annotated = annotate_from_detections(raw_img, req.regions)
+            print(f"  [analyzer] p{page_number}: {len(req.regions)} saved regions loaded", file=sys.stderr)
+            detection_context = _build_detection_context(req.regions, raw_img.size)
+            b64, mime, model_w, model_h = _prepare_image_from_pil(annotated.annotated_image)
         except Exception as e:
-            print(f"  [analyzer] WARNING: failed to load saved detections: {e}", file=sys.stderr)
-            b64, mime, model_w, model_h = _prepare_image(image_path)
-
+            print(f"  [analyzer] WARNING: failed to annotate detections: {e}", file=sys.stderr)
+            b64, mime, model_w, model_h = _prepare_image_from_pil(raw_img)
     else:
-        b64, mime, model_w, model_h = _prepare_image(image_path)
+        print(f"  [analyzer] p{page_number}: no saved detections, using original image", file=sys.stderr)
+        b64, mime, model_w, model_h = _prepare_image_from_pil(raw_img)
     system_prompt = _get_system_prompt()
     user_text = _build_user_text(
         page_number=page_number,
@@ -357,7 +345,7 @@ def analyze_page(
     result = PageAnalysis(**data)
 
     # Post-validate: warn if detection was run but model returned no region_ids
-    if saved_detections_dir is not None and result.dialogues:
+    if req.regions and result.dialogues:
         assigned = sum(1 for d in result.dialogues if d.region_id is not None)
         total = len(result.dialogues)
         if assigned == 0:

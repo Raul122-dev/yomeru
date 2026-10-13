@@ -29,6 +29,12 @@ export function PipelineSettingsForm({
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-4">
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Models</h3>
+        <BackendPicker
+          phase="analysis"
+          label="analysis technique"
+          value={value.analysis ?? { backend: "vlm", options: {} }}
+          onChange={(v) => onChange({ ...value, analysis: v })}
+        />
         <ModelPicker
           label="analysis model"
           hint="Reads each page and translates. Must accept images."
