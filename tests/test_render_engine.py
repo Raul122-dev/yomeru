@@ -132,3 +132,13 @@ def test_render_overrides_round_trip_and_explicit_unskip(client):
     from yomeru.lib.rendering.scanline_engine import input_paths
     names = {p.name for p in input_paths(run, 1)}
     assert {"edits.json", "meta.json", "page_detections.json"} <= names
+
+
+def test_font_search_takes_the_largest_size_that_fits():
+    """R8: a size that fits (fill <= 0.95) is never discarded for a smaller one
+    to hit a 0.35-0.85 fill band ('¿CUÁNTO FUE ESO DE NUEVO?' fit at 21 but
+    ended at 18)."""
+    import inspect
+    from yomeru.lib.rendering import scanline_engine as eng
+    src = inspect.getsource(eng.render_page)
+    assert "min_fill" not in src and "max_fill" not in src

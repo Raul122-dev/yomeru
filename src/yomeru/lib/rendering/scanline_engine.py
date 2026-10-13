@@ -336,43 +336,25 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None) ->
             if positioned_lines:
                 best_layout = (vert_size, vert_font, positioned_lines)
 
-        # Try scanline layout if vertical didn't apply or wasn't needed
+        # Largest size that fits (fill <= 0.95). At that size prefer the widest
+        # lines (fewest breaks); narrower width factors only when the wide one
+        # fails. The old search optimised for a vertical-fill band (0.35-0.85)
+        # and discarded larger sizes that fit, giving small text with many breaks.
         if best_layout is None:
+            usable_h = max(1, bubble_h - scan_padding * 2)
             for try_size in range(max_size, MIN_FONT, -3):
                 font = _get_font(style, try_size)
                 lh = measure_line_height(font, try_size)
-
                 for wf in width_factors:
                     positioned = scanline_layout(
                         original_img, bubble_bbox, clean_text, font, try_size,
                         lang_code_for_this_match, padding=scan_padding, width_factor=wf,
                         precomputed_contour=bubble_contours.get(bubble_bbox),
                     )
-                    if not positioned:
-                        continue
-
-                    text_h = len(positioned) * lh
-                    v_fill = text_h / max(1, bubble_h - scan_padding * 2)
-                    if v_fill > 0.95:
-                        continue
-
-                    # Dynamic v_fill targets based on bubble aspect ratio
-                    # Tall bubbles: accept lower fill (compact centered text)
-                    # Normal bubbles: standard fill
-                    if is_vertical_bubble:
-                        min_fill = 0.20  # tall bubbles: text can be compact
-                        max_fill = 0.70
-                    else:
-                        min_fill = 0.35
-                        max_fill = 0.85
-
-                    if min_fill <= v_fill <= max_fill:
+                    if positioned and len(positioned) * lh / usable_h <= 0.95:
                         best_layout = (try_size, font, positioned)
                         break
-                    elif best_layout is None:
-                        best_layout = (try_size, font, positioned)
-
-                if best_layout and min_fill <= (len(best_layout[2]) * measure_line_height(best_layout[1], best_layout[0])) / max(1, bubble_h - scan_padding * 2) <= max_fill:
+                if best_layout is not None:
                     break
 
         # FALLBACK: if scanline failed, use simple bbox centered rendering
