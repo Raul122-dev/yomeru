@@ -32,15 +32,24 @@ export default function NewRun() {
   );
   useEffect(() => setSettings(base), [base]);
 
-  const modelLabel = settings
-    ? `${cfg?.connections.find((c) => c.id === settings.analysis_model.connection_id)?.name ?? "?"} · ${settings.analysis_model.model || "no model"}`
-    : "";
+  const isLocal = settings?.analysis?.backend === "local";
+  const hasApiModel = !!(settings?.analysis_model.connection_id && settings.analysis_model.model);
+  const needsSetup = !!settings && !isLocal && !hasApiModel;
+  const modelLabel = !settings
+    ? ""
+    : isLocal
+      ? `local (experimental) · ${String(settings.analysis.options?.model ?? "auto")}`
+      : `${cfg?.connections.find((c) => c.id === settings.analysis_model.connection_id)?.name ?? "?"} · ${settings.analysis_model.model || "no model"}`;
+
+  const useLocal = () =>
+    settings && setSettings({ ...settings, analysis: { backend: "local", options: {} } as PipelineSettings["analysis"] });
 
   const submit = async () => {
     if (!files.length) return setError("Select at least one page");
     if (!name.trim()) return setError("Give the run a name");
-    if (!settings?.analysis_model.connection_id || !settings.analysis_model.model)
-      return setError("No analysis model selected — set one in Settings or below");
+    if (!settings) return;
+    if (needsSetup)
+      return setError("No model provider configured — set one up in Settings, or use the experimental local mode");
     setLoading(true);
     setError("");
     try {
@@ -102,6 +111,21 @@ export default function NewRun() {
           className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] px-3 py-2 text-xs leading-relaxed placeholder:text-[hsl(var(--text-muted))] resize-y focus:border-[hsl(var(--accent2))] focus:outline-none"
         />
       </Card>
+
+      {needsSetup && (
+        <Card className="mb-4 border-[hsl(var(--warning)/.6)]">
+          <p className="text-sm font-medium">A model is needed to read and translate the pages</p>
+          <p className="mt-1 text-xs text-[hsl(var(--text-muted))]">
+            yomeru uses a vision model through an API (OpenRouter, OpenAI, Anthropic or any compatible
+            provider) — best quality. Or, for a 100% free run, a model on this machine (experimental:
+            noticeably weaker translations).
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => nav("/settings")}>Set up a provider</Button>
+            <Button size="sm" variant="outline" onClick={useLocal}>Use local mode (experimental)</Button>
+          </div>
+        </Card>
+      )}
 
       {/* Run options */}
       <Card className="mb-4">

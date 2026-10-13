@@ -107,7 +107,8 @@ def _reply_schema() -> dict:
 
 
 @register("analysis", "local", options=LocalOptions, needs_gpu=True,
-          description="A vision model running on this machine (Ollama) — no API cost")
+          description="Experimental — a vision model running on this machine (Ollama). "
+                      "Free, but translations are clearly below the API models.")
 class LocalAnalyzer:
     def __init__(self, options: LocalOptions):
         self.options = options
@@ -133,11 +134,11 @@ class LocalAnalyzer:
 
     def analyze_page(self, req: AnalysisRequest, model=None, on_token: Callable[[str], None] | None = None) -> PageAnalysis:
         import sys
-        from yomeru.core.analyzer import parse_reply, prepare
+        from yomeru.core.analyzer import _load, parse_reply, prepare
         from yomeru.lib.local_models import chat_vision
         o = self.options
         name = self.resolved_model()
-        p = prepare(req)
+        p = prepare(req, system=_load("system_compact.md"))
         print(f"  → local {name}  lang={req.source_language} → {req.target_language}", file=sys.stderr)
         raw = chat_vision(name, p.system, p.user_text, p.image_b64,
                           schema=_reply_schema() if o.structured_output else None,

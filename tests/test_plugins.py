@@ -174,3 +174,29 @@ def test_backend_listing_has_defaults_and_versions():
     assert b["schema_version"] == 1 and b["compatible"] is True
     props = b["options"]["properties"]
     assert props["min_score"]["maximum"] == 0.5 and props["ocr_weight"]["type"] == "number"
+
+
+
+def test_local_backend_uses_the_compact_prompt_and_strict_schema(monkeypatch):
+    """Local models get the short prompt (the 16K one made qwen3.5:9b emit
+    empty and misplaced dialogues) and a reply schema where skip is optional
+    (required, the model copied one skip:true onto every dialogue)."""
+    from PIL import Image
+    from yomeru.core.contracts import AnalysisRequest
+    from yomeru.plugins.analysis import _reply_schema
+    import yomeru.lib.local_models as lm
+    seen = {}
+
+    def fake(name, system, text, b64, **kw):
+        seen.update(system=system, schema=kw.get("schema"))
+        return '{"panel_count": 1, "dialogues": [{"region_id": 1, "text": "HI", "text_translated": "HOLA", "bubble_type": "speech"}], "characters_seen": [], "scene": {"location": "", "mood": "", "narrative_beat": ""}, "page_summary": ""}'
+
+    monkeypatch.setattr(lm, "chat_vision", fake)
+    _, be = get_backend("analysis", "local", {"model": "qwen3.5:9b"})
+    a = be.analyze_page(AnalysisRequest(image=Image.new("RGB", (64, 64)), page_number=1, regions=[],
+                                        target_language="Spanish"))
+    assert a.dialogues[0].text_translated == "HOLA" and a.dialogues[0].skip is False
+    assert len(seen["system"]) < 4000 and "Translate" in seen["system"]
+    d = _reply_schema()["properties"]["dialogues"]["items"]
+    assert "skip" not in d["required"] and "region_id" in d["required"]
+    assert next(b for b in list_backends("analysis") if b["name"] == "local")["description"].startswith("Experimental")

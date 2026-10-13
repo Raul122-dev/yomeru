@@ -88,10 +88,19 @@ def test_run_snapshot_is_frozen(client):
 
 
 def test_run_requires_a_model(client):
+    """The API is the default: without a provider + model a run is refused,
+    with a message that offers both ways out. The local mode is an explicit,
+    experimental opt-in that needs no provider."""
     client.patch("/api/config/settings", json={"analysis_model": {"model": ""}})
+    from yomeru.core.settings import PipelineSettings
+    assert PipelineSettings().analysis.backend == "vlm"
     r = client.post("/api/runs", data={"name": "x", "auto_start": "false"},
                     files=[("files", ("a.png", _png(), "image/png"))])
-    assert r.status_code == 400
+    assert r.status_code == 400 and "local mode" in r.json()["detail"]
+    r = client.post("/api/runs", data={"name": "x", "auto_start": "false",
+                                       "settings": json.dumps({"analysis": {"backend": "local"}})},
+                    files=[("files", ("a.png", _png(), "image/png"))])
+    assert r.status_code == 201, r.text
 
 
 def test_invalid_settings_rejected(client):

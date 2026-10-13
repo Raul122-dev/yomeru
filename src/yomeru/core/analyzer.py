@@ -281,7 +281,7 @@ class PreparedPage:
     model_h: int
 
 
-def prepare(req) -> PreparedPage:
+def prepare(req, system: str | None = None) -> PreparedPage:
     """Prompt + annotated image for a page: the numbered region badges drawn on
     it, the region list, languages, format and the story so far."""
     page_number = req.page_number
@@ -311,7 +311,7 @@ def prepare(req) -> PreparedPage:
         page_context=req.page_context,
         image_size=(model_w, model_h),
     ) + detection_context
-    return PreparedPage(_get_system_prompt(), user_text, b64, mime, model_w, model_h)
+    return PreparedPage(system or _get_system_prompt(), user_text, b64, mime, model_w, model_h)
 
 
 def analyze(req, model: "ModelRef | None" = None,

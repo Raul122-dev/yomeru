@@ -91,8 +91,11 @@ async def create_run(
         effective = resolve_settings(preset_id or None, overrides)
     except (json.JSONDecodeError, ValueError) as e:
         raise HTTPException(400, f"invalid settings: {e}")
-    if not effective.analysis_model.is_set():
-        raise HTTPException(400, "no analysis model selected — configure one in Settings")
+    # API (vlm) is the default and needs a configured provider + model; the
+    # local technique is an explicit, experimental opt-in that needs neither.
+    if effective.analysis.backend != "local" and not effective.analysis_model.is_set():
+        raise HTTPException(400, "no model provider configured — add a connection and pick a vision model "
+                                 "in Settings, or choose the experimental local mode")
 
     run = Run.create(name=name, settings=effective, global_context=global_context,
                      preset_id=preset_id or None)
