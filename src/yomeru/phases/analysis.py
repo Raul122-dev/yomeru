@@ -36,6 +36,8 @@ def run(
     """
     from yomeru.core.contracts import AnalysisRequest
     from yomeru.core.models import ContextObject, PageAnalysis
+    from contextlib import nullcontext
+    from yomeru.core.gpu import gpu_lock
     from yomeru.plugins import get_backend
     from PIL import Image
     from yomeru.core.logger import PipelineLogger
@@ -91,18 +93,20 @@ def run(
                 log.token(t)
                 on_progress({"type": "token", "page": page_num, "token": t})
 
-            a = backend.analyze_page(AnalysisRequest(
-                image=Image.open(page_path).convert("RGB"),
-                page_number=page_num,
-                regions=list(detections.get(page_num, {}).values()),
-                previous_context=prev_context,
-                comic_format=comic_format,
-                source_language=source_language,
-                target_language=target_language,
-                ui_language=ui_language,
-                global_context=global_context,
-                page_context=page_context,
-            ), model=model, on_token=on_token)
+            # A local model shares the GPU with detection/OCR/LaMa
+            with (gpu_lock() if spec.needs_gpu else nullcontext()):
+                a = backend.analyze_page(AnalysisRequest(
+                    image=Image.open(page_path).convert("RGB"),
+                    page_number=page_num,
+                    regions=list(detections.get(page_num, {}).values()),
+                    previous_context=prev_context,
+                    comic_format=comic_format,
+                    source_language=source_language,
+                    target_language=target_language,
+                    ui_language=ui_language,
+                    global_context=global_context,
+                    page_context=page_context,
+                ), model=model, on_token=on_token)
 
             elapsed = time.time() - t0
             ctx.update(a)
@@ -132,6 +136,8 @@ def run(
 
     if current_chunk:
         ctx.chunk_summaries.append(ctx.compress_chunk(current_chunk))
+    if hasattr(backend, "release"):
+        backend.release()  # a local model frees the GPU for the next phases
 
     # Save results (merge with existing when using page_scope)
     # Only the pages analysed in THIS run are new; `analyses` also carries the

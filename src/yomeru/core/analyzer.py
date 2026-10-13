@@ -4,6 +4,7 @@ import base64
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -269,22 +270,21 @@ def analyze_page(
     ), model=model, on_token=on_token)
 
 
-def analyze(req, model: "ModelRef | None" = None,
-            on_token: Callable[[str], None] | None = None) -> PageAnalysis:
-    """The `vlm` technique: one vision call per page (read + translate + scene).
-    Pure function of the request; the model call goes through core/llm."""
-    from yomeru.core.llm import resolve_model, stream_vision
-    rm = resolve_model(model or ModelRef())
-    page_number = req.page_number
-    previous_context = req.previous_context
-    comic_format = req.comic_format
-    source_language = req.source_language
-    target_language = req.target_language
-    ui_language = req.ui_language
-    global_context = req.global_context
-    page_context = req.page_context
+@dataclass
+class PreparedPage:
+    """What is sent to a model for one page (shared by every analysis backend)."""
+    system: str
+    user_text: str
+    image_b64: str
+    mime: str
+    model_w: int
+    model_h: int
 
-    # ── detection-first: numbered boxes drawn on the page + region list ───────
+
+def prepare(req) -> PreparedPage:
+    """Prompt + annotated image for a page: the numbered region badges drawn on
+    it, the region list, languages, format and the story so far."""
+    page_number = req.page_number
     detection_context = ""
     raw_img = req.image
     if req.regions:
@@ -300,40 +300,47 @@ def analyze(req, model: "ModelRef | None" = None,
     else:
         print(f"  [analyzer] p{page_number}: no saved detections, using original image", file=sys.stderr)
         b64, mime, model_w, model_h = _prepare_image_from_pil(raw_img)
-    system_prompt = _get_system_prompt()
     user_text = _build_user_text(
         page_number=page_number,
-        comic_format=comic_format,
-        previous_context=previous_context,
-        source_language=source_language,
-        target_language=target_language,
-        ui_language=ui_language,
-        global_context=global_context,
-        page_context=page_context,
+        comic_format=req.comic_format,
+        previous_context=req.previous_context,
+        source_language=req.source_language,
+        target_language=req.target_language,
+        ui_language=req.ui_language,
+        global_context=req.global_context,
+        page_context=req.page_context,
         image_size=(model_w, model_h),
     ) + detection_context
+    return PreparedPage(_get_system_prompt(), user_text, b64, mime, model_w, model_h)
 
-    print(f"  → model {rm.label}  lang={source_language}"
-          + (f" → {target_language}" if target_language else " → English"),
+
+def analyze(req, model: "ModelRef | None" = None,
+            on_token: Callable[[str], None] | None = None) -> PageAnalysis:
+    """The `vlm` technique: one vision call per page (read + translate + scene)
+    through a configured connection (core/llm)."""
+    from yomeru.core.llm import resolve_model, stream_vision
+    rm = resolve_model(model or ModelRef())
+    p = prepare(req)
+    print(f"  → model {rm.label}  lang={req.source_language}"
+          + (f" → {req.target_language}" if req.target_language else " → English"),
           file=sys.stderr)
+    raw = stream_vision(rm, p.system, p.user_text, p.image_b64, p.mime, on_token=on_token)
+    return parse_reply(raw, req, rm.label)
 
-    raw = stream_vision(rm, system_prompt, user_text, b64, mime, on_token=on_token)
+
+REFUSAL_PHRASES = (
+    "i'm just a language model", "i can't help with that", "i cannot help with that",
+    "i'm not able to", "i cannot assist", "i'm unable to", "as an ai", "i don't feel comfortable",
+)
+
+
+def parse_reply(raw: str, req, label: str) -> PageAnalysis:
+    """Model reply → PageAnalysis (shared by every analysis backend)."""
+    page_number = req.page_number
     if not raw.strip():
-        raise ValueError(f"empty response from {rm.label}")
-
-    # detect model refusals before trying to parse
-    refusal_phrases = [
-        "i'm just a language model",
-        "i can't help with that",
-        "i cannot help with that",
-        "i'm not able to",
-        "i cannot assist",
-        "i'm unable to",
-        "as an ai",
-        "i don't feel comfortable",
-    ]
+        raise ValueError(f"empty response from {label}")
     raw_lower = raw.lower()
-    if any(phrase in raw_lower for phrase in refusal_phrases) and "{" not in raw:
+    if any(phrase in raw_lower for phrase in REFUSAL_PHRASES) and "{" not in raw:
         raise ValueError(
             f"model refused to process this page — "
             f"try a different model or add context explaining this is fictional content. "
