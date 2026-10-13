@@ -2,7 +2,7 @@
 Phase contracts — typed inputs/outputs exchanged between phases and backends.
 
 A backend (see yomeru.plugins) only ever sees these objects: never a Run, a
-path or meta.json. Contracts for matching and analysis are added
+path or meta.json. The contract for analysis is added
 when those phases become backends (vault "Yomeru - Flujo de datos y backends").
 """
 from __future__ import annotations
@@ -70,6 +70,27 @@ class InpaintResult:
     stats: dict = field(default_factory=dict)            # → render_log.s4_inpainting
     debug: dict[str, Image.Image] = field(default_factory=dict)  # name → image
 
+
+
+# ── Matching ──────────────────────────────────────────────────────────────────
+
+@dataclass
+class MatchRequest:
+    """One page: which detected region does each dialogue go into."""
+    image: Image.Image                 # original page, RGB (OCR reads it)
+    detections: dict[int, dict]        # active detections {region_id: {x1..y2, label, score, id}}
+    dialogues: list[dict]              # analysis dialogues (edits merged): text, region_id hint, bbox, skip
+    source_language: str
+    comic_format: str                  # reading direction (manga RTL, others LTR)
+    analysis_w: int = 0                # size of the image the VLM saw (dialogue bboxes are in it)
+    analysis_h: int = 0
+
+
+@dataclass
+class PageMatch:
+    matches: dict                      # {dialogue_index: lib.matching.MatchResult}
+    orphaned: list[dict]               # text regions no dialogue landed in
+    rescued: int = 0
 
 
 # ── Rendering ─────────────────────────────────────────────────────────────────

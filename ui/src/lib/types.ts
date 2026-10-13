@@ -93,7 +93,7 @@ export interface PipelineSettings {
   translation_model: ModelRef;
   language: { source: string; target: string; comic_format: string };
   detection: { backend: string; options: Record<string, unknown>; threshold: number };
-  matching: { ocr_weight: number; spatial_weight: number; min_score: number };
+  matching: { backend: string; options: { ocr_weight?: number; spatial_weight?: number; min_score?: number } & Record<string, unknown> };
   inpainting: { backend: string; options: Record<string, unknown> };
   rendering: { use_translation: boolean; backend: string; options: Record<string, unknown> };
 }

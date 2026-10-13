@@ -92,9 +92,26 @@ class DetectionSettings(BaseModel):
 
 
 class MatchingSettings(BaseModel):
-    ocr_weight: float = Field(default=0.4, ge=0, le=1)
-    spatial_weight: float = Field(default=0.4, ge=0, le=1)
-    min_score: float = Field(default=0.05, ge=0, le=1)
+    """Matching technique = a registered backend (yomeru/plugins) + its options."""
+    backend: str = "cascade"
+    options: dict = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_flat_knobs(cls, data):
+        # Configs and runs before the backend registry stored the cascade's
+        # knobs flat: {ocr_weight, spatial_weight, min_score}.
+        if isinstance(data, dict) and "backend" not in data:
+            knobs = {k: data[k] for k in ("ocr_weight", "spatial_weight", "min_score") if k in data}
+            data = {"backend": "cascade", "options": knobs}
+        return data
+
+    @model_validator(mode="after")
+    def _known_backend(self):
+        from yomeru.plugins import get_spec
+        spec = get_spec("matching", self.backend)  # raises UnknownBackend
+        self.options = spec.options_model.model_validate(self.options).model_dump()
+        return self
 
 
 class InpaintingSettings(BaseModel):

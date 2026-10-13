@@ -21,6 +21,10 @@ export function PipelineSettingsForm({
   const set = <K extends keyof PipelineSettings>(k: K, patch: Partial<PipelineSettings[K]>) =>
     onChange({ ...value, [k]: { ...value[k], ...patch } });
 
+  const matchOpt = (k: string, d: number) => Number(value.matching.options?.[k] ?? d);
+  const setMatchOpt = (k: string, v: number) =>
+    onChange({ ...value, matching: { ...value.matching, options: { ...value.matching.options, [k]: v } } });
+
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-4">
@@ -86,12 +90,22 @@ export function PipelineSettingsForm({
 
       <section className="flex flex-col gap-4">
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Matching</h3>
-        <Slider label="OCR weight" value={value.matching.ocr_weight} min={0} max={1} step={0.05}
-          hint="How much the text read by OCR counts" onChange={(v) => set("matching", { ocr_weight: v })} />
-        <Slider label="spatial weight" value={value.matching.spatial_weight} min={0} max={1} step={0.05}
-          hint="How much the box position counts" onChange={(v) => set("matching", { spatial_weight: v })} />
-        <Slider label="minimum score" value={value.matching.min_score} min={0} max={0.5} step={0.01}
-          hint="Matches below this are discarded" onChange={(v) => set("matching", { min_score: v })} />
+        <BackendPicker
+          phase="matching"
+          label="matching"
+          value={value.matching}
+          onChange={(v) => onChange({ ...value, matching: v })}
+        />
+        {value.matching.backend === "cascade" && (
+          <>
+            <Slider label="OCR weight" value={matchOpt("ocr_weight", 0.4)} min={0} max={1} step={0.05}
+              hint="How much the text read by OCR counts" onChange={(v) => setMatchOpt("ocr_weight", v)} />
+            <Slider label="spatial weight" value={matchOpt("spatial_weight", 0.4)} min={0} max={1} step={0.05}
+              hint="How much the box position counts" onChange={(v) => setMatchOpt("spatial_weight", v)} />
+            <Slider label="minimum score" value={matchOpt("min_score", 0.05)} min={0} max={0.5} step={0.01}
+              hint="Matches below this are discarded" onChange={(v) => setMatchOpt("min_score", v)} />
+          </>
+        )}
       </section>
 
       <section className="flex flex-col gap-4">

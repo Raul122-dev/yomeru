@@ -51,7 +51,6 @@ def test_hungarian_never_reuses_a_region_claimed_by_region_id(client, monkeypatc
     """Dialogue 0 claims region 1 directly; dialogue 1 has no region_id and a
     hint right on top of region 1. The fallback must only consider region 2."""
     from yomeru.core.runs import Run
-    from yomeru.lib import matching as libm
     from yomeru.phases import matching
 
     buf = io.BytesIO()
@@ -79,20 +78,15 @@ def test_hungarian_never_reuses_a_region_claimed_by_region_id(client, monkeypatc
     }]))
 
     seen: list[list[tuple]] = []
-    real_build = libm.build_matcher
+    from yomeru.plugins import get_backend
+    _, backend = get_backend("matching", "cascade")
+    real_match = backend.matcher.match
 
-    def build(*a, **k):
-        m = real_build(*a, **k)
-        real_match = m.match
+    def match(**kw):
+        seen.append([(rg.x1, rg.y1, rg.x2, rg.y2) for rg in kw["regions"]])
+        return real_match(**kw)
 
-        def match(**kw):
-            seen.append([(rg.x1, rg.y1, rg.x2, rg.y2) for rg in kw["regions"]])
-            return real_match(**kw)
-
-        m.match = match
-        return m
-
-    monkeypatch.setattr(libm, "build_matcher", build)
+    monkeypatch.setattr(backend.matcher, "match", match)
     # No OCR models in tests
     monkeypatch.setattr("yomeru.lib.matching.hungarian.ocr_region", lambda *a, **k: "")
     monkeypatch.setattr("yomeru.lib.matching.ocr.ocr_region", lambda *a, **k: "")

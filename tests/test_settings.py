@@ -42,7 +42,8 @@ def test_migration_v1_to_v2():
     assert s.language.comic_format == "manga"
     # CTD was retired: legacy "ctd" coerces to the only detector
     assert (s.detection.backend, s.detection.threshold) == ("ogkalu", 0.3)
-    assert s.matching.ocr_weight == 0.5
+    # flat matching knobs migrate into the cascade backend's options
+    assert s.matching.backend == "cascade" and s.matching.options["ocr_weight"] == 0.5
 
 
 def test_store_migrates_file_and_keeps_backup(tmp_path, monkeypatch):
