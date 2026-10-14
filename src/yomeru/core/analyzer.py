@@ -358,6 +358,14 @@ def parse_reply(raw: str, req, label: str) -> PageAnalysis:
 
     data = _parse(raw)
     data["page_number"] = page_number
+    # 'already_readable' = already in the target language. If the model's own
+    # translation differs from the text, it was not (kaguya ch1: English chapter
+    # title kept in an EN→ES run).
+    for d in data.get("dialogues") or []:
+        if isinstance(d, dict) and d.get("skip") and d.get("skip_reason") == "already_readable":
+            norm = lambda s: re.sub(r"[\W_]+", "", str(s or "")).casefold()  # noqa: E731
+            if d.get("text_translated") and norm(d["text_translated"]) != norm(d.get("text")):
+                d["skip"], d["skip_reason"] = False, None
     # Entries without any text are not dialogues (a small model filled the
     # ○ container boxes with empty entries); they would only claim regions.
     if isinstance(data.get("dialogues"), list):

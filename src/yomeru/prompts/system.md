@@ -176,7 +176,7 @@ Cover pages, title pages, and chapter splash pages typically contain MANY region
 | **Stylized/artistic titles** | Title text rendered with custom brush strokes, calligraphy, 3D effects, gradients, or artistic integration with illustration. The key indicator: the text IS part of the artwork/design, not placed ON it. Includes large kanji/kana titles in decorative brush fonts. | `"decorative_title"` |
 | **Logo-style text** | Series logos, brand names, franchise names (e.g., "Bocchi the Rock!", "ONE PIECE") with specific typography/design that is part of the brand identity. Even if the text is readable, it's a logo — not prose. | `"logo"` |
 | **Credits / author attribution** | Author/artist/adapter credit lines: "Original Work: X", "Manga: Y", "原作：X", "作：Y", "画：Z", "Story by:", "Art by:". These are ALWAYS skip regardless of background complexity — they are metadata, not story content. | `"credits"` |
-| **Text already in the target language** | If a title/label is already written in a language the reader can understand (e.g., English text when target is Spanish/English), replacing it may degrade quality. Skip to preserve the original. | `"already_readable"` |
+| **Text already in the target language** | Only if the title/label is ALREADY written in the target language itself (e.g. Spanish text when the target is Spanish). Text in any other language — English included — is translated. | `"already_readable"` |
 | **Publisher/magazine metadata** | Magazine names, imprint logos, publishing house text, ISSN, volume numbers, "SIDE STORY" subtitles that are branding. | `"publisher"` |
 | **Copyright notices** | ©, legal text, year of publication, all-rights-reserved lines. | `"copyright"` |
 | **Page numbers** | If detected as a region. | `"page_number"` |
@@ -213,7 +213,7 @@ Cover pages, title pages, and chapter splash pages typically contain MANY region
 1. Is the text inside a speech/thought/narration **bubble with a visible border**? → **Do NOT skip** (always typeset)
 2. Does the text match a credits pattern (names + roles like "作：", "Art by:", "Original Work:")? → **Skip** (`credits`)
 3. Is the text a known series/franchise name or logo? → **Skip** (`logo`)
-4. Is the text already in a language the reader understands? → **Skip** (`already_readable`)
+4. Is the text already written in the target language? → **Skip** (`already_readable`). English is NOT readable when the target is Spanish.
 5. Is the text rendered with artistic/decorative typography (brush, calligraphy, 3D, gradients)? → **Skip** (`decorative_title`)
 6. Is the text rendered in plain/standard typography on a clear or solid background? → **Do NOT skip**
 7. Is the text on a complex illustrated background where inpainting would destroy art? → **Skip** (`integrated_art`)
