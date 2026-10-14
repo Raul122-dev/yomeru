@@ -510,3 +510,28 @@ def test_horizontal_free_text_keeps_clear_of_a_turned_column():
     assert _clear_of_columns((352, 162, 692, 226), [col]) == (377, 162, 692, 226)   # keeps the right side
     assert _clear_of_columns(col, [col]) == col
     assert _clear_of_columns((41, 600, 297, 640), [col]) == (41, 600, 297, 640)     # not crossing
+
+
+
+def test_short_shout_grows_with_its_bubble_and_skips_the_page_cap():
+    """made-in-abyss ch10 p1: '¡SÍ!' / '¡IRÉ!' searched 50px but the page-median
+    cap took them to 29px in bubbles the original fills at ~90px."""
+    from PIL import Image as _I, ImageDraw as _D
+    from yomeru.core.contracts import RenderRequest
+    from yomeru.lib.rendering.scanline_engine import layout_and_draw
+    img = _I.new("RGB", (1100, 1600), "white")
+    orig = img.copy()
+    d = _D.Draw(orig)
+    boxes = [(864, 937, 1100, 1502)] + [(60 + 160 * k, 100, 200 + 160 * k, 260) for k in range(5)]
+    matches, dialogues = [], []
+    for k, (x1, y1, x2, y2) in enumerate(boxes):
+        d.rectangle((x1 + 20, y1 + 30, x2 - 20, y2 - 30), fill="black")
+        matches.append({"dialogue_index": k, "region_id": k + 1,
+                        "region": {"x1": x1 + 10, "y1": y1 + 10, "x2": x2 - 10, "y2": y2 - 10, "label": "text_bubble"}})
+        dialogues.append({"text": "x", "text_translated": "¡SÍ!" if k == 0 else "UNA FRASE NORMAL DE DIALOGO.",
+                          "bubble_type": "speech", "tone": "shouting" if k == 0 else "neutral",
+                          "font_style": "bold" if k == 0 else "regular"})
+    req = RenderRequest(inpainted=img, original=orig, matches=matches, dialogues=dialogues, overrides={},
+                        skipped=set(), containers=boxes, use_translation=True, lang_code="es")
+    ev = {e["region_id"]: e for e in layout_and_draw(req).events}
+    assert ev[1]["font_size"] >= 80 and ev[1].get("shout")

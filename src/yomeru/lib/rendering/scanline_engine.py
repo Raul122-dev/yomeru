@@ -425,6 +425,15 @@ def layout_and_draw(req):
             if bubble_w < 80:
                 max_size = min(max_size, max(12, bubble_w // 4))
 
+        # A short shout ('¡SÍ!', '¡¡AI!!', '¡¿EHHH?!') is lettered big in comics:
+        # let it grow with its bubble, and keep it out of the page-median cap
+        # (test corpus: 29-50px in bubbles the original fills at ~90px).
+        words_ = clean_text.split()
+        is_shout = (not is_free and style == "bold" and tone in ("shouting", "screaming", "yelling", "angry", "excited")
+                    and len(words_) <= 2 and len(clean_text.replace(" ", "")) <= 12)
+        if is_shout:
+            max_size = max(max_size, min(120, bubble_h // 2, bubble_w))
+
         # User-fixed size (render editor): the search starts at it, so the text
         # is never larger; it may still shrink if it truly does not fit.
         size_override = ovr.get("font_size_override")
@@ -648,6 +657,8 @@ def layout_and_draw(req):
                   "text": text, "font_style": style, "tone": tone, "bubble_type": bubble_type,
                   "bbox": list(bubble_bbox), "box_size": [bubble_w, bubble_h], "free": is_free,
                   "size_fixed": bool(size_override)}
+            if is_shout:
+                ev["shout"] = True
             if overflow:
                 ev["overflow"] = True
             events.append(ev)
@@ -665,7 +676,8 @@ def layout_and_draw(req):
         sizes=[lay[0][0] for lay in all_layouts],
         bboxes=[lay[4] for lay in all_layouts],
         adjustable=[layout_relayout[i] is not None and not layout_event[i].get("size_fixed")
-                    and not layout_event[i].get("free") for i in range(len(all_layouts))],
+                    and not layout_event[i].get("free") and not layout_event[i].get("shout")
+                    for i in range(len(all_layouts))],
         min_font=MIN_FONT,
         # only speech-like balloons join; narration boxes sit edge to edge
         joinable=[layout_event[i].get("bubble_type") not in ("narration", "sfx") for i in range(len(all_layouts))],
