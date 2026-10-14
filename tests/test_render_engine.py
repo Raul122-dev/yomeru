@@ -384,3 +384,37 @@ def test_temp_names_are_per_writer(tmp_path):
     for t in ts:
         t.join()
     assert len(names) == 4
+
+
+
+def test_tiny_erased_region_is_never_left_empty():
+    """Set de pruebas: 7 regions were erased then skipped as no_fit (blank
+    bubbles). The minimum size was excluded from every search range, and there
+    was no last resort. Now the text is always drawn (at worst flagged overflow)."""
+    from PIL import Image as _I
+    from yomeru.core.contracts import RenderRequest
+    from yomeru.lib.rendering.scanline_engine import layout_and_draw
+    from PIL import ImageDraw as _D
+    img = _I.new("RGB", (697, 1100), "white")          # inpainted: text erased
+    orig = img.copy()                                    # original: text present
+    d = _D.Draw(orig)
+    for x1, y1, x2, y2 in ((400, 454, 448, 503), (300, 200, 330, 212)):
+        for y in range(y1 + 2, y2 - 1, 4):
+            d.line((x1 + 2, y, x2 - 2, y), fill="black", width=2)
+    region = {"x1": 400, "y1": 454, "x2": 448, "y2": 503, "label": "text_bubble"}
+    tiny = {"x1": 300, "y1": 200, "x2": 330, "y2": 212, "label": "text_free"}
+    req = RenderRequest(
+        inpainted=img, original=orig,
+        matches=[{"dialogue_index": 0, "region_id": 1, "region": region},
+                 {"dialogue_index": 1, "region_id": 2, "region": tiny}],
+        dialogues=[{"text": "x", "text_translated": "¡Je je! ¡Deja de jugar!", "bubble_type": "speech"},
+                   {"text": "x", "text_translated": "Gastos de alcohol para mañana", "bubble_type": "narration"}],
+        overrides={}, skipped=set(), containers=[(400, 454, 448, 503)], use_translation=True, lang_code="es")
+    res = layout_and_draw(req)
+    by = {e["region_id"]: e for e in res.events}
+    assert by[1]["status"] == "ok" and by[2]["status"] == "ok"
+    assert by[2].get("overflow") is True
+    # not erased (user kept the original via a mask edit): never squeezed on top of it
+    req.inpainted = orig.copy()
+    res = layout_and_draw(req)
+    assert {e["region_id"]: e["status"] for e in res.events}[2] == "skip"

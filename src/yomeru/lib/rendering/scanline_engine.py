@@ -349,6 +349,12 @@ def layout_and_draw(req):
         # Color and style for free text vs bubble text
         is_free = is_free_label(label)
 
+        # Only an ERASED region may go down to the minimum size / overflow: if the
+        # original text is still there (user's mask edit), a squeezed translation
+        # on top of it garbles both — keep the old behaviour (skip as no_fit).
+        erased = _was_erased(original_img, img, text_bbox)
+        floor = MIN_FONT if erased else MIN_FONT + 1
+
         # Find containing bubble
         tcx = (text_bbox[0] + text_bbox[2]) // 2
         tcy = (text_bbox[1] + text_bbox[3]) // 2
@@ -536,12 +542,13 @@ def layout_and_draw(req):
                     got = largest_fitting_layout(sizes, _wf, _t("force"), usable_h=_uh)
                 return got
 
-            best_layout = _search(range(max_size, MIN_FONT, -3))
+            best_layout = _search(range(max_size, floor - 1, -3))
             relayout = _search
 
         # FALLBACK: if scanline failed, use simple bbox centered rendering
+        overflow = False
         if best_layout is None:
-            for try_size in range(max_size, MIN_FONT, -1):
+            for try_size in range(max(max_size, floor), floor - 1, -1):
                 font = _get_font(style, try_size)
                 lh = measure_line_height(font, try_size)
                 pad = max(4, scan_padding)
@@ -562,6 +569,15 @@ def layout_and_draw(req):
                         positioned_lines.append(PositionedLine(text=line, x=lx, y=start_y + li * lh, width=bw))
                     best_layout = (try_size, font, positioned_lines)
                     break
+
+        # LAST RESORT: the region was erased, so it must never stay empty (an
+        # empty bubble reads worse than a slightly larger text). Smallest legible
+        # size, wrapped to the box width (or the longest word), centred on the
+        # box and kept on the page; reported as `overflow` for review.
+        if best_layout is None and erased:
+            best_layout = _overflow_layout(clean_text, _get_font(style, MIN_FONT), MIN_FONT, bubble_bbox,
+                                           img.size, lang_code_for_this_match)
+            overflow = best_layout is not None
 
         if best_layout:
             # Detect text angle for free text regions
@@ -591,6 +607,8 @@ def layout_and_draw(req):
                   "text": text, "font_style": style, "tone": tone, "bubble_type": bubble_type,
                   "bbox": list(bubble_bbox), "box_size": [bubble_w, bubble_h], "free": is_free,
                   "size_fixed": bool(size_override)}
+            if overflow:
+                ev["overflow"] = True
             events.append(ev)
             layout_event.append(ev)
         else:
@@ -849,6 +867,36 @@ def layout_and_draw(req):
         ev["lines"] = [pl.text for pl in positioned]
     events.sort(key=lambda e: e["dialogue_index"])
     return RenderResult(image=prod_img, preview=result_img, events=events, layouts=len(all_layouts))
+
+
+def _was_erased(original: Image.Image, inpainted: Image.Image, box, min_changed: float = 0.02) -> bool:
+    """True if inpainting changed the region (its text is gone)."""
+    import numpy as np
+    x1, y1, x2, y2 = (int(v) for v in box)
+    a = np.asarray(original.crop((x1, y1, x2, y2)).convert("L"), dtype=np.int16)
+    b = np.asarray(inpainted.crop((x1, y1, x2, y2)).convert("L"), dtype=np.int16)
+    return a.size > 0 and float((np.abs(a - b) > 24).mean()) >= min_changed
+
+
+def _overflow_layout(text: str, font, size: int, box, page_size, lang_code):
+    """Layout at `size` that ignores the box height: wrap to the box width (at
+    least the longest word), centre on the box, clamp inside the page."""
+    from yomeru.lib.rendering.scanline import PositionedLine
+    words = text.split() or [text]
+    longest = max(measure_width(w, font) for w in words)
+    bw = max(box[2] - box[0] - 4, longest + 2)
+    lines = wrap_text(text, bw, 999, font, lang_code) or [text]
+    lh = measure_line_height(font, size)
+    block_w = max(measure_width(ln, font) for ln in lines)
+    block_h = lh * len(lines)
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    x0 = int(min(max(2, cx - block_w / 2), page_size[0] - block_w - 2))
+    y0 = int(min(max(2, cy - block_h / 2), page_size[1] - block_h - 2))
+    out = []
+    for i, ln in enumerate(lines):
+        lw = measure_width(ln, font)
+        out.append(PositionedLine(text=ln, x=x0 + (block_w - lw) // 2, y=y0 + i * lh, width=block_w))
+    return (size, font, out)
 
 
 def _save_atomic(img: Image.Image, path: Path) -> None:
