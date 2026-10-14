@@ -358,11 +358,7 @@ def layout_and_draw(req):
         # Find containing bubble
         tcx = (text_bbox[0] + text_bbox[2]) // 2
         tcy = (text_bbox[1] + text_bbox[3]) // 2
-        bubble_bbox = text_bbox  # fallback
-        for bx1, by1, bx2, by2 in bubble_regions:
-            if bx1 <= tcx <= bx2 and by1 <= tcy <= by2:
-                bubble_bbox = (bx1, by1, bx2, by2)
-                break
+        bubble_bbox = _container_for(text_bbox, (tcx, tcy), bubble_regions) or text_bbox
 
         # For free text: expand bbox horizontally into surrounding homogeneous area
         if is_free and bubble_bbox == text_bbox:
@@ -867,6 +863,28 @@ def layout_and_draw(req):
         ev["lines"] = [pl.text for pl in positioned]
     events.sort(key=lambda e: e["dialogue_index"])
     return RenderResult(image=prod_img, preview=result_img, events=events, layouts=len(all_layouts))
+
+
+def _inside(text_bbox, box) -> float:
+    """Fraction of the text box's area inside `box`."""
+    ix = max(0, min(text_bbox[2], box[2]) - max(text_bbox[0], box[0]))
+    iy = max(0, min(text_bbox[3], box[3]) - max(text_bbox[1], box[1]))
+    area = max(1, (text_bbox[2] - text_bbox[0]) * (text_bbox[3] - text_bbox[1]))
+    return ix * iy / area
+
+
+def _container_for(text_bbox, center, containers):
+    """The first container holding the text's centre — unless that one cuts
+    through the text (< 70% inside) while another holds it whole (>= 90%):
+    bubble boxes are rectangles and overlap, so a small caption next to a
+    speech bubble had its centre inside the speech bubble's box and was drawn
+    on top of its dialogue (bocchi ch10 p2)."""
+    cx, cy = center
+    first = next((c for c in containers if c[0] <= cx <= c[2] and c[1] <= cy <= c[3]), None)
+    if first is None or _inside(text_bbox, first) >= 0.7:
+        return first
+    better = [c for c in containers if _inside(text_bbox, c) >= 0.9]
+    return min(better, key=lambda c: (c[2] - c[0]) * (c[3] - c[1])) if better else first
 
 
 def _was_erased(original: Image.Image, inpainted: Image.Image, box, min_changed: float = 0.02) -> bool:
