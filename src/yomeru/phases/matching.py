@@ -82,6 +82,8 @@ def run(
                 analysis_w=analysis_w, analysis_h=analysis_h,
             ))
             matches, orphaned = res.matches, res.orphaned
+            if res.located:
+                page_dets = _add_located_regions(run, page_num, res.located, page_dets)
 
             # Save matching log + debug image
             _save_match_log(run, matches, dialogues, page_dets, orphaned, page_num, img_w, img_h)
@@ -282,3 +284,27 @@ def _save_debug_image(img, matches, dialogues, page_dets, orphaned, debug_dir, p
 
     out_path = debug_dir / f"p{page_num:02d}_s3_matching.jpg"
     debug_img.convert("RGB").save(str(out_path), quality=85)
+
+
+def _add_located_regions(run, page_num: int, located: list[dict], page_dets: dict) -> dict:
+    """Regions the matcher found by OCR (the detector missed them) become real
+    detections in the active detections file, so their id joins like any
+    other (editors, inpainting, render). Re-running matching does not add
+    duplicates: a region overlapping an existing one is not added again."""
+    import json
+    from yomeru.core import artifacts
+    f = run.active_detections_file()
+    data = json.loads(f.read_text())
+    page = next(p for p in data if p["page_number"] == page_num)
+
+    def same(a, b) -> bool:
+        ix = max(0, min(a["x2"], b["x2"]) - max(a["x1"], b["x1"]))
+        iy = max(0, min(a["y2"], b["y2"]) - max(a["y1"], b["y1"]))
+        return ix * iy > 0.5 * (a["x2"] - a["x1"]) * (a["y2"] - a["y1"])
+    for det in located:
+        if not any(same(det, r) for r in page["regions"]):
+            page["regions"].append(det)
+    tmp = artifacts.tmp_path(f)
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    tmp.replace(f)
+    return {r["id"]: r for r in page["regions"]}

@@ -109,6 +109,7 @@ class PageMatch:
     matches: dict                      # {dialogue_index: lib.matching.MatchResult}
     orphaned: list[dict]               # text regions no dialogue landed in
     rescued: int = 0
+    located: list[dict] = field(default_factory=list)   # new regions found by OCR (detector missed them)
 
 
 # ── Rendering ─────────────────────────────────────────────────────────────────

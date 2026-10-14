@@ -14,9 +14,10 @@ Pure function of a MatchRequest (no run, no files): see plugins/matching.py.
 """
 from __future__ import annotations
 
+import re
 import sys
 
-from yomeru.core.labels import BUBBLE, TEXT_BUBBLE, is_text
+from yomeru.core.labels import BUBBLE, TEXT_BUBBLE, TEXT_FREE, is_text
 from yomeru.core.contracts import MatchRequest, PageMatch
 
 
@@ -206,10 +207,75 @@ def match_page(req: MatchRequest, matcher, ocr_weight: float, spatial_weight: fl
             orphaned = [r for r in orphaned if r["id"] not in rescued_ids]
 
 
-    return PageMatch(matches=matches, orphaned=orphaned, rescued=len(rescued) if orphaned_text else 0)
+    # ── Step 6: Locate dialogues the detector missed (small notes / SFX) ──
+    located = _locate_undetected(matches, dialogues, page_dets, img, source_lang,
+                                 analysis_w, analysis_h)
+    for i, det in located:
+        matches[i] = MatchResult(dialogue_index=i, region=_region_from_det(det, img_w, img_h),
+                                 spatial_score=0.0, text_score=1.0, total_score=0.9)
+
+    return PageMatch(matches=matches, orphaned=orphaned, rescued=len(rescued) if orphaned_text else 0,
+                     located=[d for _, d in located])
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+LOCATE_MIN_RATIO = 0.75
+
+
+def _core_text(s: str) -> str:
+    """Comparable text: no 'SFX:' prefix, letters/digits only, casefolded."""
+    s = re.sub(r"^\s*(sfx|fx)\s*[:.]\s*", "", str(s or ""), flags=re.I)
+    return re.sub(r"[\W_]+", "", s).casefold()
+
+
+def _locate_undetected(matches, dialogues, page_dets, img, source_lang, analysis_w, analysis_h):
+    """Dialogues still without a region whose text the detector never boxed
+    (translator notes, tiny SFX: 'SFX: GRR', 'Yay!'): page OCR finds the same
+    words outside every detected text region -> a new text_free region.
+    Without it they were neither erased nor translated (left in English).
+    Latin scripts only (the OCR with boxes is EasyOCR)."""
+    from difflib import SequenceMatcher
+    from yomeru.lib.matching.ocr import ocr_lines
+    todo = [i for i, d in enumerate(dialogues)
+            if i not in matches and not d.get("skip") and len(_core_text(d.get("text"))) >= 2]
+    if not todo or source_lang.lower() in ("japanese", "chinese (simplified)", "chinese (traditional)", "korean"):
+        return []
+    img_w, img_h = img.size
+    taken = [(r["x1"], r["y1"], r["x2"], r["y2"]) for r in page_dets.values() if is_text(r.get("label"))]
+    taken += [(m.region.x1, m.region.y1, m.region.x2, m.region.y2) for m in matches.values()]
+
+    def free(b) -> bool:
+        cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+        return not any(t[0] <= cx <= t[2] and t[1] <= cy <= t[3] for t in taken)
+
+    lines = [(b, t) for b, t in ocr_lines(img) if free(b)]
+    out, next_id = [], max([int(k) for k in page_dets] + [0]) + 1
+    for i in todo:
+        want = _core_text(dialogues[i].get("text"))
+        scored = [(SequenceMatcher(None, want, _core_text(t)).ratio(), b) for b, t in lines if _core_text(t)]
+        good = [(r, b) for r, b in scored if r >= LOCATE_MIN_RATIO]
+        if not good:
+            continue
+        hint = dialogues[i].get("bbox")
+        if hint:
+            hb = _to_pixel_bbox(hint, img_w, img_h, analysis_w, analysis_h)
+            hc = ((hb[0] + hb[2]) / 2, (hb[1] + hb[3]) / 2)
+            good.sort(key=lambda rb: (-round(rb[0], 2), abs((rb[1][0] + rb[1][2]) / 2 - hc[0])
+                                      + abs((rb[1][1] + rb[1][3]) / 2 - hc[1])))
+        else:
+            good.sort(key=lambda rb: -rb[0])
+        b = good[0][1]
+        det = {"id": next_id, "x1": max(0, b[0] - 3), "y1": max(0, b[1] - 3), "x2": min(img_w, b[2] + 3),
+               "y2": min(img_h, b[3] + 3), "label": TEXT_FREE, "score": round(good[0][0], 3)}
+        next_id += 1
+        out.append((i, det))
+        taken.append((det["x1"], det["y1"], det["x2"], det["y2"]))
+        lines = [(lb, t) for lb, t in lines if free(lb)]
+        print(f"    [locate] D{i} '{dialogues[i].get('text', '')[:24]}' -> new region R{det['id']} "
+              f"{b} (ratio {good[0][0]:.2f})", file=sys.stderr)
+    return out
+
 
 def _text_region_of(rid: int, page_dets: dict[int, dict]) -> int | None:
     """`rid` itself if it is a text region; for a bubble container, the text

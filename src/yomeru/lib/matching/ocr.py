@@ -116,3 +116,27 @@ def _has_gpu() -> bool:
         return torch.cuda.is_available()
     except ImportError:
         return False
+
+
+def ocr_lines(image: Image.Image, lang_codes: tuple = ("en",)) -> list[tuple[tuple[int, int, int, int], str]]:
+    """Page-wide OCR with boxes: [(x1, y1, x2, y2), text]. Stacked lines of one
+    label ("SFX:" over "Skid") are also returned merged, so a dialogue split
+    over two lines can be found as a whole."""
+    import numpy as np
+    try:
+        raw = _get_easyocr(lang_codes).readtext(np.array(image), detail=1, paragraph=False)
+    except Exception as e:  # pragma: no cover - OCR missing/broken
+        print(f"  [ocr] easyocr error: {e}", file=sys.stderr)
+        return []
+    boxes = []
+    for quad, text, _conf in raw:
+        xs, ys = [p[0] for p in quad], [p[1] for p in quad]
+        boxes.append(((int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))), str(text)))
+    merged = []
+    for (a, ta) in boxes:
+        for (b, tb) in boxes:
+            h = max(1, a[3] - a[1])
+            stacked = 0 <= b[1] - a[3] <= 0.6 * h and min(a[2], b[2]) - max(a[0], b[0]) > 0
+            if stacked:
+                merged.append(((min(a[0], b[0]), a[1], max(a[2], b[2]), b[3]), f"{ta} {tb}"))
+    return boxes + merged
