@@ -459,3 +459,24 @@ def test_short_free_text_is_not_taller_than_its_box():
                         overrides={}, skipped=set(), containers=[], use_translation=True, lang_code="es")
     ev = layout_and_draw(req).events[0]
     assert ev["status"] == "ok" and ev["font_size"] <= 22
+
+
+
+def test_one_word_shout_in_tall_narrow_bubble_is_stacked():
+    """Set de pruebas #5 (gintama ch10 p2/p4): '¡GYAAH!' / '¡SADAHARU!' in tall,
+    narrow bubbles came out horizontal at 9-11px; scanlators stack the letters."""
+    from PIL import Image as _I, ImageDraw as _D
+    from yomeru.core.contracts import RenderRequest
+    from yomeru.lib.rendering.scanline_engine import layout_and_draw
+    img = _I.new("RGB", (697, 1100), "white")
+    orig = img.copy()
+    _D.Draw(orig).rectangle((520, 80, 570, 330), fill="black")
+    box = (500, 60, 600, 350)
+    def run(text):
+        req = RenderRequest(inpainted=img, original=orig,
+                            matches=[{"dialogue_index": 0, "region_id": 1,
+                                      "region": {"x1": 520, "y1": 80, "x2": 570, "y2": 330, "label": "text_bubble"}}],
+                            dialogues=[{"text": "X", "text_translated": text, "bubble_type": "speech"}],
+                            overrides={}, skipped=set(), containers=[box], use_translation=True, lang_code="es")
+        return layout_and_draw(req).events[0]["font_size"]
+    assert run("¡SADAHARU!") >= 20

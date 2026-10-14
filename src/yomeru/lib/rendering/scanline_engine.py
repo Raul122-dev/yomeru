@@ -444,6 +444,14 @@ def layout_and_draw(req):
             and vert_potential_font > horiz_max_font * 1.5  # vertical gives ≥50% larger font
             and vert_potential_font >= 12  # minimum legible size
             and bubble_h > bubble_w * 1.8
+        ) or (
+            # A one-word Latin shout in a very tall, narrow bubble ("¡GYAAAH!",
+            # "¡SADAHARU!"): scanlators stack the letters; horizontal gave 9-11px.
+            # Normal bubbles keep horizontal text ("¡NO!" stacked read badly).
+            not is_cjk_text(clean_text) and _all_caps(clean_text)   # stacked lowercase reads badly
+            and len(words) == 1 and 3 <= char_count <= 14
+            and bubble_h >= bubble_w * 2.5
+            and vert_potential_font >= max(14, horiz_max_font * 1.8)
         )
 
         if use_vertical and clean_text.strip():
