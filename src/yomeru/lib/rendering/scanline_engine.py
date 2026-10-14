@@ -336,6 +336,8 @@ def layout_and_draw(req):
 
         if use_translation:
             text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
+            if not ovr.get("text_translated") and _all_caps(dlg.get("text", "")):
+                text = text.upper()  # lettering in capitals stays in capitals (the model mixed cases)
         else:  # layout check with the original text
             text = dlg.get("text", "")
         if not text.strip():
@@ -867,6 +869,11 @@ def layout_and_draw(req):
         ev["lines"] = [pl.text for pl in positioned]
     events.sort(key=lambda e: e["dialogue_index"])
     return RenderResult(image=prod_img, preview=result_img, events=events, layouts=len(all_layouts))
+
+
+def _all_caps(s: str) -> bool:
+    letters = [c for c in s if c.isalpha() and c.lower() != c.upper()]   # cased scripts only
+    return len(letters) >= 2 and all(c.isupper() for c in letters)
 
 
 def _inside(text_bbox, box) -> float:

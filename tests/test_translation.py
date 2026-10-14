@@ -113,3 +113,26 @@ def test_run_gate_for_separate_translation(client):
     r = client.post("/api/runs", data={"name": "x", "auto_start": "false", "settings": json.dumps(on)},
                     files=[("files", ("a.png", _png(), "image/png"))])
     assert r.status_code == 201, r.text
+
+
+
+def test_already_readable_skip_is_undone_when_the_model_translated_it():
+    """Set de pruebas #6: an English chapter title skipped as already_readable
+    in an EN→ES run, although the model translated it ('CAPÍTULO 1')."""
+    from types import SimpleNamespace
+    from yomeru.core.analyzer import parse_reply
+    raw = json.dumps({"panel_count": 1, "dialogues": [
+        {"region_id": 1, "text": "CHAPTER 1", "text_translated": "CAPÍTULO 1", "bubble_type": "narration",
+         "skip": True, "skip_reason": "already_readable"},
+        {"region_id": 2, "text": "OK!", "text_translated": "OK!", "bubble_type": "speech",
+         "skip": True, "skip_reason": "already_readable"}],
+        "characters_seen": [], "scene": {}, "page_summary": ""})
+    a = parse_reply(raw, SimpleNamespace(page_number=1, regions=[], image=None), "fake")
+    assert a.dialogues[0].skip is False and a.dialogues[1].skip is True
+
+
+def test_capital_lettering_stays_capital():
+    """Set de pruebas #7: one page came out in sentence case among all-caps pages."""
+    from yomeru.lib.rendering.scanline_engine import _all_caps
+    assert _all_caps("YOU KNOW THE DRILL!") and not _all_caps("Le explicó lo que pasó")
+    assert not _all_caps("ワン！") and not _all_caps("A")
