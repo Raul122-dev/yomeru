@@ -1,7 +1,6 @@
 """Separate translation (Read & translate in two steps)."""
 import json
 
-from tests.test_phase1_critical import client  # noqa: F401  (fixture)
 from yomeru.lib.translation import ChapterInput, collect_lines, translate_chapter
 
 PAGES = [

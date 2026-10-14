@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import io
-import json
 import threading
 import time
 
 import pytest
 from PIL import Image
 
-from tests.test_phase1_critical import client  # noqa: F401  (fixture)
 
 
 def _png() -> bytes:

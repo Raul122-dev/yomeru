@@ -4,7 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from tests.test_region_ids import client  # noqa: F401 (fixture)
 from PIL import Image
 
 GOLDEN = Path(__file__).resolve().parents[1] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
@@ -123,7 +122,7 @@ def test_two_dialogues_never_share_a_bubble(tmp_path, monkeypatch):
 def test_render_overrides_round_trip_and_explicit_unskip(client):
     """R3: the editor loads saved overrides (GET) and an explicit skip=False beats
     the VLM's skip; R9: edits.json invalidates the render cache."""
-    import io, json
+    import io
     from PIL import Image as _I
     buf = io.BytesIO(); _I.new("RGB", (40, 60), "white").save(buf, "PNG")
     rid = client.post("/api/runs", data={"name": "t", "auto_start": "false"},

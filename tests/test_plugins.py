@@ -1,6 +1,5 @@
 """Backend registry + inpainting as the first registered backend."""
 import pytest
-from tests.test_phase1_critical import client  # noqa: F401 (fixture)
 
 from yomeru.core.settings import InpaintingSettings
 from yomeru.plugins import UnknownBackend, get_backend, list_backends
