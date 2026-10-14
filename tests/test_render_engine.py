@@ -66,9 +66,9 @@ def test_font_size_override_caps_the_size_and_survives_normalisation(run):
 def test_hyphenation_uses_the_drawn_language(run):
     """Spanish translations were hyphenated with the SOURCE language's rules
     (auto → en_US): 'REP-RESENTACIÓN', 'MOTOSIER-RA'."""
-    from yomeru.lib.rendering.text_layout import LANG_MAP
+    from yomeru.core.languages import profile
     import pyphen
-    assert pyphen.Pyphen(lang=LANG_MAP["Spanish"]).inserted("representación") == "re-pre-sen-ta-ción"
+    assert pyphen.Pyphen(lang=profile("Spanish").hyphenation).inserted("representación") == "re-pre-sen-ta-ción"
     from yomeru.lib.rendering import scanline_engine as eng
     seen = []
     real = eng.scanline_layout

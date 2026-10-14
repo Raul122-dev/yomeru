@@ -63,20 +63,6 @@ def ocr_manga(image: Image.Image) -> str:
         return ""
 
 
-_LANG_MAP: dict[str, tuple] = {
-    "Japanese":               ("ja",),
-    "Korean":                 ("ko",),
-    "Chinese (Simplified)":   ("ch_sim",),
-    "Chinese (Traditional)":  ("ch_tra",),
-    "English":                ("en",),
-    "Spanish":                ("es", "en"),
-    "Portuguese":             ("pt", "en"),
-    "French":                 ("fr", "en"),
-    "German":                 ("de", "en"),
-    "Italian":                ("it", "en"),
-    # auto: try the most common comic languages
-    "auto":                   ("en", "es", "pt"),
-}
 
 
 def ocr_region(
@@ -101,13 +87,11 @@ def ocr_region(
         min(image.width, x2 + pad), min(image.height, y2 + pad),
     ))
 
-    if source_language == "Japanese":
+    from yomeru.core.languages import profile
+    p = profile(source_language)
+    if p.ocr_engine == "manga_ocr":
         return ocr_manga(crop_img)
-
-    # for source text that's in a non-ASCII script (Korean, Chinese),
-    # use the appropriate OCR engine even if the VLM text extracted is translated
-    lang_codes = _LANG_MAP.get(source_language, _LANG_MAP["auto"])
-    return ocr_easyocr(crop_img, lang_codes)
+    return ocr_easyocr(crop_img, p.ocr_codes)
 
 
 def _has_gpu() -> bool:

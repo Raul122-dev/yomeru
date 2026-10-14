@@ -18,6 +18,7 @@ import re
 import sys
 
 from yomeru.core.labels import BUBBLE, TEXT_BUBBLE, TEXT_FREE, is_text
+from yomeru.core.languages import profile
 from yomeru.core.contracts import MatchRequest, PageMatch
 
 
@@ -288,7 +289,7 @@ def _locate_undetected(matches, dialogues, page_dets, img, source_lang, analysis
     from yomeru.lib.matching.ocr import ocr_lines
     todo = [i for i, d in enumerate(dialogues)
             if i not in matches and not d.get("skip") and len(_core_text(d.get("text"))) >= 2]
-    if not todo or source_lang.lower() in ("japanese", "chinese (simplified)", "chinese (traditional)", "korean"):
+    if not todo or not profile(source_lang).ocr_boxes:
         return []
     img_w, img_h = img.size
     taken = [(r["x1"], r["y1"], r["x2"], r["y2"]) for r in page_dets.values() if is_text(r.get("label"))]
@@ -352,7 +353,7 @@ def _right_to_left(comic_format: str, source_lang: str) -> bool:
     fmt = (comic_format or "auto").lower()
     if fmt != "auto":
         return fmt == "manga"
-    return source_lang.lower() in ("japanese", "chinese (traditional)")
+    return profile(source_lang).reads_right_to_left
 
 
 def _near(region, hint, img_w: int, img_h: int) -> bool:

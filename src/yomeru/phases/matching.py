@@ -84,7 +84,8 @@ def run(
             matches, orphaned = res.matches, res.orphaned
             if res.located:
                 page_dets = _add_located_regions(run, page_num, res.located, page_dets)
-            if source_lang.lower() not in ("japanese", "korean", "chinese (simplified)", "chinese (traditional)"):
+            from yomeru.core.languages import profile
+            if profile(source_lang).ocr_boxes:
                 from yomeru.lib.matching.cascade import split_repeated_sfx
                 splits = split_repeated_sfx(matches, dialogues, page_dets, img)
                 if splits:

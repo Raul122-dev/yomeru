@@ -18,6 +18,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from yomeru.core import artifacts
+from yomeru.core.languages import profile, text_rules
 from yomeru.core.paths import FONTS_DIR
 from yomeru.core.labels import CONTAINER_LABELS, TEXT_BUBBLE, is_free as is_free_label
 from yomeru.core.paths import list_page_files
@@ -32,8 +33,7 @@ from yomeru.lib.rendering.scanline import (
     extract_bubble_contour, scanline_layout,
 )
 from yomeru.lib.rendering.text_layout import (
-    measure_line_height, measure_width, LANG_MAP, extract_embedded_breaks, wrap_text,
-    is_cjk_text,
+    measure_line_height, measure_width, extract_embedded_breaks, wrap_text,
 )
 
 
@@ -241,7 +241,7 @@ def build_request(run: Run, page_num: int, use_translation: bool | None = None):
             for r in artifacts.load_detections(run).get(page_num, {}).values() if r.get("label") in CONTAINER_LABELS
         ],
         use_translation=use_translation,
-        lang_code=LANG_MAP.get(drawn_lang, "en_US"),
+        lang_code=profile(drawn_lang).hyphenation,
     )
 
 
@@ -325,7 +325,7 @@ def layout_and_draw(req):
         if 0 <= di < len(dialogues) and is_free_label(r.get("label", "")):
             d = dialogues[di]
             tt = (d.get("text_translated") if use_translation else d.get("text")) or ""
-            if (is_cjk_text(d.get("text") or "") and tt and not is_cjk_text(tt)
+            if (text_rules(d.get("text") or "").vertical_native and tt and text_rules(tt).turn_vertical_source
                     and (r["y2"] - r["y1"]) >= 2.5 * (r["x2"] - r["x1"])):
                 turned_columns.append((r["x1"], r["y1"], r["x2"], r["y2"]))
 
@@ -348,7 +348,8 @@ def layout_and_draw(req):
 
         if use_translation:
             text = ovr.get("text_translated") or dlg.get("text_translated") or dlg.get("text", "")
-            if not ovr.get("text_translated") and _all_caps(dlg.get("text", "")):
+            if (not ovr.get("text_translated") and text_rules(text).caps_follow_source
+                    and _all_caps(dlg.get("text", ""))):
                 text = text.upper()  # lettering in capitals stays in capitals (the model mixed cases)
         else:  # layout check with the original text
             text = dlg.get("text", "")
@@ -452,8 +453,9 @@ def layout_and_draw(req):
 
         # Stacking one glyph per line only reads naturally in CJK scripts; Latin
         # text became '¡/N/O/!' columns.
+        rules = text_rules(clean_text)
         use_vertical = (
-            is_cjk_text(clean_text)
+            rules.vertical_native
             and is_short_text
             and vert_potential_font > horiz_max_font * 1.5  # vertical gives ≥50% larger font
             and vert_potential_font >= 12  # minimum legible size
@@ -462,7 +464,7 @@ def layout_and_draw(req):
             # A one-word Latin shout in a very tall, narrow bubble ("¡GYAAAH!",
             # "¡SADAHARU!"): scanlators stack the letters; horizontal gave 9-11px.
             # Normal bubbles keep horizontal text ("¡NO!" stacked read badly).
-            not is_cjk_text(clean_text) and _all_caps(clean_text)   # stacked lowercase reads badly
+            rules.stack_shouts and _all_caps(clean_text)   # stacked lowercase reads badly
             and len(words) == 1 and 3 <= char_count <= 14
             and bubble_h >= bubble_w * 2.5
             and vert_potential_font >= max(14, horiz_max_font * 1.8)
@@ -472,7 +474,7 @@ def layout_and_draw(req):
         # a Latin script: lay the line out along the column and turn it 90°
         # (spine-style), instead of a 12px horizontal staircase across the art.
         rotated_free = (
-            is_free and not is_cjk_text(clean_text) and is_cjk_text(dlg.get("text") or "")
+            is_free and rules.turn_vertical_source and text_rules(dlg.get("text") or "").vertical_native
             and (text_bbox[3] - text_bbox[1]) >= 2.5 * (text_bbox[2] - text_bbox[0])
         )
         rot90 = False

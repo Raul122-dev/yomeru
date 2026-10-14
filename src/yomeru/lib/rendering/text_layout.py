@@ -102,27 +102,6 @@ def _get_hyphenator(lang: str, aggressive: bool = False):
     return None
 
 
-LANG_MAP = {
-    "English": "en_US",
-    "Spanish": "es",
-    "Portuguese": "pt_BR",
-    "French": "fr",
-    "German": "de",
-    "Italian": "it",
-    "Dutch": "nl",
-    "Russian": "ru",
-    "Polish": "pl",
-    "Turkish": "tr",
-    "Indonesian": "id",
-    "Thai": None,
-    "Vietnamese": None,
-    "Arabic": None,
-    "Japanese": None,
-    "Korean": None,
-    "Chinese (Simplified)": None,
-    "Chinese (Traditional)": None,
-    "auto": "en_US",
-}
 
 
 # ── CJK line breaking ─────────────────────────────────────────────────────────
