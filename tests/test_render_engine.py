@@ -440,3 +440,22 @@ def test_prompts_ask_to_rejoin_line_break_hyphens():
     for name in ("system.md", "system_compact.md", "system_read.md"):
         txt = (p / name).read_text()
         assert "INTERESTING" in txt and "preserve hyphenation" not in txt
+
+
+
+def test_short_free_text_is_not_taller_than_its_box():
+    """Set de pruebas pattern #4: 20px-high SFX/notes were drawn at 30px over
+    panel borders and page edges (the bbox fallback ignored the box height)."""
+    from PIL import Image as _I, ImageDraw as _D
+    from yomeru.core.contracts import RenderRequest
+    from yomeru.lib.rendering.scanline_engine import layout_and_draw
+    img = _I.new("RGB", (697, 1100), "white")
+    orig = img.copy()
+    _D.Draw(orig).rectangle((380, 88, 420, 100), fill="black")
+    region = {"x1": 367, "y1": 84, "x2": 594, "y2": 104, "label": "text_free"}
+    req = RenderRequest(inpainted=img, original=orig,
+                        matches=[{"dialogue_index": 0, "region_id": 1, "region": region}],
+                        dialogues=[{"text": "SFX: PAT", "text_translated": "Paf", "bubble_type": "sfx"}],
+                        overrides={}, skipped=set(), containers=[], use_translation=True, lang_code="es")
+    ev = layout_and_draw(req).events[0]
+    assert ev["status"] == "ok" and ev["font_size"] <= 22

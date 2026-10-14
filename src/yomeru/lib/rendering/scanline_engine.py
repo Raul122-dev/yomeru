@@ -552,6 +552,10 @@ def layout_and_draw(req):
                 bh = bubble_h - pad * 2
                 if bw < 10 or bh < 10:
                     continue
+                if lh > (bubble_h - 2) * 1.1:
+                    # taller than the whole box: SFX/notes came out at 30px over
+                    # 20px-high originals, across panel borders and page edges
+                    continue
                 max_lines = max(1, bh // lh)
                 lines = wrap_text(clean_text, bw, max_lines, font, lang_code_for_this_match)
                 if lines:
