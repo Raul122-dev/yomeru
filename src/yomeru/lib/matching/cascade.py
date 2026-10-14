@@ -223,6 +223,55 @@ def match_page(req: MatchRequest, matcher, ocr_weight: float, spatial_weight: fl
 LOCATE_MIN_RATIO = 0.75
 
 
+def split_repeated_sfx(matches, dialogues, page_dets, img):
+    """A sound drawn several times that the reading merged into one entry
+    ('Clap Clap Clap' on one box, bocchi ch10 p5): page OCR finds the other
+    occurrences outside every detected region near the first one.
+    Returns [(dialogue_index, word, translated_word, [new regions])]; the
+    phase splits the dialogue into one per occurrence. Latin OCR only."""
+    from difflib import SequenceMatcher
+    from yomeru.lib.matching.ocr import ocr_lines
+    todo = []
+    for i, m in matches.items():
+        d = dialogues[i]
+        words = [_core_text(w) for w in str(d.get("text") or "").split()]
+        tr = str(d.get("text_translated") or "").split()
+        if (d.get("bubble_type") == "sfx" and len(words) >= 2 and len(set(words)) == 1
+                and words[0] and len(tr) % len(words) == 0):
+            todo.append((i, m, words[0], len(words), " ".join(tr[:len(tr) // len(words)])))
+    if not todo:
+        return []
+    img_w, img_h = img.size
+    taken = [(r["x1"], r["y1"], r["x2"], r["y2"]) for r in page_dets.values() if is_text(r.get("label"))]
+    lines = [(b, _core_text(t)) for b, t in ocr_lines(img)]
+    diag = (img_w ** 2 + img_h ** 2) ** 0.5
+    next_id = max([int(k) for k in page_dets] + [0]) + 1
+    out = []
+    for i, m, word, n, tr_word in todo:
+        cx, cy = m.region.center
+
+        def free(b):
+            bx, by = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+            return not any(t[0] <= bx <= t[2] and t[1] <= by <= t[3] for t in taken)
+        # stylised SFX lettering reads poorly ('Clap' -> 'Uap'): loose ratio,
+        # but only for free boxes near the first occurrence
+        cands = sorted(((abs((b[0] + b[2]) / 2 - cx) + abs((b[1] + b[3]) / 2 - cy), b)
+                        for b, t in lines if t and SequenceMatcher(None, word, t).ratio() >= 0.5 and free(b)),
+                       key=lambda x: x[0])
+        regs = []
+        for dist, b in cands[: n - 1]:
+            if dist > 0.25 * diag:
+                break
+            det = {"id": next_id, "x1": max(0, b[0] - 3), "y1": max(0, b[1] - 3),
+                   "x2": min(img_w, b[2] + 3), "y2": min(img_h, b[3] + 3), "label": TEXT_FREE, "score": 1.0}
+            next_id += 1
+            regs.append(det)
+            taken.append((det["x1"], det["y1"], det["x2"], det["y2"]))
+        if regs:
+            out.append((i, word, tr_word, regs))
+    return out
+
+
 def _core_text(s: str) -> str:
     """Comparable text: no 'SFX:' prefix, letters/digits only, casefolded."""
     s = re.sub(r"^\s*(sfx|fx)\s*[:.]\s*", "", str(s or ""), flags=re.I)

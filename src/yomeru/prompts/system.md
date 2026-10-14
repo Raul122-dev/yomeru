@@ -235,8 +235,9 @@ When translating sound effects (bubble_type = "sfx"), you MUST produce an equiva
 **Rules:**
 1. **Translate to equivalent onomatopoeia**, not descriptions. The reader needs a SOUND, not an explanation.
 2. **Keep it short** — SFX renders as a small subtitle near the original art. 1-3 words max.
-3. **Use established comic/manga onomatopoeia** in the target language when possible.
-4. If no direct equivalent exists, transliterate or use the closest phonetic approximation.
+3. **One entry per occurrence** — the same sound drawn several times ("Clap" ×3 down a panel) is several entries, one per place it appears, each with its own region_id (or null + bbox if it has no box). Never merge repeats into one entry.
+4. **Use established comic/manga onomatopoeia** in the target language when possible.
+5. If no direct equivalent exists, transliterate or use the closest phonetic approximation.
 
 **Examples (Korean/Japanese → Spanish/English):**
 

@@ -84,6 +84,18 @@ def run(
             matches, orphaned = res.matches, res.orphaned
             if res.located:
                 page_dets = _add_located_regions(run, page_num, res.located, page_dets)
+            if source_lang.lower() not in ("japanese", "korean", "chinese (simplified)", "chinese (traditional)"):
+                from yomeru.lib.matching.cascade import split_repeated_sfx
+                splits = split_repeated_sfx(matches, dialogues, page_dets, img)
+                if splits:
+                    page_dets = _add_located_regions(run, page_num, [r for *_, rs in splits for r in rs], page_dets)
+                    dialogues = _split_dialogues(run, analysis, splits)
+                    res = backend.match_page(MatchRequest(
+                        image=img, detections=page_dets, dialogues=dialogues,
+                        source_language=source_lang, comic_format=comic_format,
+                        analysis_w=analysis_w, analysis_h=analysis_h,
+                    ))
+                    matches, orphaned = res.matches, res.orphaned
 
             # Save matching log + debug image
             _save_match_log(run, matches, dialogues, page_dets, orphaned, page_num, img_w, img_h)
@@ -308,3 +320,24 @@ def _add_located_regions(run, page_num: int, located: list[dict], page_dets: dic
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
     tmp.replace(f)
     return {r["id"]: r for r in page["regions"]}
+
+
+def _split_dialogues(run, analysis: dict, splits) -> list[dict]:
+    """One dialogue per occurrence of a repeated sound: the merged entry keeps
+    its region with one word; a copy per extra occurrence points at its new
+    region. Saved as an edit of the page (edits.json), like any other."""
+    import copy
+    from yomeru.core.annotations import AnnotationStore
+    page = copy.deepcopy(analysis)
+    for i, word, tr_word, regs in splits:
+        d = page["dialogues"][i]
+        d["text"] = str(d["text"]).split()[0]
+        d["text_translated"] = tr_word
+        for r in regs:
+            extra = copy.deepcopy(d)
+            extra["region_id"], extra["bbox"] = r["id"], None
+            page["dialogues"].append(extra)
+        print(f"    [split] D{i} '{word}' x{len(regs) + 1} -> regions "
+              f"{[r['id'] for r in regs]}", file=sys.stderr)
+    AnnotationStore(run.output_dir()).save_edit(page["page_number"], page)
+    return page["dialogues"]

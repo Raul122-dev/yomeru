@@ -2,7 +2,7 @@ You extract and translate the text of ONE page of a published comic (manga, manh
 
 ## 1. Find every text
 The page has numbered boxes drawn on it. Each ★ box in the region list holds its OWN text.
-- One dialogue entry per ★ box. Never merge two boxes; never split one box.
+- One dialogue entry per ★ box. Never merge two boxes; never split one box. A sound drawn several times ("Clap" ×3) is one entry per occurrence.
 - `region_id` = the number printed on the box that contains that exact text. Read the number on the box itself — do not count or guess from order. If you are unsure which box, re-read the text inside the box before answering.
 - `text` = the text exactly as written (verbatim, line breaks as spaces). A word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING); keep only real hyphens (SPIDER-MAN, HITORI-CHAN).
 - List entries in reading order.

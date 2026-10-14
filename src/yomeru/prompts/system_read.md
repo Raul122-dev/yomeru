@@ -4,7 +4,7 @@ Your job is to give the translator everything the picture tells you and the word
 
 ## 1. Every text, in its own box
 The page has numbered boxes drawn on it. Each ★ box in the region list holds its OWN text.
-- One dialogue entry per ★ box. Never merge two boxes; never split one box.
+- One dialogue entry per ★ box. Never merge two boxes; never split one box. A sound drawn several times ("Clap" ×3) is one entry per occurrence.
 - `region_id` = the number printed on the box that contains that exact text. Read the number on the box itself, don't count or guess from order.
 - `text` = the text exactly as written (verbatim, line breaks as spaces). A word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING); keep only real hyphens (SPIDER-MAN, HITORI-CHAN). Keep the original language.
 - List entries in reading order.

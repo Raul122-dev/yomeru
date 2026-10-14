@@ -211,3 +211,25 @@ def test_free_text_expands_evenly_so_it_stays_in_place():
     arr[:, 200:] = rng.integers(0, 255, (400, 200, 3))     # busy art on the right
     x1, y1, x2, y2 = _expand_free_text_bbox(Image.fromarray(arr), (150, 100, 200, 130))
     assert (x1 + x2) / 2 == 175
+
+
+
+def test_repeated_sfx_merged_by_the_reading_is_split_per_occurrence(monkeypatch):
+    """bocchi ch10 p5: 'Clap' x3 down a panel came as one entry 'Clap Clap Clap'
+    on the first box; the others stayed in English. OCR (which reads the
+    stylised lettering loosely: 'Uap') finds the free ones nearby."""
+    from types import SimpleNamespace
+    from PIL import Image
+    import yomeru.lib.matching.ocr as ocr
+    from yomeru.lib.matching.cascade import split_repeated_sfx
+    monkeypatch.setattr(ocr, "ocr_lines", lambda img, *a: [
+        ((114, 230, 160, 258), "Uap"),       # the first one, inside its own region
+        ((96, 315, 145, 346), "Uap"),        # second occurrence, free
+        ((900, 900, 950, 930), "Clap")])     # far away -> not this one
+    dets = {25: {"id": 25, "x1": 105, "y1": 225, "x2": 169, "y2": 272, "label": "text_free"}}
+    m = SimpleNamespace(region=SimpleNamespace(center=(137, 248)))
+    dialogues = [{"text": "Clap Clap Clap", "text_translated": "Plas Plas Plas", "bubble_type": "sfx", "region_id": 25}]
+    got = split_repeated_sfx({0: m}, dialogues, dets, Image.new("RGB", (1354, 1920)))
+    assert len(got) == 1
+    i, word, tr, regs = got[0]
+    assert (i, word, tr) == (0, "clap", "Plas") and [r["id"] for r in regs] == [26] and regs[0]["y1"] == 312
