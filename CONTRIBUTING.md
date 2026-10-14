@@ -1,5 +1,7 @@
 # Contributing to Yomeru — Quick Reference
 
+> Working with an AI coding agent? Start at `AGENTS.md` and `.agents/README.md`.
+
 ## Architecture Overview
 
 Yomeru is a manga/comic translation pipeline: **detection → analysis → matching → inpainting → rendering**.
