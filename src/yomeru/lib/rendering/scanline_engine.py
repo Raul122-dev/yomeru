@@ -317,6 +317,18 @@ def layout_and_draw(req):
         events.append({"dialogue_index": dlg_i, "region_id": m.get("region_id"),
                        "status": "skip", "skip_reason": reason, "text": text})
 
+    # Columns of vertical CJK free text that will be turned 90° (see
+    # rotated_free below): horizontal free text crossing one keeps clear of it.
+    turned_columns = []
+    for m in matches:
+        di, r = m.get("dialogue_index", -1), m.get("region") or {}
+        if 0 <= di < len(dialogues) and is_free_label(r.get("label", "")):
+            d = dialogues[di]
+            tt = (d.get("text_translated") if use_translation else d.get("text")) or ""
+            if (is_cjk_text(d.get("text") or "") and tt and not is_cjk_text(tt)
+                    and (r["y2"] - r["y1"]) >= 2.5 * (r["x2"] - r["x1"])):
+                turned_columns.append((r["x1"], r["y1"], r["x2"], r["y2"]))
+
     for match_idx, m in enumerate(matches):
         dlg_i = m.get("dialogue_index", -1)
         if match_idx not in valid_match_indices:
@@ -347,6 +359,8 @@ def layout_and_draw(req):
         r = m["region"]
         text_bbox = (r["x1"], r["y1"], r["x2"], r["y2"])
         label = r.get("label", TEXT_BUBBLE)
+        if is_free_label(label):
+            text_bbox = _clear_of_columns(text_bbox, turned_columns)
 
         # Color and style for free text vs bubble text
         is_free = is_free_label(label)
@@ -366,7 +380,7 @@ def layout_and_draw(req):
         if is_free and bubble_bbox == text_bbox:
             expanded = _expand_free_text_bbox(img, text_bbox)
             # Use expanded X (width) but keep original Y (vertical centering on sign)
-            bubble_bbox = (expanded[0], text_bbox[1], expanded[2], text_bbox[3])
+            bubble_bbox = _clear_of_columns((expanded[0], text_bbox[1], expanded[2], text_bbox[3]), turned_columns)
 
         # Clean text
         clean_text, _ = extract_embedded_breaks(text)
@@ -928,6 +942,22 @@ def _was_erased(original: Image.Image, inpainted: Image.Image, box, min_changed:
     a = np.asarray(original.crop((x1, y1, x2, y2)).convert("L"), dtype=np.int16)
     b = np.asarray(inpainted.crop((x1, y1, x2, y2)).convert("L"), dtype=np.int16)
     return a.size > 0 and float((np.abs(a - b) > 24).mean()) >= min_changed
+
+
+def _clear_of_columns(box, columns, gap: int = 6):
+    """A horizontal free-text box crossed by a turned column keeps the larger
+    side of it (kaguya ch1 p8: the blurbs ran under the turned tagline)."""
+    x1, y1, x2, y2 = box
+    for cx1, cy1, cx2, cy2 in columns:
+        if (cx1, cy1, cx2, cy2) == box or cy2 <= y1 or cy1 >= y2 or cx2 <= x1 or cx1 >= x2:
+            continue
+        if (y2 - y1) >= (x2 - x1):        # itself a column: leave it
+            continue
+        left, right = cx1 - gap - x1, x2 - (cx2 + gap)
+        if max(left, right) <= 0:
+            continue
+        x1, x2 = (x1, cx1 - gap) if left >= right else (cx2 + gap, x2)
+    return (x1, y1, x2, y2)
 
 
 def _rotated_free_layout(text: str, style: str, box, min_font: int, lang_code):

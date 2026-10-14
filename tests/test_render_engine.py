@@ -500,3 +500,13 @@ def test_vertical_cjk_free_text_translated_to_latin_is_turned():
                         overrides={}, skipped=set(), containers=[], use_translation=True, lang_code="es")
     ev = layout_and_draw(req).events[0]
     assert ev["status"] == "ok" and ev["font_size"] >= 30
+
+
+
+def test_horizontal_free_text_keeps_clear_of_a_turned_column():
+    from yomeru.lib.rendering.scanline_engine import _clear_of_columns
+    col = (250, 40, 371, 480)
+    assert _clear_of_columns((41, 175, 297, 220), [col]) == (41, 175, 244, 220)     # keeps the left side
+    assert _clear_of_columns((352, 162, 692, 226), [col]) == (377, 162, 692, 226)   # keeps the right side
+    assert _clear_of_columns(col, [col]) == col
+    assert _clear_of_columns((41, 600, 297, 640), [col]) == (41, 600, 297, 640)     # not crossing
