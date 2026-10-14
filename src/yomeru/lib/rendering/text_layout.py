@@ -212,9 +212,14 @@ def _try_hyphenate(
     lead, root, trail = _split_word_punct(word)
     if not root or len(root) < min_root_len:
         return "", word
-    parts = hyph.positions(root)  # type: ignore[attr-defined]
+    # A word that already has hyphens (BAJISTA-VOCALISTA, HITORI-CHAN) breaks
+    # right after one of them, without adding another ("BAJISTA--").
+    parts = sorted(set(hyph.positions(root)) | {i + 1 for i, ch in enumerate(root[:-1]) if ch == "-"})  # type: ignore[attr-defined]
     for pos in reversed(parts):
-        prefix = lead + root[:pos] + "-"
+        head = root[:pos]
+        if root[pos:pos + 1] == "-" or head.endswith("--"):
+            continue  # never leave a line starting with the hyphen
+        prefix = lead + head + ("" if head.endswith("-") else "-")
         remaining = root[pos:] + trail
         if measure_width(prefix, font) <= box_w:
             return prefix, remaining

@@ -100,7 +100,7 @@ Stable identification rules:
     {
       "panel_index": <int — which panel this bubble is in>,
       "speaker_id": <string | null>,
-      "text": <string — verbatim, preserve hyphenation and line breaks as spaces>,
+      "text": <string — verbatim, line breaks as spaces; a word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING) — keep only real hyphens (SPIDER-MAN, HITORI-CHAN)>,
       "text_translated": <string — ONLY if translation was requested>,
       "tone": <string — see modifier table above, default "neutral">,
       "bubble_type": <"speech" | "thought" | "narration" | "sfx" | "internal">,

@@ -418,3 +418,25 @@ def test_tiny_erased_region_is_never_left_empty():
     req.inpainted = orig.copy()
     res = layout_and_draw(req)
     assert {e["region_id"]: e["status"] for e in res.events}[2] == "skip"
+
+
+
+def test_hyphenated_words_break_at_their_hyphen_without_doubling_it():
+    """Set de pruebas pattern #3: 'HITORI--CHAN', 'KAGURA--CHAN', 'BAJISTA--'."""
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.text_layout import _get_hyphenator, _try_hyphenate
+    f = _get_font("regular", 40)
+    h = _get_hyphenator("es", aggressive=True)
+    for word in ("HITORI-CHAN", "KAGURA-CHAN", "BAJISTA-VOCALISTA", "SHINPACHI-KUN"):
+        for w in (120, 200, 260):
+            head, rest = _try_hyphenate(word, h, f, w, 4)
+            assert "--" not in head and not rest.startswith("-")
+    assert _try_hyphenate("BAJISTA-VOCALISTA", h, f, 200, 4) == ("BAJISTA-", "VOCALISTA")
+
+
+def test_prompts_ask_to_rejoin_line_break_hyphens():
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "src/yomeru/prompts"
+    for name in ("system.md", "system_compact.md", "system_read.md"):
+        txt = (p / name).read_text()
+        assert "INTERESTING" in txt and "preserve hyphenation" not in txt
