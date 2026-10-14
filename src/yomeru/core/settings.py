@@ -343,7 +343,11 @@ store = ConfigStore()
 def _deep_merge(base: dict, over: dict) -> dict:
     out = dict(base)
     for k, v in over.items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict):
+        if (isinstance(v, dict) and isinstance(out.get(k), dict)
+                and "backend" in v and v["backend"] != out[k].get("backend")):
+            # another technique: its options are a different model, never mix them
+            out[k] = _deep_merge({kk: vv for kk, vv in out[k].items() if kk != "options"}, v)
+        elif isinstance(v, dict) and isinstance(out.get(k), dict):
             out[k] = _deep_merge(out[k], v)
         else:
             out[k] = v

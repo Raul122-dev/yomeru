@@ -6,29 +6,15 @@ import type { FontInfo } from "../lib/types";
 import { Card } from "./ui/card";
 import { cn } from "../lib/utils";
 
-// Font style mapping documentation shown to the user
+// Mirrors lib/rendering/pil.py _FONT_STYLES: for each style the FIRST
+// installed file in the list is used.
 const FONT_SLOTS = [
-  {
-    name: "AnimeAce.ttf",
-    style: "regular / thought / narration",
-    note: "primary — manga speech bubbles",
-  },
-  { name: "Bangers-Regular.ttf", style: "bold", note: "action, SFX, shouting" },
-  {
-    name: "CC Wild Words Roman.ttf",
-    style: "regular (alt)",
-    note: "alternative comics style",
-  },
-  {
-    name: "CC Wild Words Bold.ttf",
-    style: "bold (alt)",
-    note: "alternative bold",
-  },
-  {
-    name: "NotoSansCJK-Regular.ttc",
-    style: "all (CJK fallback)",
-    note: "multilingual — Japanese, Korean, Chinese",
-  },
+  { name: "ComicNeue-Bold.ttf", style: "regular · bold", note: "1st choice for speech and shouting" },
+  { name: "ComicNeue-Regular.ttf", style: "thought · narration", note: "1st choice" },
+  { name: "AnimeAce.ttf", style: "regular · thought · narration", note: "used if ComicNeue is missing" },
+  { name: "Bangers-Regular.ttf", style: "bold", note: "used if ComicNeue-Bold is missing" },
+  { name: "CC Wild Words Roman.ttf", style: "regular", note: "after AnimeAce" },
+  { name: "NotoSansCJK-Regular.ttc", style: "CJK", note: "Japanese, Korean, Chinese text" },
 ];
 
 export function FontsCard() {
@@ -73,11 +59,11 @@ export function FontsCard() {
       <p className="mb-4 text-xs text-[hsl(var(--text-muted))] leading-relaxed">
         Upload fonts via drag-and-drop below, or copy them manually to{" "}
         <code className="font-mono text-xs bg-[hsl(var(--bg-subtle))] px-1 rounded">
-          backend/assets/fonts/
+          src/yomeru/assets/fonts/
         </code>
-        . Name files exactly as shown in the slots below — the renderer picks
-        them by filename. Any style without a custom font falls back to Noto
-        Sans (multilingual).
+        . The renderer picks fonts by file name: for each style it uses the first
+        installed file in the order below. Other uploaded fonts are only used as a
+        last resort. Re-rendering picks up font changes.
       </p>
 
       {/* recommended slots */}

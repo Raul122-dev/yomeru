@@ -42,7 +42,7 @@ export default function NewRun() {
       : `${cfg?.connections.find((c) => c.id === settings.analysis_model.connection_id)?.name ?? "?"} · ${settings.analysis_model.model || "no model"}`;
 
   const useLocal = () =>
-    settings && setSettings({ ...settings, analysis: { backend: "local", options: {} } as PipelineSettings["analysis"] });
+    settings && setSettings({ ...settings, analysis: { ...settings.analysis, backend: "local", options: {} } });
 
   const submit = async () => {
     if (!files.length) return setError("Select at least one page");

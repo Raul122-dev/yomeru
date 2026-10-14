@@ -119,3 +119,17 @@ def test_deleting_connection_clears_references(client):
     cid = cfg["settings"]["analysis_model"]["connection_id"]
     cfg = client.delete(f"/api/config/connections/{cid}").json()
     assert cfg["settings"]["analysis_model"]["connection_id"] == ""
+
+
+
+def test_switching_technique_through_overrides_drops_the_old_options(client):
+    """global=local (model/server/… options) + run override vlm must not carry
+    the local options into VlmOptions (extra=forbid → 'invalid settings')."""
+    from yomeru.core.settings import resolve_settings
+    client.patch("/api/config/settings", json={"analysis": {"backend": "local", "options": {"model": "qwen3.5:9b"},
+                                                            "separate_translation": {"enabled": True, "local": True}}})
+    s = resolve_settings(overrides={"analysis": {"backend": "vlm"}})
+    assert s.analysis.backend == "vlm" and s.analysis.options == {}
+    assert s.analysis.separate_translation.enabled   # the rest of the phase settings are kept
+    s = resolve_settings(overrides={"analysis": {"options": {"think": True}}})   # same technique: merge
+    assert s.analysis.options["model"] == "qwen3.5:9b" and s.analysis.options["think"] is True

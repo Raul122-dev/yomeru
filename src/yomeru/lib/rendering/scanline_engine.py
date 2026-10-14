@@ -18,6 +18,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from yomeru.core import artifacts
+from yomeru.core.paths import FONTS_DIR
 from yomeru.core.labels import CONTAINER_LABELS, TEXT_BUBBLE, is_free as is_free_label
 from yomeru.core.paths import list_page_files
 from yomeru.core.runs import Run
@@ -66,6 +67,7 @@ def input_paths(run: Run, page_num: int) -> list[Path]:
         run.output_dir() / a.TRANSLATIONS,     # separate translation step
         run.active_detections_file(),          # bubble containers
         run.dir / "meta.json",                 # settings: use_translation, target language
+        FONTS_DIR,                             # a font added/removed changes the drawing
     ]
 
 
