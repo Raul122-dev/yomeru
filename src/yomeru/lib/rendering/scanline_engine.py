@@ -454,6 +454,19 @@ def layout_and_draw(req):
             and vert_potential_font >= max(14, horiz_max_font * 1.8)
         )
 
+        # Vertical CJK lettering on the art (kaguya ch1 p8 blurbs) translated to
+        # a Latin script: lay the line out along the column and turn it 90°
+        # (spine-style), instead of a 12px horizontal staircase across the art.
+        rotated_free = (
+            is_free and not is_cjk_text(clean_text) and is_cjk_text(dlg.get("text") or "")
+            and (text_bbox[3] - text_bbox[1]) >= 2.5 * (text_bbox[2] - text_bbox[0])
+        )
+        rot90 = False
+        if rotated_free:
+            best_layout = _rotated_free_layout(clean_text, style, text_bbox, MIN_FONT, lang_code_for_this_match)
+            if best_layout is not None:
+                use_vertical, rot90 = False, True
+
         if use_vertical and clean_text.strip():
             vert_pad = max(4, scan_padding)
             usable_w = bubble_w - vert_pad * 2
@@ -592,7 +605,9 @@ def layout_and_draw(req):
         if best_layout:
             # Detect text angle for free text regions
             text_angle = 0.0
-            if is_free:
+            if rot90:
+                text_angle = -90.0
+            elif is_free:
                 from yomeru.lib.rendering.angle_detect import detect_text_angle
                 text_angle = detect_text_angle(original_img, text_bbox)
 
@@ -913,6 +928,30 @@ def _was_erased(original: Image.Image, inpainted: Image.Image, box, min_changed:
     a = np.asarray(original.crop((x1, y1, x2, y2)).convert("L"), dtype=np.int16)
     b = np.asarray(inpainted.crop((x1, y1, x2, y2)).convert("L"), dtype=np.int16)
     return a.size > 0 and float((np.abs(a - b) > 24).mean()) >= min_changed
+
+
+def _rotated_free_layout(text: str, style: str, box, min_font: int, lang_code):
+    """Layout in the box turned 90° (width = column height), centred on the
+    box's centre; drawn rotated -90° by the caller. Largest size that fits."""
+    from yomeru.lib.rendering.scanline import PositionedLine
+    w, h = box[2] - box[0], box[3] - box[1]
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    vw, vh = h, w
+    for size in range(min(60, max(min_font, int(vh * 0.8))), min_font - 1, -1):
+        font = _get_font(style, size)
+        lh = measure_line_height(font, size)
+        max_lines = max(1, int(vh // lh))
+        lines = wrap_text(text, vw - 6, max_lines, font, lang_code)
+        if not lines or len(lines) * lh > vh:
+            continue
+        block_h = len(lines) * lh
+        y0 = int(cy - block_h / 2)
+        out = []
+        for i, ln in enumerate(lines):
+            lw = measure_width(ln, font)
+            out.append(PositionedLine(text=ln, x=int(cx - lw / 2), y=y0 + i * lh, width=vw))
+        return (size, font, out)
+    return None
 
 
 def _overflow_layout(text: str, font, size: int, box, page_size, lang_code):

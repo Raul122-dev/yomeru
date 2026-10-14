@@ -480,3 +480,23 @@ def test_one_word_shout_in_tall_narrow_bubble_is_stacked():
                             overrides={}, skipped=set(), containers=[box], use_translation=True, lang_code="es")
         return layout_and_draw(req).events[0]["font_size"]
     assert run("¡SADAHARU!") >= 20
+
+
+
+def test_vertical_cjk_free_text_translated_to_latin_is_turned():
+    """kaguya ch1 p8: a vertical Japanese tagline on the art came out as a
+    horizontal staircase; it is now laid out along the column and turned 90°."""
+    from PIL import Image as _I, ImageDraw as _D
+    from yomeru.core.contracts import RenderRequest
+    from yomeru.lib.rendering.scanline_engine import layout_and_draw
+    img = _I.new("RGB", (800, 600), "white")
+    orig = img.copy()
+    _D.Draw(orig).rectangle((260, 50, 360, 470), fill="black")
+    req = RenderRequest(inpainted=img, original=orig,
+                        matches=[{"dialogue_index": 0, "region_id": 1,
+                                  "region": {"x1": 250, "y1": 40, "x2": 371, "y2": 480, "label": "text_free"}}],
+                        dialogues=[{"text": "天才も恋には不器用", "text_translated": "Incluso los genios son torpes en el amor",
+                                    "bubble_type": "narration"}],
+                        overrides={}, skipped=set(), containers=[], use_translation=True, lang_code="es")
+    ev = layout_and_draw(req).events[0]
+    assert ev["status"] == "ok" and ev["font_size"] >= 30
