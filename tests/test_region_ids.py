@@ -176,3 +176,38 @@ def test_ocr_corrects_region_ids_shifted_along_a_chain(monkeypatch):
     assert got == {0: 1, 1: 2, 2: 3} and orphans == []
     # VLM right → untouched
     assert run([1, 2, 3]) == ({0: 1, 1: 2, 2: 3}, [])
+
+
+
+def test_locate_finds_text_the_detector_missed(monkeypatch):
+    """Set de pruebas: 'SFX: GRR', 'SFX: SKID', 'Yay!' had no detected region,
+    so they were neither erased nor translated. Page OCR finds the words
+    outside every detected text region -> a new text_free region."""
+    from PIL import Image
+    import yomeru.lib.matching.ocr as ocr
+    from yomeru.lib.matching.cascade import _locate_undetected
+    monkeypatch.setattr(ocr, "ocr_lines", lambda img, *a: [
+        ((225, 421, 289, 437), "SFx: GRR"),          # OCR noise: case, prefix
+        ((100, 100, 160, 120), "HELLO"),             # inside a detected region -> not free
+        ((663, 671, 693, 685), "Skid")])
+    dets = {1: {"id": 1, "x1": 90, "y1": 90, "x2": 200, "y2": 130, "label": "text_bubble"}}
+    dialogues = [{"text": "HELLO", "region_id": 1}, {"text": "SFX: GRR"}, {"text": "SFX: SKID"},
+                 {"text": "SFX: WHOOSH"}, {"text": "LOGO", "skip": True}]
+    got = dict(_locate_undetected({}, dialogues, dets, Image.new("RGB", (697, 1100)), "English", 0, 0))
+    assert set(got) == {1, 2} and got[1]["label"] == "text_free" and got[1]["id"] == 2 and got[2]["id"] == 3
+    assert got[1]["x1"] == 222 and got[2]["y2"] == 688
+    # Japanese/Korean sources: no box OCR -> nothing invented
+    assert _locate_undetected({}, dialogues, dets, Image.new("RGB", (697, 1100)), "Japanese", 0, 0) == []
+
+
+def test_free_text_expands_evenly_so_it_stays_in_place():
+    """'Plas' (bocchi ch10 p5) slid into the white page margin: only the margin
+    side was uniform, so the box grew one way and the text moved off its spot."""
+    import numpy as np
+    from PIL import Image
+    from yomeru.lib.rendering.scanline_engine import _expand_free_text_bbox
+    arr = np.full((400, 400, 3), 255, np.uint8)
+    rng = np.random.default_rng(0)
+    arr[:, 200:] = rng.integers(0, 255, (400, 200, 3))     # busy art on the right
+    x1, y1, x2, y2 = _expand_free_text_bbox(Image.fromarray(arr), (150, 100, 200, 130))
+    assert (x1 + x2) / 2 == 175

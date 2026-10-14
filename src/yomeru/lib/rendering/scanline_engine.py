@@ -1072,6 +1072,12 @@ def _expand_free_text_bbox(
         else:
             break
 
+    # Grow the same on both sides so the text stays where it was: a one-sided
+    # gain slid it off its spot — 'Plas' (bocchi ch10 p5) went out into the
+    # white page margin because only the margin side was uniform.
+    if x1 > 4 and x2 < img_w - 4:
+        g = min(x1 - new_x1, new_x2 - x2)
+        new_x1, new_x2 = x1 - g, x2 + g
     return (new_x1, new_y1, new_x2, new_y2)
 
 
