@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
 from pathlib import Path
 
 from fastapi import Request
@@ -27,6 +28,10 @@ from fastapi.responses import FileResponse, Response
 # 32 = blur placeholder (≈1 KB), 160–320 = strips/grids, 640–1024 = side-by-side
 # panels, 1600–2400 = lightbox / editors on big screens.
 WIDTHS = (32, 160, 320, 640, 1024, 1600, 2400)
+
+
+_locks: dict[str, threading.Lock] = {}
+_guard = threading.Lock()
 
 
 def snap_width(w: int) -> int:
@@ -46,19 +51,27 @@ def _cache_dir(src: Path) -> Path:
 
 def variant(src: Path, w: int) -> Path:
     """Path of a cached WebP of `src` at width `w` (never upscaled)."""
-    from PIL import Image
-
     st = src.stat()
     key = hashlib.sha1(f"{src}|{st.st_mtime_ns}|{st.st_size}|{w}".encode()).hexdigest()[:16]
     out = _cache_dir(src) / f"{src.stem}.{w}.{key}.webp"
     if out.exists():
         return out
+    with _guard:   # one encoder per variant; concurrent requests wait and reuse it
+        lock = _locks.setdefault(str(out), threading.Lock())
+    with lock:
+        if out.exists():
+            return out
+        return _encode(src, out, w)
+
+
+def _encode(src: Path, out: Path, w: int) -> Path:
+    from PIL import Image
     out.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(src) as im:
         im = im.convert("RGBA" if im.mode in ("RGBA", "LA", "P") else "RGB")
         if im.width > w:
             im = im.resize((w, max(1, round(im.height * w / im.width))), Image.Resampling.LANCZOS)
-        tmp = out.with_suffix(f".{os.getpid()}.tmp")
+        tmp = out.with_suffix(f".{os.getpid()}-{threading.get_ident()}.tmp")
         im.save(tmp, "WEBP", quality=50 if w <= 32 else 82, method=4)
         tmp.replace(out)  # atomic: concurrent requests never read a half file
     # Drop older variants of the same source+width (source changed)

@@ -11,6 +11,8 @@ Routes:
 """
 from __future__ import annotations
 
+import threading
+
 from yomeru.core.labels import is_text
 from typing import Any
 
@@ -302,9 +304,23 @@ def get_mask_debug(run_id: str, page_num: int, request: Request, w: int | None =
     return serve_image(request, path, w)
 
 
+_render_locks: dict[tuple[str, int], threading.Lock] = {}
+_render_locks_guard = threading.Lock()
+
+
 def _ensure_rendered(run: Run, page_num: int, force: bool) -> None:
+    """Re-render a stale page once: the strip thumbnail, blur placeholder,
+    preview and production requests for the same page arrive together; the
+    first renders, the rest wait and reuse it (they used to render in
+    parallel, thrash the CPU and race on the temp file → 500s)."""
     from yomeru.lib.rendering.scanline_engine import RenderInputMissing, is_cached, render_page
-    if force or not is_cached(run, page_num):
+    if not force and is_cached(run, page_num):
+        return
+    with _render_locks_guard:
+        lock = _render_locks.setdefault((run.id, page_num), threading.Lock())
+    with lock:
+        if not force and is_cached(run, page_num):
+            return
         try:
             render_page(run, page_num)  # takes the GPU lock only if its backend needs it
         except RenderInputMissing as e:

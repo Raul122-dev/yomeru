@@ -66,9 +66,25 @@ def input_paths(run: Run, page_num: int) -> list[Path]:
         run.output_dir() / "edits.json",       # merged into the dialogues
         run.output_dir() / a.TRANSLATIONS,     # separate translation step
         run.active_detections_file(),          # bubble containers
-        run.dir / "meta.json",                 # settings: use_translation, target language
         FONTS_DIR,                             # a font added/removed changes the drawing
     ]
+
+
+def settings_signature(run: Run) -> str:
+    """The run settings that change a render (technique + options, use_translation,
+    target language). Compared by value, not by meta.json's mtime: meta.json is
+    rewritten for status/progress at the end of every job, which made every
+    finished run look stale and re-render on first view."""
+    import hashlib
+    import json
+    from yomeru.core.settings import run_settings
+    st = run_settings(run.meta())
+    key = {"rendering": st.rendering.model_dump(), "target": st.language.target}
+    return hashlib.sha1(json.dumps(key, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def _signature_path(run: Run, page_num: int) -> Path:
+    return output_paths(run, page_num)[1].with_suffix(".sig")
 
 
 def largest_fitting_layout(sizes, width_factors, try_layout, usable_h: int, max_fill: float = 0.95):
@@ -177,7 +193,10 @@ def is_cached(run: Run, page_num: int) -> bool:
     if not (preview.exists() and production.exists()):
         return False
     mtime = min(preview.stat().st_mtime, production.stat().st_mtime)
-    return not any(f.exists() and f.stat().st_mtime > mtime for f in input_paths(run, page_num))
+    if any(f.exists() and f.stat().st_mtime > mtime for f in input_paths(run, page_num)):
+        return False
+    sig = _signature_path(run, page_num)
+    return sig.exists() and sig.read_text() == settings_signature(run)
 
 
 def build_request(run: Run, page_num: int, use_translation: bool | None = None):
@@ -246,6 +265,10 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None,
     if res.preview is not None:
         _save_atomic(res.preview, preview_path)
     _save_atomic(res.image, production_path)
+    if (backend is None or backend == st.backend) and use_translation in (None, req.use_translation) \
+            and req.use_translation == run_settings(run.meta()).rendering.use_translation:
+        # rendered with the run's own settings → valid cache for the preview endpoints
+        _signature_path(run, page_num).write_text(settings_signature(run))
     return RenderOutput(preview_path, production_path, res.layouts, res.events)
 
 
@@ -832,7 +855,7 @@ def _save_atomic(img: Image.Image, path: Path) -> None:
     if path.suffix.lower() == ".png":
         artifacts.save_lossless(img, path)
         return
-    tmp = path.with_name(path.stem + ".tmp" + path.suffix)
+    tmp = artifacts.tmp_path(path)
     img.save(str(tmp), quality=90)
     tmp.replace(path)
 

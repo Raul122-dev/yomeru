@@ -140,7 +140,7 @@ def test_render_overrides_round_trip_and_explicit_unskip(client):
 
     from yomeru.lib.rendering.scanline_engine import input_paths
     names = {p.name for p in input_paths(run, 1)}
-    assert {"edits.json", "meta.json", "page_detections.json"} <= names
+    assert {"edits.json", "page_detections.json"} <= names   # settings: by value (settings_signature)
 
 
 def test_font_search_takes_the_largest_size_that_fits():
@@ -322,3 +322,65 @@ def test_wrap_moves_long_word_to_a_wider_row():
     # greedy would have put 'POR' on the narrow top row and split MILLONES below
     assert _wrap_into("FUE POR 1.2 MILLONES.".split(), [widths[2], widths[0], widths[3]], font, False,
                       _get_hyphenator("es", aggressive=True), force=False) is None
+
+
+
+def test_render_cache_ignores_meta_json_rewrites_but_not_setting_changes(run, monkeypatch):
+    """meta.json is rewritten at the end of every job (status/progress); that
+    made every finished page look stale and re-render on first view. Only a
+    change in render-relevant settings may invalidate it."""
+    import os
+    import time
+    from yomeru.lib.rendering import scanline_engine as se
+    se.render_page(run, 1)
+    assert se.is_cached(run, 1)
+    meta = run.dir / "meta.json"
+    os.utime(meta, (time.time() + 5, time.time() + 5))      # status rewrite
+    assert se.is_cached(run, 1)
+    monkeypatch.setattr(se, "settings_signature", lambda r: "other-settings")
+    assert not se.is_cached(run, 1)
+
+
+def test_concurrent_requests_render_a_stale_page_once(monkeypatch):
+    """Strip thumbnail + blur + preview + production of one page arrive together:
+    one render, the rest wait (they used to render in parallel and race on the
+    temp file → 500)."""
+    import threading
+    from types import SimpleNamespace
+    from yomeru.api.routes import phases as ph
+    from yomeru.lib.rendering import scanline_engine as se
+    state = {"cached": False, "renders": 0}
+    gate = threading.Event()
+
+    def fake_render(run, page):
+        state["renders"] += 1
+        gate.wait(1)
+        state["cached"] = True
+    monkeypatch.setattr(se, "render_page", fake_render)
+    monkeypatch.setattr(se, "is_cached", lambda run, page: state["cached"])
+    run = SimpleNamespace(id="r")
+    ts = [threading.Thread(target=ph._ensure_rendered, args=(run, 1, False)) for _ in range(8)]
+    for t in ts:
+        t.start()
+    gate.set()
+    for t in ts:
+        t.join()
+    assert state["renders"] == 1
+
+
+def test_temp_names_are_per_writer(tmp_path):
+    import threading
+    from yomeru.core.artifacts import tmp_path as tp
+    p = tmp_path / "x.png"
+    names = set()
+    barrier = threading.Barrier(4)   # all alive at once, like concurrent requests
+
+    def work():
+        barrier.wait()
+        names.add(tp(p))
+    ts = [threading.Thread(target=work) for _ in range(4)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert len(names) == 4

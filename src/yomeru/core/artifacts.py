@@ -89,9 +89,17 @@ def existing_page_artifact(run: "Run", page: int, name: str) -> Path:
     return p
 
 
+def tmp_path(path: Path) -> Path:
+    """Per-writer temp name next to `path`: two threads saving the same file
+    must not share it (a shared name raced → FileNotFoundError on replace)."""
+    import os
+    import threading
+    return path.with_name(f"{path.stem}.{os.getpid()}-{threading.get_ident()}.tmp{path.suffix}")
+
+
 def save_lossless(img, path: Path) -> None:
     """Atomic lossless save of an intermediate (fast PNG)."""
-    tmp = path.with_name(path.stem + ".tmp" + path.suffix)
+    tmp = tmp_path(path)
     img.convert("RGB").save(str(tmp), format="PNG", compress_level=1)
     tmp.replace(path)
 

@@ -3,6 +3,7 @@ import { cn } from "../../lib/utils";
 
 /** Widths the server can produce (core/images.py WIDTHS). */
 const WIDTHS = [160, 320, 640, 1024, 1600, 2400];
+const MAX_RETRIES = 2;
 
 /** Append ?w= (or &w=) to an image endpoint URL. */
 export function sized(url: string, w: number) {
@@ -29,10 +30,18 @@ interface ImgProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, "src" | "sr
 export function Img({ src, sizes = "100vw", maxWidth = 2400, aspect, className, imgClassName, alt = "", ...rest }: ImgProps) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setLoaded(false); setFailed(false); }, [src]);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => { setLoaded(false); setFailed(false); setAttempt(0); }, [src]);
 
+  // A transient error (server busy, connection reset) shouldn't leave a blank
+  // slot until a manual reload: retry twice with backoff, then give up.
+  const onError = () => {
+    if (attempt >= MAX_RETRIES) return setFailed(true);
+    setTimeout(() => setAttempt((a) => a + 1), 800 * 2 ** attempt);
+  };
+  const url = attempt ? `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}` : src;
   const widths = WIDTHS.filter((w) => w <= maxWidth);
-  const srcSet = widths.map((w) => `${sized(src, w)} ${w}w`).join(", ");
+  const srcSet = widths.map((w) => `${sized(url, w)} ${w}w`).join(", ");
 
   return (
     <div className={cn("relative overflow-hidden bg-[hsl(var(--bg-subtle))]", className)} style={aspect ? { aspectRatio: aspect } : undefined}>
@@ -46,12 +55,13 @@ export function Img({ src, sizes = "100vw", maxWidth = 2400, aspect, className, 
         <img
           {...rest}
           alt={alt}
-          src={sized(src, widths[widths.length - 1])}
+          key={attempt}
+          src={sized(url, widths[widths.length - 1])}
           srcSet={srcSet}
           sizes={sizes}
           decoding="async"
           onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
+          onError={onError}
           className={cn("relative block size-full transition-opacity duration-300", loaded ? "opacity-100" : "opacity-0", imgClassName)}
         />
       )}
