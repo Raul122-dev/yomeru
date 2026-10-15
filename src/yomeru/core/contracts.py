@@ -85,7 +85,7 @@ class AnalysisRequest:
     source_language: str = "auto"
     target_language: str | None = None
     read_only: bool = False            # separate translation: transcribe + annotate context, don't translate
-    ui_language: str = "English"       # language of descriptions (scene, summary)
+    descriptions_language: str = "English"   # scene/character descriptions (= target language)
     global_context: str = ""           # user notes for the whole series
     page_context: str = ""             # user note for this page
 

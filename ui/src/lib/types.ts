@@ -35,7 +35,6 @@ export interface Run {
   source_language: string;
   target_language: string;
   global_context: string;
-  ui_language: string;
   execution_mode: "sequential" | "manual";
   status: "pending" | "running" | "done" | "failed" | "cancelled";
   phase_status: Record<PhaseName, PhaseStatus>;

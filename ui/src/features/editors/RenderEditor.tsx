@@ -50,14 +50,8 @@ interface DialogueRow {
 }
 
 const FONT_STYLES = ["auto", "regular", "bold", "thought", "narration"];
-const TONES = [
-  "neutral",
-  "shouting",
-  "whispering",
-  "laughing",
-  "crying",
-  "thinking",
-];
+// Only these change the drawing (shouting → bold, short shouts grow).
+const TONES = ["neutral", "shouting"];
 
 // ── save overrides ─────────────────────────────────────────────────────────────
 

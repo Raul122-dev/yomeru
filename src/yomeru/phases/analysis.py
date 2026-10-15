@@ -49,7 +49,8 @@ def run(
     comic_format = options.get("comic_format", meta.get("comic_format", "auto"))
     source_language = options.get("source_language", meta.get("source_language", "auto"))
     target_language = options.get("target_language", meta.get("target_language", "Spanish"))
-    ui_language = options.get("ui_language", meta.get("ui_language", "English"))
+    # scene/character descriptions are written in the language the user reads
+    descriptions_language = target_language
     global_context = options.get("global_context", meta.get("global_context", ""))
     page_context = options.get("page_context", "")
     translation = options.get("translation") or {}
@@ -105,7 +106,7 @@ def run(
                     comic_format=comic_format,
                     source_language=source_language,
                     target_language=target_language,
-                    ui_language=ui_language,
+                    descriptions_language=descriptions_language,
                     global_context=global_context,
                     page_context=page_context,
                     read_only=separate,
@@ -308,10 +309,13 @@ def translate_run(run: Run, translation: dict, source_language: str, target_lang
         from yomeru.core.gpu import gpu_lock
         from yomeru.lib import local_models as lm
         name = translation.get("local_model") or "auto"
-        if name == "auto":
-            g = lm.gpu_memory()
-            name = lm.suggest_model(g and g["free_gb"]).tag
         server = translation.get("local_server") or lm.OLLAMA_URL
+        if name == "auto":   # the suggested tag if installed, else any installed chat model
+            g = lm.gpu_memory()
+            want = lm.suggest_model(g and g["free_gb"]).tag
+            have = [m["name"] for m in lm.ollama_status(server)["models"]
+                    if not any(k in m["name"] for k in ("embed", "bge"))]
+            name = want if want in have or not have else have[0]
 
         def ask(system: str, user: str, schema: dict) -> str:
             with gpu_lock():

@@ -27,7 +27,7 @@ def _get_system_prompt() -> str:
 def _build_language_block(
     source_language: str,
     target_language: str | None,
-    ui_language: str,
+    descriptions_language: str,
     read_only: bool = False,
 ) -> str:
     lines: list[str] = []
@@ -47,10 +47,10 @@ def _build_language_block(
     else:
         lines.append("\n**Translation: enabled** — include `text_translated` in English by default.")
 
-    if ui_language and ui_language.lower() != "english":
-        lines.append(f"\n**Descriptions language: {ui_language}**")
+    if descriptions_language and descriptions_language.lower() != "english":
+        lines.append(f"\n**Descriptions language: {descriptions_language}**")
         lines.append(f"Write scene.location, scene.mood, scene.narrative_beat, character descriptions, "
-                     f"emotional_state, last_action, and page_summary in {ui_language}.")
+                     f"emotional_state, last_action, and page_summary in {descriptions_language}.")
 
     return "\n".join(lines)
 
@@ -162,7 +162,7 @@ def _build_user_text(
     previous_context: str | None,
     source_language: str = "auto",
     target_language: str | None = None,
-    ui_language: str = "English",
+    descriptions_language: str = "English",
     global_context: str = "",
     page_context: str = "",
     image_size: tuple[int, int] | None = None,
@@ -176,7 +176,7 @@ def _build_user_text(
         parts.append(fmt_text)
 
     # 2. language instructions
-    lang_block = _build_language_block(source_language, target_language, ui_language, read_only)
+    lang_block = _build_language_block(source_language, target_language, descriptions_language, read_only)
     parts.append(lang_block)
 
     # 3. global manga context
@@ -253,7 +253,7 @@ def analyze_page(
     # language options
     source_language: str = "auto",
     target_language: str | None = None,
-    ui_language: str = "English",
+    descriptions_language: str = "English",
     global_context: str = "",
     page_context: str = "",
     # If set, load saved/refined detections instead of running detector
@@ -269,7 +269,7 @@ def analyze_page(
     return analyze(AnalysisRequest(
         image=_PIL.open(image_path).convert("RGB"), page_number=page_number, regions=regions,
         previous_context=previous_context, comic_format=comic_format, source_language=source_language,
-        target_language=target_language, ui_language=ui_language, global_context=global_context,
+        target_language=target_language, descriptions_language=descriptions_language, global_context=global_context,
         page_context=page_context,
     ), model=model, on_token=on_token)
 
@@ -315,7 +315,7 @@ def prepare(req, system: str | None = None) -> PreparedPage:
         source_language=req.source_language,
         target_language=None if getattr(req, "read_only", False) else req.target_language,
         read_only=getattr(req, "read_only", False),
-        ui_language=req.ui_language,
+        descriptions_language=req.descriptions_language,
         global_context=req.global_context,
         page_context=req.page_context,
         image_size=(model_w, model_h),

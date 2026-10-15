@@ -57,9 +57,10 @@ class Run:
             "settings": settings.model_dump(),
             "preset_id": preset_id,
             "global_context": global_context,
-            # Denormalised for listing/search in the UI
-            "model": settings.analysis_model.model,
-            "connection_name": conn.name if conn else "",
+            # Denormalised for listing/search in the UI: the model that actually reads
+            "model": (f"local · {settings.analysis.options.get('model') or 'auto'}"
+                      if settings.analysis.backend == "local" else settings.analysis_model.model),
+            "connection_name": "" if settings.analysis.backend == "local" else (conn.name if conn else ""),
             "comic_format": lang.comic_format,
             "source_language": lang.source,
             "target_language": lang.target,

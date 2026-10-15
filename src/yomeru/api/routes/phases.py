@@ -177,7 +177,9 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
     meta = run.meta()
     source_lang = page_data.get("source_language", meta.get("source_language", "auto"))
 
-    # Run Hungarian matcher
+    # Run Hungarian matcher with the run's own weights
+    from yomeru.core.settings import run_settings
+    mo = run_settings(run.meta()).matching.options
     matcher = build_matcher()
     results = matcher.match(
         image=img,
@@ -185,8 +187,8 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
         regions=regions,
         hint_bboxes=hint_bboxes,
         source_language=source_lang,
-        ocr_weight=0.4,
-        spatial_weight=0.4,
+        ocr_weight=float(mo.get("ocr_weight", 0.4)),
+        spatial_weight=float(mo.get("spatial_weight", 0.4)),
         min_score=0.0,  # Show all results, even poor matches
     )
 
@@ -462,7 +464,6 @@ def _phase_options(run: Run, phase: str) -> dict:
             "comic_format": lang.comic_format,
             "source_language": lang.source,
             "target_language": lang.target,
-            "ui_language": meta.get("ui_language", lang.target),
             "global_context": meta.get("global_context", ""),
         }
     if phase == "matching":

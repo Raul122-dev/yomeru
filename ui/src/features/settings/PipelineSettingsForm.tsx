@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { getFormats } from "../../lib/api";
 import type { PipelineSettings, SeparateTranslation } from "../../lib/types";
 import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "../../lib/languages";
-import { Select } from "../../components/ui/input";
+import { Input, Select } from "../../components/ui/input";
 import { Switch } from "../../components/ui/Switch";
 import { Slider } from "../../components/ui/Slider";
 import { ModelPicker } from "./ModelPicker";
@@ -69,7 +69,22 @@ export function PipelineSettingsForm({
               <option value="local">Local — experimental</option>
             </Select>
             {sep.local ? (
-              <LocalModelPanel server={sep.local_server} model={sep.local_model} />
+              <>
+                <div className="flex flex-wrap gap-3">
+                  <Input
+                    label="local model"
+                    hint="'auto' picks one for your GPU; or an Ollama tag (e.g. qwen3.5:9b)"
+                    value={sep.local_model}
+                    onChange={(e) => setSep({ local_model: e.target.value || "auto" })}
+                  />
+                  <Input
+                    label="server"
+                    value={sep.local_server}
+                    onChange={(e) => setSep({ local_server: e.target.value })}
+                  />
+                </div>
+                <LocalModelPanel server={sep.local_server} model={sep.local_model} />
+              </>
             ) : (
               <ModelPicker
                 label="text model"

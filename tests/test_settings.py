@@ -133,3 +133,28 @@ def test_switching_technique_through_overrides_drops_the_old_options(client):
     assert s.analysis.separate_translation.enabled   # the rest of the phase settings are kept
     s = resolve_settings(overrides={"analysis": {"options": {"think": True}}})   # same technique: merge
     assert s.analysis.options["model"] == "qwen3.5:9b" and s.analysis.options["think"] is True
+
+
+
+def test_run_metadata_names_the_model_that_actually_reads(client):
+    """A run with the local technique listed the API model from the global settings."""
+    files = [("files", ("a.png", _png(), "image/png"))]
+    r = client.post("/api/runs", data={"name": "x", "auto_start": "false",
+                                       "settings": json.dumps({"analysis": {"backend": "local", "options": {"model": "qwen3.5:9b"}}})},
+                    files=files)
+    m = client.get(f"/api/runs/{r.json()['id']}").json()
+    assert m["model"] == "local · qwen3.5:9b" and m["connection_name"] == ""
+
+
+def test_descriptions_follow_the_target_language():
+    """The separate 'UI language' setting was never written nor shown; descriptions
+    are written in the target language."""
+    from PIL import Image
+    from yomeru.core.analyzer import prepare
+    from yomeru.core.contracts import AnalysisRequest
+    import inspect
+    import yomeru.phases.analysis as pa
+    assert "descriptions_language = target_language" in inspect.getsource(pa.run)
+    p = prepare(AnalysisRequest(image=Image.new("RGB", (64, 64)), page_number=1, regions=[],
+                                target_language="French", descriptions_language="French"))
+    assert "Descriptions language: French" in p.user_text

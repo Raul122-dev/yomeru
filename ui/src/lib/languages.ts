@@ -15,13 +15,3 @@ export const SOURCE_LANGUAGES = [
 export const TARGET_LANGUAGES = SOURCE_LANGUAGES.filter(
   (l) => l.value !== "auto",
 );
-
-export const UI_LANGUAGES = [
-  { value: "English", label: "English (default)" },
-  { value: "Spanish", label: "Spanish" },
-  { value: "Portuguese", label: "Portuguese" },
-  { value: "French", label: "French" },
-  { value: "German", label: "German" },
-  { value: "Japanese", label: "Japanese" },
-  { value: "Korean", label: "Korean" },
-];
