@@ -331,6 +331,43 @@ def _ensure_rendered(run: Run, page_num: int, force: bool) -> None:
             raise HTTPException(404, str(e))
 
 
+class RerenderRequest(BaseModel):
+    dialogues: list[int] | None = None   # None = every dialogue the image-edit model drew or tried
+
+
+@router.post("/{run_id}/rendering/rerender/{page_num}")
+def rerender_with_image_edit(run_id: str, page_num: int, body: RerenderRequest | None = None):
+    """Ask the image-edit model again (new seed, so the cache is bypassed) for
+    some dialogues of a page — listed ones are also marked to be drawn by it —
+    then re-render that page."""
+    run = _get_run(run_id)
+    if run.get_phase_status("rendering") == "pending":
+        raise HTTPException(400, detail="Phase 'rendering' hasn't been run yet")
+    req = body or RerenderRequest()
+    overrides = artifacts.load_render_overrides(run, page_num)
+    if req.dialogues is None:
+        log = artifacts.load_render_log(run, page_num) or {}
+        targets = [e["dialogue_index"] for e in (log.get("s5_rendering") or {}).get("renders", [])
+                   if e.get("engine") == "ai" or e.get("fallback")]
+    else:
+        targets = req.dialogues
+    if not targets:
+        raise HTTPException(400, detail="No dialogue of this page was drawn by an image-edit model")
+    for i in targets:
+        o = overrides.setdefault(i, {"dialogue_index": i})
+        o["seed"] = int(o.get("seed") or 0) + 1
+        if req.dialogues is not None:
+            o["engine"] = "ai"
+    artifacts.debug_dir(run, create=True)
+    artifacts.page_artifact(run, page_num, artifacts.RENDER_OVERRIDES).write_text(
+        json.dumps(list(overrides.values()), indent=2))
+    options = _build_phase_options(run, "rendering", {})
+    _launch(run, "rendering",
+            lambda emit: run_phase(run, "rendering", options=options, on_progress=emit, page_scope=[page_num]),
+            first_phase="rendering")
+    return {"status": "started", "phase": "rendering", "run_id": run_id, "page": page_num, "dialogues": targets}
+
+
 @router.get("/{run_id}/rendering/scanline-preview/{page_num}")
 def get_scanline_preview(run_id: str, page_num: int, request: Request, force: int = 0, w: int | None = None):
     """Debug render (green bubble contours). Regenerated when inputs change."""

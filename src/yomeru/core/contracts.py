@@ -7,6 +7,7 @@ path or meta.json. Every phase now has its contract here (vault "Yomeru - Flujo 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import numpy as np
 from PIL import Image
@@ -126,6 +127,8 @@ class RenderRequest:
     containers: list[tuple[int, int, int, int]]  # bubble / text_bubble boxes (file order)
     use_translation: bool              # False = draw the original text (layout check)
     lang_code: str                     # hyphenation language of the DRAWN text (pyphen code)
+    drawn_language: str = ""           # name of the drawn language ("Spanish"), for image-edit prompts
+    edit_cache: "EditCache | None" = None  # stored image edits of this page (image-edit backends)
 
 
 @dataclass
@@ -134,3 +137,49 @@ class RenderResult:
     events: list[dict]                 # one per match: status ok/skip (+reason), text, font_size, lines, bbox → render log
     layouts: int = 0
     preview: Image.Image | None = None  # optional debug view (e.g. contours drawn)
+
+
+# ── Image editing (rendering with an image-edit model) ────────────────────────
+
+@dataclass
+class EditRequest:
+    """One crop of the ORIGINAL page (source lettering still there) to re-letter."""
+    image: Image.Image
+    prompt: str
+    size: tuple[int, int]              # size of `image`; providers return any size (aligned afterwards)
+    seed: int = 0
+
+
+@dataclass
+class EditResult:
+    image: Image.Image
+    model: str
+    cost_usd: float | None = None
+    seconds: float = 0.0
+
+
+class EditError(RuntimeError):
+    """A provider could not edit this crop: the next provider in the chain is tried."""
+
+
+class EditRefused(EditError):
+    """Blocked by the provider's content moderation."""
+
+
+class EditRateLimited(EditError):
+    """Still rate limited after the provider's own retries."""
+
+
+class EditUnavailable(EditError):
+    """Server down, bad key, unknown model or malformed answer."""
+
+
+class EditCache(Protocol):
+    """Image edits already paid for, so re-rendering a page never calls a model
+    again for an unchanged dialogue. Created per page by the render facade."""
+
+    def get(self, key: str) -> tuple[Image.Image, dict] | None: ...
+
+    def put(self, key: str, image: Image.Image, meta: dict) -> None: ...
+
+    def spent_usd(self) -> float: ...           # whole run, every edit ever paid

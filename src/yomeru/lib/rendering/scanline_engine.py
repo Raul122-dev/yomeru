@@ -242,6 +242,8 @@ def build_request(run: Run, page_num: int, use_translation: bool | None = None):
         ],
         use_translation=use_translation,
         lang_code=profile(drawn_lang).hyphenation,
+        drawn_language=drawn_lang if drawn_lang != "auto" else "",
+        edit_cache=artifacts.PageEditCache(run, page_num),
     )
 
 

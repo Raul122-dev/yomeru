@@ -17,6 +17,7 @@ Layout (unchanged — old runs keep working):
     <run>/output/page_analyses[_refined].json, edits.json, context.json
     <run>/output/typeset/<page name>                      final page
     <run>/output/typeset/debug/pNN_<artifact>             per-page artifacts
+    <run>/output/typeset/debug/edits/pNN_<key>.png|.json   image-edit model answers (paid, kept)
 """
 from __future__ import annotations
 
@@ -102,6 +103,50 @@ def save_lossless(img, path: Path) -> None:
     tmp = tmp_path(path)
     img.convert("RGB").save(str(tmp), format="PNG", compress_level=1)
     tmp.replace(path)
+
+
+class PageEditCache:
+    """Image edits of one page by content key (see contracts.EditCache): the
+    aligned crop (RGBA: alpha marks the pixels the model answered) + what it cost. Never cleared by re-rendering, so a dialogue
+    whose crop, prompt, model and seed did not change is never paid twice."""
+
+    def __init__(self, run: "Run", page: int):
+        self.dir = debug_dir(run) / "edits"
+        self.page = page
+
+    def _path(self, key: str, ext: str) -> Path:
+        return self.dir / f"p{self.page:02d}_{key}{ext}"
+
+    def get(self, key: str):
+        from PIL import Image
+        png, meta = self._path(key, ".png"), self._path(key, ".json")
+        if not (png.exists() and meta.exists()):
+            return None
+        try:
+            with Image.open(png) as im:
+                return im.convert("RGBA" if "A" in im.getbands() else "RGB"), json.loads(meta.read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def put(self, key: str, image, meta: dict) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        png = self._path(key, ".png")
+        tmp = tmp_path(png)
+        image.save(str(tmp), format="PNG", compress_level=1)   # alpha = where the answer has pixels
+        tmp.replace(png)
+        path = self._path(key, ".json")
+        tmp = tmp_path(path)
+        tmp.write_text(json.dumps(meta, ensure_ascii=False))
+        tmp.replace(path)
+
+    def spent_usd(self) -> float:
+        total = 0.0
+        for f in self.dir.glob("p*_*.json") if self.dir.exists() else []:
+            try:
+                total += float(json.loads(f.read_text()).get("cost_usd") or 0)
+            except (OSError, ValueError, json.JSONDecodeError):
+                pass
+        return round(total, 4)
 
 
 # ── Effective inputs (user edits resolved) ────────────────────────────────────

@@ -100,11 +100,11 @@ the bubble contour.
 
 ## Acceptance
 - [x] Owner-approved design before code (2026-10-15)
-- [ ] scanline goldens identical; `image_edit` optional, off by default
-- [ ] With no provider, `image_edit` output == scanline output (test)
-- [ ] Fake provider tests: refused → next provider; all fail → scanline; cost cap → scanline;
+- [x] scanline goldens identical; `image_edit` optional, off by default
+- [x] With no provider, `image_edit` output == scanline output (test)
+- [x] Fake provider tests: refused → next provider; all fail → scanline; cost cap → scanline;
       cache hit makes no call; re-render changes seed and calls again
-- [ ] `uv run pytest -q` + ruff clean
+- [x] `uv run pytest -q` + ruff clean
 
 ## Questions (worker → orchestrator)
 
@@ -112,3 +112,18 @@ the bubble contour.
 - 2026-10-14: research + experiments outside the repo (no code changes).
 - 2026-10-15 (yoru): plugins can now declare a human `title=` in @register (shown in Settings). Please add `title="Scanline (programmatic)"` to the scanline registration in plugins/rendering.py (your file) and a title for the new backend.
 - 2026-10-15: API round (OpenRouter) done; design approved by the owner; task goal/scope rewritten from the results (doc only, no code).
+- 2026-10-15: core implemented (contracts, `edit_prompt`, `image_edit`, provider registry +
+  `openrouter`, `PageEditCache`, override `engine`/`seed`, re-render endpoint, scanline `title`).
+  Added after a real page run: answers that give the lettering back unchanged are rejected;
+  answers in another aspect ratio are registered by keypoints (ORB + RANSAC affine, then ECC);
+  drift is measured only where the answer has pixels, the source lettering must be covered and
+  the uncovered part is not pasted (alpha in the cached PNG).
+  Verified: 160 tests pass (13 new), ruff clean, `scripts/golden.py check` all 4 identical (run
+  with YOMERU_DATA pointing at a scratch dir that links the goldens). Real run on one page of a
+  test chapter (copy outside `data/`), scope `hard`, chain MAI-2.6-Flash → Muse: 5 dialogues by
+  the model, one moderation block fell to Muse, page reviewed visually; ~0.15 USD in total.
+  Not verified: UI (none in scope), ComfyUI (next task), cancel mid-page.
+  Proposed context changes: architecture.md rendering row → `scanline`, `image_edit`
+  (+ `lib/rendering/edit_providers/`); `lib/rendering/SPEC.md` backends table is outdated.
+  UI note for the Fase 4 task: the render editor must keep `engine`/`seed` when it re-saves
+  the overrides list.

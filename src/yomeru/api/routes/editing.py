@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -203,6 +204,8 @@ class RenderOverrideItem(BaseModel):
     font_size_override: int | None = None
     tone: str | None = None
     skip: bool | None = None
+    engine: Literal["auto", "ai", "scanline"] | None = None   # image-edit backend: who draws it
+    seed: int | None = None                                    # image-edit backend: bumped by re-render
 
 
 class RenderOverridesBody(BaseModel):
