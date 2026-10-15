@@ -332,3 +332,29 @@ export const uploadFont = (file: File) => {
     return r.json() as Promise<FontInfo>;
   });
 };
+
+
+// ── translation review & run metadata ───────────────────────────────────────
+export interface GlossaryEntry { source: string; target: string }
+export interface TranslationState {
+  glossary: GlossaryEntry[];
+  review: Record<string, string>;      // "p3.d5" → why it needs a look
+  model?: string | null;
+  retranslated_lines: number;
+}
+export const getTranslation = (runId: string) => req<TranslationState>(`/phases/${runId}/translation`);
+export const retranslate = (runId: string, body: { scope: "all" | "affected"; glossary?: GlossaryEntry[] }) =>
+  req<{ status: string; affected?: number | null }>(`/phases/${runId}/translate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const patchRun = (runId: string, body: {
+  name?: string; series?: string; chapter?: string; global_context?: string;
+  character_names?: Record<string, string>;
+}) =>
+  req<Run & { stale: string[] }>(`/runs/${runId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });

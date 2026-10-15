@@ -11,6 +11,7 @@ Routes:
 """
 from __future__ import annotations
 
+import json
 import threading
 
 from yomeru.core.labels import is_text
@@ -18,6 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 
+from yomeru.core import artifacts
 from yomeru.core.images import serve_image
 from pydantic import BaseModel
 
@@ -422,28 +424,99 @@ def _validate_phase(phase: str) -> None:
         raise HTTPException(400, detail=f"Invalid phase: '{phase}'. Must be one of {PHASE_ORDER}")
 
 
-@router.post("/{run_id}/translate")
-def retranslate(run_id: str):
-    """Re-run only the translation step of Read & translate (separate
-    translation on): another language or model, without reading again."""
+def _translation_settings(run: Run) -> dict:
+    """The model that translates for this run: the separate translator when
+    the switch is on, else the reading model used as a text model."""
     from yomeru.core.settings import run_settings
+    st = run_settings(run.meta())
+    sep = st.analysis.separate_translation
+    if sep.enabled:
+        if not (sep.local or st.translation_model.is_set()):
+            raise HTTPException(400, "no translation model configured")
+        return {**sep.model_dump(), "model": st.translation_model.model_dump()}
+    if st.analysis.backend == "local":
+        o = st.analysis.options
+        return {"local": True, "local_model": o.get("model") or "auto",
+                "local_server": o.get("server") or "http://127.0.0.1:11434"}
+    return {"local": False, "model": st.analysis_model.model_dump()}
+
+
+def _translation_state(run: Run) -> dict:
+    """Glossary + review flags + mode, whatever produced the translation."""
+    tr = artifacts.load_translations(run)
+    ctx = json.loads(run.context_file().read_text()) if run.context_file().exists() else {}
+    if tr.get("style", {}).get("glossary") is not None:
+        glossary = tr["style"]["glossary"]
+    else:   # all-in-one: the glossary the pages carried forward
+        glossary = [{"source": k, "target": v} for k, v in (ctx.get("glossary") or {}).items()]
+    return {"glossary": glossary, "review": tr.get("review") or {}, "model": tr.get("model"),
+            "retranslated_lines": len(tr.get("lines") or {}), "style": tr.get("style") or {}}
+
+
+@router.get("/{run_id}/translation")
+def get_translation(run_id: str):
+    run = _get_run(run_id)
+    if not run.active_analyses_file().exists():
+        raise HTTPException(404, "read the pages first")
+    st = _translation_state(run)
+    st.pop("style", None)
+    return st
+
+
+class TranslateRequest(BaseModel):
+    scope: str = "all"                         # all | affected
+    glossary: list[dict] | None = None         # new glossary (scope=affected)
+
+
+@router.post("/{run_id}/translate")
+def retranslate(run_id: str, body: TranslateRequest | None = None):
+    """Re-translate without reading again. scope=all: the whole chapter
+    (new style guide). scope=affected + glossary: save the glossary and
+    re-translate only the lines it touches, with it as context."""
+    from yomeru.lib.translation import affected_keys, collect_lines, glossary_of
+    from yomeru.phases.analysis import translate_run
     run = _get_run(run_id)
     if not run.active_analyses_file().exists():
         raise HTTPException(400, "read the pages first")
-    st = run_settings(run.meta())
-    sep = st.analysis.separate_translation
-    if not sep.enabled:
-        raise HTTPException(400, "separate translation is off for this run")
-    if not (sep.local or st.translation_model.is_set()):
-        raise HTTPException(400, "no translation model configured")
+    req = body or TranslateRequest()
+    translation = _translation_settings(run)
     opts = _phase_options(run, "analysis")
-    from yomeru.phases.analysis import translate_run
+    keys = style = None
+    if req.scope == "affected":
+        if req.glossary is None:
+            raise HTTPException(400, "glossary required")
+        glossary = [{"source": str(g.get("source", "")).strip(), "target": str(g.get("target", "")).strip()}
+                    for g in req.glossary if str(g.get("source", "")).strip() and str(g.get("target", "")).strip()]
+        state = _translation_state(run)
+        old = {g["source"]: g["target"] for g in state["glossary"]}
+        style = {**state["style"], "glossary": glossary}
+        analyses = artifacts.load_analyses(run)
+        current = {f"p{a['page_number']}.d{i}": d.get("text_translated") or ""
+                   for a in analyses for i, d in enumerate(a.get("dialogues", []))}
+        keys = affected_keys(collect_lines(analyses), current, old, glossary_of(style))
+        _save_glossary(run, style)
+        if not keys:
+            return {"status": "saved", "affected": 0}
+    elif req.scope != "all":
+        raise HTTPException(400, "scope must be all or affected")
 
     def job(emit):
-        translate_run(run, opts["translation"], opts["source_language"], opts["target_language"],
-                      opts["global_context"], emit)
+        translate_run(run, translation, opts["source_language"], opts["target_language"],
+                      opts["global_context"], emit, keys=keys, style=style)
+        run.mark_downstream_stale("analysis")
     _launch(run, "analysis", job, first_phase="analysis")
-    return {"status": "started", "phase": "analysis", "step": "translate", "run_id": run_id}
+    return {"status": "started", "phase": "analysis", "step": "translate", "run_id": run_id,
+            "affected": len(keys) if keys is not None else None}
+
+
+def _save_glossary(run: Run, style: dict) -> None:
+    tr = artifacts.load_translations(run)
+    tr["style"] = style
+    tr.setdefault("lines", {})
+    f = run.output_dir() / artifacts.TRANSLATIONS
+    tmp = artifacts.tmp_path(f)
+    tmp.write_text(json.dumps(tr, indent=2, ensure_ascii=False))
+    tmp.replace(f)
 
 
 def _phase_options(run: Run, phase: str) -> dict:

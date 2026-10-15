@@ -297,14 +297,8 @@ def _save_context(ctx, output_dir: Path) -> None:
     )
 
 
-def translate_run(run: Run, translation: dict, source_language: str, target_language: str,
-                  global_context: str, on_progress: ProgressCallback = null_progress) -> dict:
-    """Second step of Read & translate (separate translation): the whole
-    chapter, from the reading's text + context, into output/translations.json.
-    Can be re-run alone (another language or model) without reading again."""
-    from yomeru.lib.translation import ChapterInput, translate_chapter
-
-    pages = [a for a in artifacts.load_analyses(run)]
+def translator_for(translation: dict):
+    """(ask, label, release) for the translation model of a run."""
     if translation.get("local"):
         from yomeru.core.gpu import gpu_lock
         from yomeru.lib import local_models as lm
@@ -320,26 +314,50 @@ def translate_run(run: Run, translation: dict, source_language: str, target_lang
         def ask(system: str, user: str, schema: dict) -> str:
             with gpu_lock():
                 return lm.chat_text(name, system, user, schema=schema, num_ctx=16384, base_url=server)
-        label = f"local/{name}"
-    else:
-        from yomeru.core.llm import complete_text, resolve_model
-        from yomeru.core.settings import ModelRef
-        rm = resolve_model(ModelRef.model_validate(translation.get("model") or {}))
+        return ask, f"local/{name}", lambda: lm.unload(name, server)
+    from yomeru.core.llm import complete_text, resolve_model
+    from yomeru.core.settings import ModelRef
+    rm = resolve_model(ModelRef.model_validate(translation.get("model") or {}))
 
-        def ask(system: str, user: str, schema: dict) -> str:
-            return complete_text(rm, system, user, json_schema=schema)
-        label = rm.label
+    def ask(system: str, user: str, schema: dict) -> str:
+        return complete_text(rm, system, user, json_schema=schema)
+    return ask, rm.label, lambda: None
 
-    print(f"[translate] {label}  {source_language} → {target_language}", file=sys.stderr)
+
+def translate_run(run: Run, translation: dict, source_language: str, target_language: str,
+                  global_context: str, on_progress: ProgressCallback = null_progress,
+                  keys: list[str] | None = None, style: dict | None = None) -> dict:
+    """Translation step of Read & translate into output/translations.json.
+    Whole chapter (style guide + all lines), or only `keys` with a given
+    style (a glossary edit re-translates just the lines it affects).
+    Can be re-run alone without reading again."""
+    from yomeru.lib.translation import ChapterInput, retranslate_lines, translate_chapter
+
+    pages = [a for a in artifacts.load_analyses(run)]
+    ask, label, release = translator_for(translation)
+    print(f"[translate] {label}  {source_language} → {target_language}"
+          f"{f'  ({len(keys)} lines)' if keys is not None else ''}", file=sys.stderr)
     on_progress({"type": "phase_progress", "phase": "analysis", "step": "translate", "label": label})
-    res = translate_chapter(
-        ChapterInput(source_language=source_language, target_language=target_language,
-                     pages=pages, global_context=global_context),
-        ask, on_progress=lambda m: on_progress({"type": "step", "phase": "analysis", "step": "translate", "message": m}))
-    if translation.get("local"):
-        lm.unload(name, server)
+    ch = ChapterInput(source_language=source_language, target_language=target_language,
+                      pages=pages, global_context=global_context)
+    step = lambda m: on_progress({"type": "step", "phase": "analysis", "step": "translate", "message": m})  # noqa: E731
+    prev = artifacts.load_translations(run)
+    try:
+        if keys is None:
+            res = translate_chapter(ch, ask, on_progress=step)
+            lines, review = res.lines, res.review
+        else:
+            current = {f"p{a['page_number']}.d{i}": d.get("text_translated") or ""
+                       for a in pages for i, d in enumerate(a.get("dialogues", []))}
+            res = retranslate_lines(ch, ask, style or {}, keys, current, on_progress=step)
+            lines = {**(prev.get("lines") or {}), **res.lines}
+            review = {k: v for k, v in (prev.get("review") or {}).items() if k not in keys} | res.review
+    finally:
+        release()
     out = {"model": label, "target_language": target_language, "style": res.style,
-           "review": res.review, "lines": res.lines}
-    (run.output_dir() / artifacts.TRANSLATIONS).write_text(json.dumps(out, indent=2, ensure_ascii=False))
+           "review": review, "lines": lines}
+    tmp = artifacts.tmp_path(run.output_dir() / artifacts.TRANSLATIONS)
+    tmp.write_text(json.dumps(out, indent=2, ensure_ascii=False))
+    tmp.replace(run.output_dir() / artifacts.TRANSLATIONS)
     print(f"[translate] {len(res.lines)} lines, {len(res.review)} to review", file=sys.stderr)
     return out

@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Annotated
 
+from pydantic import BaseModel
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from yomeru.core.images import serve_image
@@ -72,6 +73,36 @@ def get_context(run_id: str):
     return json.loads(run.context_file().read_text())
 
 
+# ── edit run ──────────────────────────────────────────────────────────────────
+
+class RunPatch(BaseModel):
+    name: str | None = None
+    series: str | None = None
+    chapter: str | None = None
+    global_context: str | None = None
+    character_names: dict[str, str] | None = None   # reading id → display name
+
+
+@router.patch("/{run_id}")
+def patch_run(run_id: str, body: RunPatch):
+    """Edit run metadata. A different chapter context changes what the model
+    reads with, so Read & translate (and everything after it) becomes outdated."""
+    run = Run.load(run_id)
+    if not run: raise HTTPException(404, "run not found")
+    meta = run.meta()
+    changes = {k: v for k, v in body.model_dump(exclude_none=True).items()}
+    if "character_names" in changes:
+        changes["character_names"] = {k: v.strip() for k, v in changes["character_names"].items() if v.strip()}
+    run.update(**changes)
+    stale = []
+    if "global_context" in changes and changes["global_context"] != meta.get("global_context", ""):
+        if meta.get("phase_status", {}).get("analysis") in ("done", "partial"):
+            run.set_phase_status("analysis", "stale")
+            stale = ["analysis"]
+        stale += run.mark_downstream_stale("analysis")
+    return {**run.meta(), "stale": stale}
+
+
 # ── create run ────────────────────────────────────────────────────────────────
 
 @router.post("", status_code=201)
@@ -83,6 +114,9 @@ async def create_run(
     settings: Annotated[str, Form()] = "{}",
     # auto_start=True: run all phases; False: user triggers each phase
     auto_start: Annotated[bool, Form()] = True,
+    # optional library metadata (ComicInfo.xml in the .cbz)
+    series: Annotated[str, Form()] = "",
+    chapter: Annotated[str, Form()] = "",
     files: list[UploadFile] = File(...),
 ):
     if not files: raise HTTPException(400, "no files uploaded")
@@ -122,7 +156,7 @@ async def create_run(
         run.delete()
         raise HTTPException(400, "no supported images (jpg, jpeg, png, webp)")
 
-    run.update(total_pages=saved)
+    run.update(total_pages=saved, series=series.strip(), chapter=chapter.strip())
 
     if auto_start:
         from yomeru.api.routes.phases import _build_all_options

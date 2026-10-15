@@ -25,6 +25,7 @@ from dataclasses import dataclass, fields, replace
 class LanguageProfile:
     name: str = "auto"
     script: str = "latin"
+    iso: str = ""                               # ISO 639-1 (export metadata)
     # ── reading the original ──
     ocr_engine: str = "easyocr"                 # easyocr | manga_ocr
     ocr_codes: tuple[str, ...] = ("en", "es", "pt")
@@ -53,24 +54,24 @@ SCRIPTS: dict[str, dict] = {
 LANGUAGES: dict[str, tuple[str, dict]] = {
     # name (as in settings): (script, overrides)
     "auto": ("latin", {}),
-    "English": ("latin", dict(ocr_codes=("en",), hyphenation="en_US")),
-    "Spanish": ("latin", dict(ocr_codes=("es", "en"), hyphenation="es")),
-    "Portuguese": ("latin", dict(ocr_codes=("pt", "en"), hyphenation="pt_BR")),
-    "French": ("latin", dict(ocr_codes=("fr", "en"), hyphenation="fr")),
-    "German": ("latin", dict(ocr_codes=("de", "en"), hyphenation="de")),
-    "Italian": ("latin", dict(ocr_codes=("it", "en"), hyphenation="it")),
-    "Dutch": ("latin", dict(hyphenation="nl")),
-    "Polish": ("latin", dict(hyphenation="pl")),
-    "Turkish": ("latin", dict(hyphenation="tr")),
-    "Indonesian": ("latin", dict(hyphenation="id")),
-    "Russian": ("cyrillic", dict(hyphenation="ru")),
-    "Japanese": ("cjk", dict(ocr_engine="manga_ocr", ocr_codes=("ja",), reads_right_to_left=True)),
-    "Chinese (Simplified)": ("cjk", dict(ocr_codes=("ch_sim",))),
-    "Chinese (Traditional)": ("cjk", dict(ocr_codes=("ch_tra",), reads_right_to_left=True)),
-    "Korean": ("hangul", dict(ocr_codes=("ko",))),
-    "Thai": ("other", {}),
-    "Vietnamese": ("other", {}),
-    "Arabic": ("other", {}),
+    "English": ("latin", dict(iso="en", ocr_codes=("en",), hyphenation="en_US")),
+    "Spanish": ("latin", dict(iso="es", ocr_codes=("es", "en"), hyphenation="es")),
+    "Portuguese": ("latin", dict(iso="pt", ocr_codes=("pt", "en"), hyphenation="pt_BR")),
+    "French": ("latin", dict(iso="fr", ocr_codes=("fr", "en"), hyphenation="fr")),
+    "German": ("latin", dict(iso="de", ocr_codes=("de", "en"), hyphenation="de")),
+    "Italian": ("latin", dict(iso="it", ocr_codes=("it", "en"), hyphenation="it")),
+    "Dutch": ("latin", dict(iso="nl", hyphenation="nl")),
+    "Polish": ("latin", dict(iso="pl", hyphenation="pl")),
+    "Turkish": ("latin", dict(iso="tr", hyphenation="tr")),
+    "Indonesian": ("latin", dict(iso="id", hyphenation="id")),
+    "Russian": ("cyrillic", dict(iso="ru", hyphenation="ru")),
+    "Japanese": ("cjk", dict(iso="ja", ocr_engine="manga_ocr", ocr_codes=("ja",), reads_right_to_left=True)),
+    "Chinese (Simplified)": ("cjk", dict(iso="zh", ocr_codes=("ch_sim",))),
+    "Chinese (Traditional)": ("cjk", dict(iso="zh", ocr_codes=("ch_tra",), reads_right_to_left=True)),
+    "Korean": ("hangul", dict(iso="ko", ocr_codes=("ko",))),
+    "Thai": ("other", dict(iso="th")),
+    "Vietnamese": ("other", dict(iso="vi")),
+    "Arabic": ("other", dict(iso="ar")),
 }
 
 

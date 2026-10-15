@@ -9,6 +9,8 @@ import { getAnalyses, getContext, reanalyzeWithCorrections } from "../../lib/api
 import { parsePartialJson, type PartialPageData } from "../../lib/partialJson";
 import { usePhaseView } from "../../hooks/usePhaseView";
 import { EmptyState, Panel, PhaseHeader } from "./PhaseShell";
+import { TranslationReview } from "./TranslationReview";
+import { patchRun } from "../../lib/api";
 
 export interface AnalysisPhaseProps {
   runId: string;
@@ -36,7 +38,30 @@ function usePartialData(tokens: Record<number, string>) {
   return parsed;
 }
 
-function ContextSummary({ context }: { context: Record<string, unknown> }) {
+function CharacterName({ runId, id, names }: { runId: string; id: string; names: Record<string, string> }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(names[id] ?? "");
+  const shown = names[id] || id.replace(/_/g, " ");
+  const save = async () => {
+    setEditing(false);
+    if (value.trim() === (names[id] ?? "")) return;
+    await patchRun(runId, { character_names: { ...names, [id]: value.trim() } });
+    qc.invalidateQueries({ queryKey: ["run", runId] });
+  };
+  return editing ? (
+    <input autoFocus className="w-32 rounded border border-[hsl(var(--border))] bg-transparent px-1 text-xs"
+           value={value} placeholder={id} onChange={(e) => setValue(e.target.value)}
+           onBlur={() => void save()} onKeyDown={(e) => e.key === "Enter" && void save()} />
+  ) : (
+    <button className="text-left text-xs font-medium text-[hsl(var(--text))] hover:underline" title="Rename"
+            onClick={() => setEditing(true)}>{shown}</button>
+  );
+}
+
+function ContextSummary({ runId, context, names }: {
+  runId: string; context: Record<string, unknown>; names: Record<string, string>;
+}) {
   const characters = context.characters as
     | Record<
         string,
@@ -46,9 +71,8 @@ function ContextSummary({ context }: { context: Record<string, unknown> }) {
   const scene = context.scene as
     | { location: string; mood: string; narrative_beat: string }
     | undefined;
-  const summaries = (
-    context.page_summaries as { page: number; summary: string }[] | undefined
-  )?.slice(-5);
+  const summaries = [...((context.page_summaries as { page: number; summary: string }[] | undefined) ?? [])]
+    .sort((a, b) => a.page - b.page);
   const totalPages = (context.total_pages_processed as number) ?? 0;
 
   if (!characters && !scene) return null;
@@ -69,11 +93,10 @@ function ContextSummary({ context }: { context: Record<string, unknown> }) {
           <div className="space-y-1.5">
             {characters &&
               Object.entries(characters)
-                .slice(0, 8)
                 .map(([id, character]) => (
                   <div key={id} className="rounded bg-[hsl(var(--bg-subtle))] px-2.5 py-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-[hsl(var(--text))]">{id}</span>
+                      <CharacterName runId={runId} id={id} names={names} />
                       <span className="text-xs text-[hsl(var(--accent2))]">
                         {character.emotional_state}
                       </span>
@@ -116,8 +139,8 @@ function ContextSummary({ context }: { context: Record<string, unknown> }) {
           <h4 className="text-xs font-medium uppercase tracking-wider text-[hsl(var(--text-muted))]">
             Story Progress
           </h4>
-          <div className="space-y-1.5">
-            {summaries?.map((summary) => (
+          <div className="max-h-64 space-y-1.5 overflow-auto">
+            {summaries.map((summary) => (
               <div key={summary.page} className="flex gap-2 text-xs">
                 <span className="shrink-0 font-mono text-xs text-[hsl(var(--accent2))]">
                   p{String(summary.page).padStart(2, "0")}
@@ -127,7 +150,7 @@ function ContextSummary({ context }: { context: Record<string, unknown> }) {
                 </p>
               </div>
             ))}
-            {(!summaries || summaries.length === 0) && (
+            {summaries.length === 0 && (
               <p className="text-xs text-[hsl(var(--text-muted))]">No summaries yet</p>
             )}
           </div>
@@ -139,7 +162,7 @@ function ContextSummary({ context }: { context: Record<string, unknown> }) {
 
 export function AnalysisPhase({ runId, pages }: AnalysisPhaseProps) {
   const qc = useQueryClient();
-  const v = usePhaseView(runId, "analysis", pages, { invalidate: ["analyses", "context"] });
+  const v = usePhaseView(runId, "analysis", pages, { invalidate: ["analyses", "context", "translation"] });
   const [selected, setSelected] = useState<{ page: number; filename: string } | null>(null);
 
   const events = useMemo(
@@ -251,7 +274,17 @@ export function AnalysisPhase({ runId, pages }: AnalysisPhaseProps) {
         </>
       )}
 
-      {context && <ContextSummary context={context} />}
+      {v.hasOutput && (
+        <TranslationReview
+          runId={runId}
+          disabled={v.isRunning}
+          onOpenPage={(page) => {
+            const p = pages.find((x) => x.page === page);
+            if (p) setSelected({ page: p.page, filename: p.filename });
+          }}
+        />
+      )}
+      {context && <ContextSummary runId={runId} context={context} names={v.run?.character_names ?? {}} />}
     </div>
   );
 }

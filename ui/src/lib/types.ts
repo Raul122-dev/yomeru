@@ -45,6 +45,9 @@ export interface Run {
   created_at: string;
   finished_at: string | null;
   error: string | null;
+  series?: string;
+  chapter?: string;
+  character_names?: Record<string, string>;
   detector_backend?: string;
   detector_threshold?: number;
   detected_pages?: number;

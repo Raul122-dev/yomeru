@@ -259,3 +259,52 @@ def translate_chapter(ch: ChapterInput, ask: Ask, *, block: int = BLOCK,
     if missing:
         print(f"  [translate] WARNING: no translation for {missing}", file=sys.stderr)
     return ChapterTranslation(lines=out, style=style, review=review)
+
+
+def glossary_of(style: dict) -> dict[str, str]:
+    return {g["source"]: g["target"] for g in style.get("glossary") or []
+            if isinstance(g, dict) and g.get("source") and g.get("target")}
+
+
+def affected_keys(lines: list[Line], current: dict[str, str], old: dict[str, str], new: dict[str, str]) -> list[str]:
+    """Lines a glossary edit touches: the source mentions an added/changed
+    term, or the translation still uses the old wording of a changed/removed one."""
+    changed = {k for k in set(old) | set(new) if old.get(k) != new.get(k)}
+    out = []
+    for ln in lines:
+        src = ln.text.casefold()
+        tr = (current.get(ln.key) or "").casefold()
+        if any(k.casefold() in src or (old.get(k) and old[k].casefold() in tr) for k in changed):
+            out.append(ln.key)
+    return out
+
+
+def retranslate_lines(ch: ChapterInput, ask: Ask, style: dict, keys: list[str],
+                      current: dict[str, str], *, block: int = BLOCK,
+                      on_progress: Callable[[str], None] | None = None) -> ChapterTranslation:
+    """Translate only `keys` with an existing style guide (no pass 1); the
+    other lines keep their translation and give continuity."""
+    lines = collect_lines(ch.pages)
+    want = [ln for ln in lines if ln.key in set(keys)]
+    out, review = {}, {}
+    tgt = ch.target_language
+    for start in range(0, len(want), block):
+        chunk = want[start:start + block]
+        if on_progress:
+            on_progress(f"lines {start + 1}-{start + len(chunk)} of {len(want)}")
+        first = lines.index(chunk[0])
+        prev = [(ln, current[ln.key]) for ln in lines[max(0, first - CONTINUITY):first] if ln.key in current]
+        todo = chunk
+        for _ in range(2):
+            ks = [ln.key for ln in todo]
+            data = _loads(ask(LINES_SYSTEM.format(target=tgt), _block_user(ch, style, todo, prev), _lines_schema(ks)))
+            got = {t["key"]: t["text"] for t in data.get("translations", [])
+                   if isinstance(t, dict) and t.get("key") in ks and str(t.get("text", "")).strip()}
+            for r in data.get("review", []) or []:
+                if isinstance(r, dict) and r.get("key") in ks:
+                    review[r["key"]] = r.get("reason", "")
+            out.update(got)
+            todo = [ln for ln in todo if ln.key not in got]
+            if not todo:
+                break
+    return ChapterTranslation(lines=out, style=style, review=review)

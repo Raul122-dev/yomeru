@@ -73,6 +73,8 @@ def export_run(run_id: str, format: str = "cbz"):
         for i, p in enumerate(pages, 1):
             stem = re.sub(r"^\d{3}_", "", p.stem)
             zf.write(p, f"{i:03d}_{stem}{p.suffix.lower()}")
+        if format == "cbz":   # library metadata read by comic readers/servers
+            zf.writestr("ComicInfo.xml", comic_info(run, len(pages)))
     buf.seek(0)
     name = re.sub(r"[^\w.-]+", "_", run.meta().get("name") or run_id).strip("_") or run_id
     return StreamingResponse(
@@ -144,3 +146,46 @@ def get_typeset_page(run_id: str, filename: str, request: Request, w: int | None
     if not path.is_file():
         raise HTTPException(404, "typeset image not found")
     return serve_image(request, path, w)
+
+
+def comic_info(run, page_count: int) -> str:
+    """ComicInfo.xml (Anansi Project schema 2.0) for the exported .cbz:
+    series/number, language, reading direction, page list, summary and
+    characters from the reading, credits."""
+    from xml.sax.saxutils import escape
+    from yomeru.core.languages import profile
+    from yomeru.core.settings import run_settings
+    meta = run.meta()
+    st = run_settings(meta)
+    names = meta.get("character_names") or {}
+    analyses = artifacts.load_analyses(run)
+    summary = " ".join(a.get("page_summary", "") for a in analyses if a.get("page_summary")).strip()
+    chars: list[str] = []
+    for a in analyses:
+        for c in a.get("characters_seen", []):
+            n = names.get(c.get("id", "")) or c.get("id", "")
+            if n and n not in chars and n != "unknown":
+                chars.append(n)
+    iso = profile(st.language.target).iso
+    manga = "YesAndRightToLeft" if st.language.comic_format == "manga" else "No"
+    model = meta.get("model") or ""
+    fields = [
+        ("Title", meta.get("name") or ""),
+        ("Series", meta.get("series") or meta.get("name") or ""),
+        ("Number", meta.get("chapter") or ""),
+        ("Summary", summary),
+        ("Notes", f"Translated with yomeru{f' ({model})' if model else ''}; "
+                  f"{st.language.source} → {st.language.target}."),
+        ("Translator", "yomeru"),
+        ("LanguageISO", iso),
+        ("Manga", manga),
+        ("Characters", ", ".join(chars)),
+        ("PageCount", str(page_count)),
+    ]
+    body = "\n".join(f"  <{k}>{escape(v)}</{k}>" for k, v in fields if v)
+    pages = "\n".join(f'    <Page Image="{i}"{" Type=\"FrontCover\"" if i == 0 else ""} />'
+                      for i in range(page_count))
+    return ('<?xml version="1.0" encoding="utf-8"?>\n'
+            '<ComicInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" '
+            'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n'
+            f"{body}\n  <Pages>\n{pages}\n  </Pages>\n</ComicInfo>\n")

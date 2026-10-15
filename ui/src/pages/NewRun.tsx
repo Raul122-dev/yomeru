@@ -21,6 +21,8 @@ export default function NewRun() {
   const [showSettings, setShowSettings] = useState(false);
   const [runMode, setRunMode] = useState<"full" | "manual">("full");
   const [loading, setLoading] = useState(false);
+  const [series, setSeries] = useState("");
+  const [chapter, setChapter] = useState("");
   const [error, setError] = useState("");
 
   const { data: cfg } = useQuery({ queryKey: ["config"], queryFn: getConfig });
@@ -56,6 +58,8 @@ export default function NewRun() {
       const form = new FormData();
       form.append("name", name);
       form.append("global_context", globalCtx);
+      form.append("series", series);
+      form.append("chapter", chapter);
       for (const f of files) form.append("files", f);
       const run = await createRun(form, {
         preset_id: presetId || undefined,
@@ -83,6 +87,21 @@ export default function NewRun() {
             onChange={(e) => setName(e.target.value)}
             placeholder="solo leveling ch01"
           />
+          <div className="flex flex-wrap gap-3">
+            <Input
+              label="series (optional)"
+              value={series}
+              onChange={(e) => setSeries(e.target.value)}
+              placeholder="Solo Leveling"
+              hint="Groups chapters in comic library apps (saved in the .cbz)"
+            />
+            <Input
+              label="chapter no. (optional)"
+              value={chapter}
+              onChange={(e) => setChapter(e.target.value)}
+              placeholder="1"
+            />
+          </div>
 
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
