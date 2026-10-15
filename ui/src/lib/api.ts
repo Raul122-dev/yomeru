@@ -327,7 +327,7 @@ export const uploadFont = (file: File) => {
   }).then((r) => {
     if (!r.ok)
       return r.json().then((e) => {
-        throw new Error(e.detail ?? "upload failed");
+        throw new Error(e.detail ?? "Upload failed");
       });
     return r.json() as Promise<FontInfo>;
   });

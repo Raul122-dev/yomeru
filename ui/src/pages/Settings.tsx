@@ -92,13 +92,13 @@ function SettingsEditor({ cfg }: { cfg: AppConfig }) {
           }}
           className="flex items-center gap-1 rounded-md border border-dashed border-[hsl(var(--border))] px-2.5 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))]"
         >
-          <Plus size={11} /> save as preset
+          <Plus size={11} /> Save as preset
         </button>
       </div>
 
       {preset && (
         <div className="mb-5">
-          <Input label="preset name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input label="Preset name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
       )}
 
@@ -106,11 +106,11 @@ function SettingsEditor({ cfg }: { cfg: AppConfig }) {
 
       <div className="mt-6 flex items-center gap-2">
         <Button size="sm" onClick={() => save.mutate()} disabled={!dirty || save.isPending}>
-          {saved ? <><Check size={12} /> saved</> : save.isPending ? "saving…" : "save"}
+          {saved ? <><Check size={12} /> Saved</> : save.isPending ? "Saving…" : "Save"}
         </Button>
         {dirty && (
           <Button size="sm" variant="ghost" onClick={() => setDraft(source)}>
-            discard changes
+            Discard changes
           </Button>
         )}
         {preset && (
@@ -120,7 +120,7 @@ function SettingsEditor({ cfg }: { cfg: AppConfig }) {
             className="ml-auto"
             onClick={() => confirm(`Delete preset "${preset.name}"?`) && remove.mutate()}
           >
-            <Trash2 size={12} /> delete preset
+            <Trash2 size={12} /> Delete preset
           </Button>
         )}
       </div>
@@ -139,7 +139,7 @@ export default function Settings() {
     <div>
       <h1 className="mb-6 text-xl font-semibold">Settings</h1>
       {error && <p className="text-sm text-[hsl(var(--danger))]">{(error as Error).message}</p>}
-      {isLoading && <p className="text-sm text-[hsl(var(--text-muted))]">loading…</p>}
+      {isLoading && <p className="text-sm text-[hsl(var(--text-muted))]">Loading…</p>}
       {cfg && (
         <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-2">
           <div className="flex flex-col">

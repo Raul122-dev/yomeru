@@ -288,11 +288,11 @@ def _save_debug_image(img, matches, dialogues, page_dets, orphaned, debug_dir, p
     legend_x = img.width - 220
     draw.rectangle([legend_x - 5, legend_y - 5, img.width - 5, legend_y + 75], fill=(0, 0, 0, 180))
     draw.rectangle([legend_x, legend_y, legend_x + 12, legend_y + 12], fill=COLOR_MATCHED_DIRECT, outline=BORDER_MATCHED)
-    draw.text((legend_x + 16, legend_y - 1), "Direct match (VLM)", fill=(255, 255, 255), font=font_sm)
+    draw.text((legend_x + 16, legend_y - 1), "Matched by the reading model", fill=(255, 255, 255), font=font_sm)
     draw.rectangle([legend_x, legend_y + 18, legend_x + 12, legend_y + 30], fill=COLOR_MATCHED_FALLBACK, outline=BORDER_FALLBACK)
-    draw.text((legend_x + 16, legend_y + 17), "Fallback/Rescue match", fill=(255, 255, 255), font=font_sm)
+    draw.text((legend_x + 16, legend_y + 17), "Matched by position or OCR", fill=(255, 255, 255), font=font_sm)
     draw.rectangle([legend_x, legend_y + 36, legend_x + 12, legend_y + 48], fill=COLOR_ORPHANED, outline=BORDER_ORPHANED)
-    draw.text((legend_x + 16, legend_y + 35), "Orphaned (no match)", fill=(255, 255, 255), font=font_sm)
+    draw.text((legend_x + 16, legend_y + 35), "Empty (no line)", fill=(255, 255, 255), font=font_sm)
     draw.rectangle([legend_x, legend_y + 54, legend_x + 12, legend_y + 66], outline=(150, 150, 150, 120), width=1)
     draw.text((legend_x + 16, legend_y + 53), "Unmatched (ignored)", fill=(180, 180, 180), font=font_sm)
 

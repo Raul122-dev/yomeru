@@ -28,8 +28,8 @@ class CascadeOptions(BaseModel):
                              description="Matches below this are discarded")
 
 
-@register("matching", "cascade", options=CascadeOptions, needs_gpu=True,
-          description="VLM region ids, then Hungarian (position + OCR), reading order and OCR rescue")
+@register("matching", "cascade", title="Model region IDs + OCR check", options=CascadeOptions, needs_gpu=True,
+          description="Uses the region numbers the reading model gave each line, checked with OCR; position and reading order fill the gaps")
 class CascadeMatcher:
     def __init__(self, options: CascadeOptions):
         from yomeru.lib.matching import build_matcher

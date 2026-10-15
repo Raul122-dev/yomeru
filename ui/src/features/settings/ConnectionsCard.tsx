@@ -66,13 +66,13 @@ function ConnectionForm({
   return (
     <div className="flex flex-col gap-3 rounded-md border border-[hsl(var(--border))] p-3">
       <Input
-        label="name"
+        label="Name"
         value={draft.name}
         onChange={(e) => setDraft({ ...draft, name: e.target.value })}
         placeholder="OpenRouter"
       />
       <Select
-        label="protocol"
+        label="Protocol"
         value={draft.protocol}
         onChange={(e) => setDraft({ ...draft, protocol: e.target.value as Protocol })}
       >
@@ -84,14 +84,14 @@ function ConnectionForm({
       </Select>
       <p className="-mt-1.5 text-xs text-[hsl(var(--text-muted))]">{proto.hint}</p>
       <Input
-        label="base url"
+        label="Base URL"
         value={draft.base_url}
         onChange={(e) => setDraft({ ...draft, base_url: e.target.value })}
         placeholder={proto.placeholder}
         hint="Empty = the official endpoint of the protocol"
       />
       <Input
-        label="api key"
+        label="API key"
         type="password"
         value={draft.api_key ?? ""}
         onChange={(e) => setDraft({ ...draft, api_key: e.target.value })}
@@ -99,13 +99,13 @@ function ConnectionForm({
       />
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={() => save.mutate()} disabled={!draft.name.trim() || save.isPending}>
-          {save.isPending ? "saving…" : "save"}
+          {save.isPending ? "Saving…" : "Save"}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => check.mutate()} disabled={check.isPending}>
-          {check.isPending ? "testing…" : "test"}
+          {check.isPending ? "Testing…" : "Test"}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
-          cancel
+          Cancel
         </Button>
       </div>
       {test && (
@@ -138,7 +138,7 @@ export function ConnectionsCard() {
         <h2 className="text-sm font-medium">Connections</h2>
         {editing === null && (
           <Button size="sm" variant="ghost" onClick={() => setEditing("new")}>
-            <Plus size={12} /> add
+            <Plus size={12} /> Add
           </Button>
         )}
       </div>
@@ -169,12 +169,12 @@ export function ConnectionsCard() {
                 </p>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setEditing(c.id)}>
-                edit
+                Edit
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
-                aria-label={`delete ${c.name}`}
+                aria-label={`Delete ${c.name}`}
                 onClick={() => confirm(`Delete connection "${c.name}"?`) && remove.mutate(c.id)}
               >
                 <Trash2 size={12} />
@@ -186,7 +186,7 @@ export function ConnectionsCard() {
       </div>
       {remove.isSuccess && (
         <p className="mt-2 flex items-center gap-1 text-xs text-[hsl(var(--text-muted))]">
-          <Check size={12} /> removed
+          <Check size={12} /> Removed
         </p>
       )}
     </Card>

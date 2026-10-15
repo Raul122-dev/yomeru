@@ -26,7 +26,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
       const result = await runAlgorithmOnlyMatching(runId, pageNum);
       setData(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to run algorithm matching");
+      setError(e instanceof Error ? e.message : "Could not run the algorithm-only matching");
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
         <div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-5 py-3">
           <div className="flex items-center gap-2">
             <FlaskConical size={16} className="text-[hsl(var(--accent2))]" />
-            <h2 className="text-sm font-semibold">Algorithm-Only Matching — Page {pageNum}</h2>
+            <h2 className="text-sm font-semibold">Algorithm-only matching — page {pageNum}</h2>
           </div>
           <button onClick={onClose} className="rounded p-1 hover:bg-[hsl(var(--bg-subtle))]">
             <X size={16} />
@@ -53,16 +53,16 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
           {!data && !loading && (
             <div className="flex flex-col items-center gap-4 py-10">
               <p className="text-sm text-[hsl(var(--text-muted))] text-center max-w-md">
-                Run the Hungarian algorithm independently (without VLM region assignments) to see 
-                how it matches dialogues to regions using only spatial proximity and OCR text similarity.
+                Match this page without the reading model's bubble choices, to see how lines are paired 
+                with regions using only their position and the text OCR finds in each region.
               </p>
               <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] p-4 text-xs space-y-2 max-w-md">
-                <p className="font-medium text-[hsl(var(--text-primary))]">How the algorithm works:</p>
+                <p className="font-medium text-[hsl(var(--text-primary))]">How it works</p>
                 <ul className="space-y-1 text-[hsl(var(--text-muted))] list-disc list-inside">
-                  <li><strong>Spatial score (40%)</strong> — Overlap between the VLM's bbox hint and each detected region + center containment check</li>
-                  <li><strong>Text score (40%)</strong> — OCR each region, then trigram Jaccard similarity between OCR text and dialogue text</li>
-                  <li><strong>Assignment</strong> — Builds an NxM cost matrix, solves with <code>scipy.linear_sum_assignment</code> (Hungarian) for optimal 1-to-1 mapping</li>
-                  <li><strong>Threshold</strong> — Matches below 0.05 total score are discarded</li>
+                  <li><strong>Spatial score (40%)</strong> — Overlap between the box the model gave for each line and each detected region, plus whether its center falls inside</li>
+                  <li><strong>Text score (40%)</strong> — OCR reads each region; its text is compared with each line</li>
+                  <li><strong>Assignment</strong> — Finds the best one-to-one pairing of lines and regions (Hungarian algorithm)</li>
+                  <li><strong>Threshold</strong> — Pairs with a total score below 0.05 are dropped</li>
                 </ul>
               </div>
               <button
@@ -70,7 +70,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                 className="flex items-center gap-2 rounded-md bg-[hsl(var(--accent2))] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
               >
                 <FlaskConical size={14} />
-                Run Algorithm Matching
+                Run algorithm-only matching
               </button>
             </div>
           )}
@@ -78,7 +78,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
           {loading && (
             <div className="flex flex-col items-center gap-3 py-16">
               <Loader2 size={24} className="animate-spin text-[hsl(var(--accent2))]" />
-              <p className="text-sm text-[hsl(var(--text-muted))]">Running OCR + Hungarian algorithm...</p>
+              <p className="text-sm text-[hsl(var(--text-muted))]">Reading regions with OCR and matching…</p>
             </div>
           )}
 
@@ -95,7 +95,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                 <StatCard label="Matched" value={data.matches.length} total={data.dialogues_total} />
                 <StatCard label="Unmatched" value={data.unmatched.length} total={data.dialogues_total} variant="danger" />
                 <StatCard label="Regions" value={data.regions_used} />
-                <StatCard label="VLM Agreement" value={`${data.agreement_rate}%`} variant={data.agreement_rate > 70 ? "success" : "warning"} />
+                <StatCard label="Model agreement" value={`${data.agreement_rate}%`} variant={data.agreement_rate > 70 ? "success" : "warning"} />
               </div>
 
               {/* Matches table */}
@@ -107,12 +107,12 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                   <table className="w-full text-xs">
                     <thead className="bg-[hsl(var(--bg-subtle))]">
                       <tr>
-                        <th className="px-3 py-2 text-left font-medium">Dialogue</th>
+                        <th className="px-3 py-2 text-left font-medium">Line</th>
                         <th className="px-3 py-2 text-left font-medium">Region</th>
                         <th className="px-3 py-2 text-center font-medium">Spatial</th>
                         <th className="px-3 py-2 text-center font-medium">Text</th>
                         <th className="px-3 py-2 text-center font-medium">Total</th>
-                        <th className="px-3 py-2 text-center font-medium">VLM</th>
+                        <th className="px-3 py-2 text-center font-medium" title="Same region the reading model chose">Model</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[hsl(var(--border))]">
@@ -148,7 +148,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
                               <span className="flex flex-col items-center">
                                 <XCircle size={14} className="text-yellow-500" />
                                 {m.vlm_region_id != null && (
-                                  <span className="text-xs text-[hsl(var(--text-muted))]">VLM: R{m.vlm_region_id}</span>
+                                  <span className="text-xs text-[hsl(var(--text-muted))]">Model: R{m.vlm_region_id}</span>
                                 )}
                               </span>
                             )}
@@ -164,7 +164,7 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
               {data.unmatched.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="text-xs font-medium uppercase tracking-wide text-red-400">
-                    Unmatched Dialogues ({data.unmatched.length})
+                    Unmatched lines ({data.unmatched.length})
                   </h3>
                   <div className="space-y-1">
                     {data.unmatched.map((u) => (
@@ -182,17 +182,17 @@ export function AlgorithmCompareModal({ runId, pageNum, isOpen, onClose }: Props
               {data.debug_image && (
                 <div className="space-y-2">
                   <h3 className="text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
-                    Visual Result
+                    Visual result
                   </h3>
                   <div className="rounded border border-[hsl(var(--border))] overflow-hidden">
                     <img
                       src={`${debugImageUrl(runId, data.debug_image)}?v=${Date.now()}`}
-                      alt="Algorithm-only matching debug"
+                      alt="Algorithm-only matching result"
                       className="w-full h-auto"
                     />
                   </div>
                   <p className="text-xs text-[hsl(var(--text-muted))] text-center">
-                    Blue = algorithm matched · Red = unmatched regions
+                    Blue = matched by the algorithm · Red = unmatched regions
                   </p>
                 </div>
               )}

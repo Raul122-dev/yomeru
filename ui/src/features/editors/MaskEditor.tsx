@@ -286,7 +286,7 @@ export function MaskEditor({
     try {
       const dataUrl = exportMask();
       const r = await saveMask(runId, pageNum, dataUrl);
-      if (!r.ok) throw new Error(`save failed (${r.status})`);
+      if (!r.ok) throw new Error(`Save failed (${r.status})`);
       setIsDirty(false);
       onSaved?.();
     } catch (e: unknown) {
@@ -302,7 +302,7 @@ export function MaskEditor({
       if (isDirty) {
         const dataUrl = exportMask();
         const r = await saveMask(runId, pageNum, dataUrl);
-        if (!r.ok) throw new Error(`save failed (${r.status})`);
+        if (!r.ok) throw new Error(`Save failed (${r.status})`);
         setIsDirty(false);
       }
       await startRerun([pageNum]);
@@ -324,11 +324,11 @@ export function MaskEditor({
         {/* toolbar */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]">
           <span className="font-mono text-xs text-[hsl(var(--text-muted))]">
-            mask editor · p{pageNum}
+            Mask editor · page {pageNum}
           </span>
           {isDirty && (
             <span className="text-xs text-[hsl(var(--accent2))]">
-              unsaved
+              Unsaved
             </span>
           )}
           {error && (
@@ -345,10 +345,10 @@ export function MaskEditor({
                   ? "border-[hsl(var(--accent2)/.4)] text-[hsl(var(--accent2))] bg-[hsl(var(--accent2)/.08)]"
                   : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))]",
               )}
-              title="Toggle inpainted result overlay (R)"
+              title="Show or hide the cleaned result (R)"
             >
               {showReference ? <EyeOff size={10} /> : <Eye size={10} />}
-              {showReference ? "hide result" : "show result"}
+              {showReference ? "Hide result" : "Show result"}
             </button>
             <button
               onClick={undo}
@@ -372,19 +372,19 @@ export function MaskEditor({
               className="flex items-center gap-1.5 rounded border border-[hsl(var(--border))] px-2.5 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
               title="Save mask (Ctrl+S)"
             >
-              <Save size={9} /> {isSaving ? "saving…" : "save"}
+              <Save size={9} /> {isSaving ? "Saving…" : "Save"}
             </button>
             <button
               onClick={handleReInpaint}
               disabled={isInpainting}
               className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-xs text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
-              title="Save mask and re-run inpainting for this page"
+              title="Save the mask and clean this page again"
             >
               <RefreshCw
                 size={10}
                 className={isInpainting ? "animate-spin" : ""}
               />
-              {isInpainting ? "inpainting…" : "re-inpaint"}
+              {isInpainting ? "Cleaning…" : "Clean this page again"}
             </button>
           </div>
         </div>
@@ -460,7 +460,7 @@ export function MaskEditor({
         {/* mode selector */}
         <div>
           <p className="mb-1.5 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-            tool
+            Tool
           </p>
           <div className="grid grid-cols-2 gap-1.5">
             {(["paint", "erase"] as const).map((m) => (
@@ -476,7 +476,7 @@ export function MaskEditor({
                 title={m === "paint" ? "Paint mask (B)" : "Erase mask (E)"}
               >
                 {m === "paint" ? <Brush size={14} /> : <Eraser size={14} />}
-                <span className="text-xs">{m}</span>
+                <span className="text-xs">{m === "paint" ? "Paint" : "Erase"}</span>
               </button>
             ))}
           </div>
@@ -491,10 +491,10 @@ export function MaskEditor({
         <div>
           <div className="flex justify-between mb-1">
             <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-              brush size
+              Brush size
             </p>
             <span className="font-mono text-xs text-[hsl(var(--accent2))]">
-              {brushSize}px
+              {brushSize} px
             </span>
           </div>
           <input
@@ -514,7 +514,7 @@ export function MaskEditor({
         <div>
           <div className="flex justify-between mb-1">
             <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-              mask visibility
+              Mask visibility
             </p>
             <span className="font-mono text-xs text-[hsl(var(--accent2))]">
               {Math.round(opacity * 100)}%
@@ -537,22 +537,22 @@ export function MaskEditor({
         {hasMask && (
           <div className="rounded border border-[hsl(var(--border))] p-2.5 space-y-1.5 text-xs">
             <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))] mb-1">
-              current mask info
+              Current mask
             </p>
             <div className="flex justify-between">
-              <span className="text-[hsl(var(--text-muted))]">backend</span>
+              <span className="text-[hsl(var(--text-muted))]">Technique</span>
               <span className="font-mono">{s4?.backend}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[hsl(var(--text-muted))]">mask pixels</span>
+              <span className="text-[hsl(var(--text-muted))]">Mask pixels</span>
               <span className="font-mono">{(s4?.mask_pixels ?? 0).toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[hsl(var(--text-muted))]">coverage</span>
+              <span className="text-[hsl(var(--text-muted))]">Coverage</span>
               <span className="font-mono">{s4?.coverage_pct}%</span>
             </div>
             <p className="text-xs text-[hsl(var(--text-muted)/.6)] pt-1 border-t border-[hsl(var(--border))]">
-              Coverage = % of total image pixels marked for removal. Lower is better — only text should be masked.
+              Coverage = share of the page marked for removal. Lower is better — only text should be masked.
             </p>
           </div>
         )}
@@ -562,13 +562,13 @@ export function MaskEditor({
           <div className="flex items-center gap-1.5">
             <Info size={10} className="text-[hsl(var(--text-muted))]" />
             <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-              help
+              Help
             </p>
           </div>
           <div className="space-y-1 text-xs text-[hsl(var(--text-muted))]">
             <div className="flex items-center gap-2">
               <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: MASK_COLOR }} />
-              <span>Masked area (will be inpainted)</span>
+              <span>Masked area (will be erased)</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="inline-block h-2.5 w-2.5 rounded-sm border border-[hsl(var(--border))]" />
@@ -577,11 +577,11 @@ export function MaskEditor({
           </div>
           <div className="pt-1.5 border-t border-[hsl(var(--border))] space-y-0.5 text-xs text-[hsl(var(--text-muted)/.6)]">
             <p className="font-medium text-[hsl(var(--text-muted))]">Shortcuts</p>
-            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">B</kbd> paint · <kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">E</kbd> erase</p>
-            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">[</kbd> <kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">]</kbd> brush size</p>
-            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">Ctrl+Z</kbd> undo</p>
-            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">Ctrl+S</kbd> save</p>
-            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">R</kbd> toggle result</p>
+            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">B</kbd> Paint · <kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">E</kbd> Erase</p>
+            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">[</kbd> <kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">]</kbd> Brush size</p>
+            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">Ctrl+Z</kbd> Undo</p>
+            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">Ctrl+S</kbd> Save</p>
+            <p><kbd className="font-mono bg-[hsl(var(--bg-subtle))] px-1 rounded">R</kbd> Show/hide result</p>
           </div>
         </div>
       </div>

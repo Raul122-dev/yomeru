@@ -32,7 +32,7 @@ class ClassicOptions(BaseModel):
                     "Bubble interiors are flat, so they always use a fast OpenCV fill.")
 
 
-@register("inpainting", "classic", options=ClassicOptions, needs_gpu=True,
+@register("inpainting", "classic", title="Classic (OpenCV + LaMa)", options=ClassicOptions, needs_gpu=True,
           description="Text masks per region; OpenCV inside bubbles, LaMa for free text")
 class ClassicInpainter:
     def __init__(self, options: ClassicOptions):

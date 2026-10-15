@@ -50,6 +50,7 @@ class BackendSpec:
     needs_gpu: bool
     version: str                       # the plugin's own version (shown, stored in run snapshots)
     description: str
+    title: str = ""                    # human name for the settings UI (defaults to `name`)
     schema_version: int = 1            # version of its options model
     migrate: Callable[[int, dict], dict] | None = None  # (from_version, options) -> options of from_version+1
     api: tuple[int, int] = (1, 2)      # supported PLUGIN_API range [min, max)
@@ -80,7 +81,7 @@ class UnknownBackend(ValueError):
 
 
 def register(phase: PhaseName, name: str, *, options: type[BaseModel], needs_gpu: bool = False,
-             version: str = "1.0.0", description: str = "", schema_version: int = 1,
+             version: str = "1.0.0", description: str = "", title: str = "", schema_version: int = 1,
              migrate: Callable[[int, dict], dict] | None = None, api: tuple[int, int] = (1, 2)):
     """Class/factory decorator: make a backend selectable as `<phase>.backend = name`.
 
@@ -94,7 +95,7 @@ def register(phase: PhaseName, name: str, *, options: type[BaseModel], needs_gpu
             phase=phase, name=name, factory=factory, options_model=options,
             needs_gpu=needs_gpu, version=version,
             description=description or (factory.__doc__ or "").strip().split("\n")[0],
-            schema_version=schema_version, migrate=migrate, api=api,
+            schema_version=schema_version, migrate=migrate, api=api, title=title or name,
         )
         return factory
     return deco
@@ -133,7 +134,7 @@ def get_backend(phase: PhaseName, name: str, options: dict | None = None) -> tup
 def list_backends(phase: PhaseName) -> list[dict]:
     """For the settings UI: name, description and the options schema."""
     return [
-        {"name": s.name, "description": s.description, "needs_gpu": s.needs_gpu,
+        {"name": s.name, "title": s.title or s.name, "description": s.description, "needs_gpu": s.needs_gpu,
          "version": s.version, "schema_version": s.schema_version, "compatible": s.compatible,
          "options": s.options_model.model_json_schema(),
          "defaults": s.options_model().model_dump()}

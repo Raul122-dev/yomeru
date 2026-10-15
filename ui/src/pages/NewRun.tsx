@@ -40,8 +40,8 @@ export default function NewRun() {
   const modelLabel = !settings
     ? ""
     : isLocal
-      ? `local (experimental) · ${String(settings.analysis.options?.model ?? "auto")}`
-      : `${cfg?.connections.find((c) => c.id === settings.analysis_model.connection_id)?.name ?? "?"} · ${settings.analysis_model.model || "no model"}`;
+      ? `Local (experimental) · ${String(settings.analysis.options?.model ?? "auto")}`
+      : `${cfg?.connections.find((c) => c.id === settings.analysis_model.connection_id)?.name ?? "?"} · ${settings.analysis_model.model || "No model"}`;
 
   const useLocal = () =>
     settings && setSettings({ ...settings, analysis: { ...settings.analysis, backend: "local", options: {} } });
@@ -68,7 +68,7 @@ export default function NewRun() {
       });
       nav(`/runs/${run.id}`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "unknown error");
+      setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -76,27 +76,27 @@ export default function NewRun() {
 
   return (
     <div className="w-full max-w-5xl mx-auto">
-      <h1 className="mb-6 text-xl font-semibold">New Run</h1>
+      <h1 className="mb-6 text-xl font-semibold">New run</h1>
 
       {/* Pages section */}
       <Card className="mb-4">
         <div className="flex flex-col gap-4">
           <Input
-            label="run name"
+            label="Run name *"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="solo leveling ch01"
+            placeholder="My series, chapter 1"
           />
           <div className="flex flex-wrap gap-3">
             <Input
-              label="series (optional)"
+              label="Series (optional)"
               value={series}
               onChange={(e) => setSeries(e.target.value)}
-              placeholder="Solo Leveling"
+              placeholder="My series"
               hint="Groups chapters in comic library apps (saved in the .cbz)"
             />
             <Input
-              label="chapter no. (optional)"
+              label="Chapter no. (optional)"
               value={chapter}
               onChange={(e) => setChapter(e.target.value)}
               placeholder="1"
@@ -115,7 +115,7 @@ export default function NewRun() {
       {/* Chapter context — prominent, not hidden */}
       <Card className="mb-4">
         <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
-          Chapter Context
+          Chapter context
         </label>
         <p className="mb-2 text-xs text-[hsl(var(--text-muted))]">
           Extra context about this chapter that helps the model produce better
@@ -126,7 +126,7 @@ export default function NewRun() {
           value={globalCtx}
           onChange={(e) => setGlobalCtx(e.target.value)}
           rows={3}
-          placeholder={`e.g. "Action manhwa. MC is Sung Jin-Woo, a hunter who gains the ability to level up like a game character. This chapter introduces the S-rank hunter Cha Hae-In."`}
+          placeholder={`e.g. "Action manhwa. The main character is a young hunter who can level up like in a game; he speaks casually. This chapter introduces his rival, a cold, formal swordswoman."`}
           className="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))] px-3 py-2 text-xs leading-relaxed placeholder:text-[hsl(var(--text-muted))] resize-y focus:border-[hsl(var(--accent2))] focus:outline-none"
         />
       </Card>
@@ -149,7 +149,7 @@ export default function NewRun() {
       {/* Run options */}
       <Card className="mb-4">
         <div className="flex flex-col gap-4">
-          <Select label="settings" value={presetId} onChange={(e) => setPresetId(e.target.value)}>
+          <Select label="Settings" value={presetId} onChange={(e) => setPresetId(e.target.value)}>
             <option value="">Defaults</option>
             {cfg?.presets.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
@@ -161,7 +161,7 @@ export default function NewRun() {
 
           <div>
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
-              execution mode
+              Execution mode
             </label>
             <div className="flex gap-2">
               {(
@@ -192,7 +192,7 @@ export default function NewRun() {
             className="flex items-center gap-1.5 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] transition-colors"
           >
             {showSettings ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            adjust settings for this run only
+            Adjust settings for this run only
           </button>
           {showSettings && settings && (
             <div className="rounded-md border border-[hsl(var(--border))] p-3">
@@ -208,7 +208,8 @@ export default function NewRun() {
       )}
 
       <div className="flex gap-3">
-        <Button onClick={submit} disabled={loading}>
+        <Button onClick={submit} disabled={loading || !files.length || !name.trim() || needsSetup}
+                title={!files.length ? "Add pages first" : !name.trim() ? "Name the run first" : needsSetup ? "Set up a model first" : undefined}>
           {loading
             ? "Starting…"
             : `Start run${files.length ? ` (${files.length} pages)` : ""}`}

@@ -44,7 +44,7 @@ export function ImageViewer({ src, alt, className, label, sizes = "(min-width: 1
           className="fixed inset-0 z-50 flex items-center justify-center p-6 outline-none"
           onClick={() => setOpen(false)}
         >
-          <Dialog.Title className="sr-only">{label ?? alt ?? "image"}</Dialog.Title>
+          <Dialog.Title className="sr-only">{label ?? alt ?? "Image"}</Dialog.Title>
           <div className="relative" onClick={(e) => e.stopPropagation()}>
             <Img src={src} alt={alt} sizes="92vw" maxWidth={2400}
                  className="max-h-[88vh] max-w-[92vw] rounded-[var(--radius-sm)] bg-transparent shadow-2xl"
@@ -52,7 +52,7 @@ export function ImageViewer({ src, alt, className, label, sizes = "(min-width: 1
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 rounded-b-[var(--radius-sm)] bg-black/60 px-3 py-1.5 text-xs text-white/80">
               <span className="truncate">{label}</span>
               <a href={src} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 hover:text-white">
-                original <ExternalLink size={11} />
+                Original <ExternalLink size={11} />
               </a>
             </div>
             <Dialog.Close aria-label="Close"

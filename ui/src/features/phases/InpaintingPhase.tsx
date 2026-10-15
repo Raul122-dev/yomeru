@@ -13,9 +13,9 @@ interface InpaintingPhaseProps {
 }
 
 const MASK_LEGEND = [
-  { color: "#ff00ff", label: "text in bubble" },
-  { color: "#00c8ff", label: "free text" },
-  { color: "#ffa500", label: "sound effect" },
+  { color: "#ff00ff", label: "Text in bubble" },
+  { color: "#00c8ff", label: "Free text" },
+  { color: "#ffa500", label: "Sound effect" },
 ];
 
 export function InpaintingPhase({ runId, pages }: InpaintingPhaseProps) {
@@ -71,17 +71,17 @@ export function InpaintingPhase({ runId, pages }: InpaintingPhaseProps) {
           {sel?.log && (
             <Panel
               title={<>Page {sel.page} <span className="font-mono text-xs font-normal text-[hsl(var(--text-muted))]">{sel.filename}</span></>}
-              aside={s4 ? `${s4.backend} · ${((s4.mask_pixels ?? 0) / 1000).toFixed(1)}k px masked · ${s4.coverage_pct}% of page` : undefined}
+              aside={s4 ? `${s4.backend} · ${((s4.mask_pixels ?? 0) / 1000).toFixed(1)}k px erased · ${s4.coverage_pct}% of the page` : undefined}
             >
               <div className="grid gap-5 lg:grid-cols-2">
                 <div>
                   <Label>Before</Label>
-                  <ImageViewer src={`${pageImageUrl(runId, sel.filename)}?v=${v.nonce}`} alt={sel.filename} label={`before · p${sel.page}`} />
+                  <ImageViewer src={`${pageImageUrl(runId, sel.filename)}?v=${v.nonce}`} alt={sel.filename} label={`Before · page ${sel.page}`} />
                 </div>
                 <div>
                   <Label>After</Label>
                   {after ? (
-                    <ImageViewer src={`${debugImageUrl(runId, after)}?v=${v.nonce}`} alt={`inpainted p${sel.page}`} label={`after · p${sel.page}`} />
+                    <ImageViewer src={`${debugImageUrl(runId, after)}?v=${v.nonce}`} alt={`Cleaned page ${sel.page}`} label={`After · page ${sel.page}`} />
                   ) : (
                     <EmptyState>No cleaned image for this page.</EmptyState>
                   )}
@@ -91,7 +91,7 @@ export function InpaintingPhase({ runId, pages }: InpaintingPhaseProps) {
               <details className="mt-5">
                 <summary className="eyebrow cursor-pointer select-none hover:text-[hsl(var(--text))]">Generated masks per region</summary>
                 <div className="mt-3 max-w-xl">
-                  <ImageViewer src={`${maskDebugUrl(runId, sel.page)}?v=${v.nonce}`} alt={`mask debug p${sel.page}`} label={`masks · p${sel.page}`} />
+                  <ImageViewer src={`${maskDebugUrl(runId, sel.page)}?v=${v.nonce}`} alt={`Masks for page ${sel.page}`} label={`Masks · page ${sel.page}`} />
                   <div className="mt-2 flex flex-wrap gap-4 text-xs text-[hsl(var(--text-muted))]">
                     {MASK_LEGEND.map((l) => (
                       <span key={l.label} className="flex items-center gap-1.5">

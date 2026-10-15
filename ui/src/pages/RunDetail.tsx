@@ -27,7 +27,7 @@ export default function RunDetail() {
     );
   }
   if (isLoading || !run || !derived) {
-    return <div className="text-sm text-[hsl(var(--text-muted))]">loading…</div>;
+    return <div className="text-sm text-[hsl(var(--text-muted))]">Loading…</div>;
   }
 
   const hasRendered = (typesetStatus?.pages?.length ?? 0) > 0;

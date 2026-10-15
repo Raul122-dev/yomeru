@@ -75,7 +75,7 @@ export function PhaseHeader({
           <div className="mb-1.5 flex items-center justify-between font-mono text-xs text-[hsl(var(--text-muted))]">
             <span className="flex items-center gap-1.5">
               <Loader2 size={12} className="animate-spin text-[hsl(var(--accent2))]" />
-              {total > 0 ? `${processed} / ${total} pages` : "starting…"}
+              {total > 0 ? `${processed} / ${total} pages` : "Starting…"}
             </span>
             <span>{pct}%</span>
           </div>
@@ -132,7 +132,7 @@ export function PageStrip({ items, selected, onSelect }: {
   return (
     <div className="flex flex-col gap-1">
     {flagged.length > 0 && (
-      <label className="flex w-fit cursor-pointer items-center gap-1.5 text-xs text-[hsl(var(--text-muted))]">
+      <label className="flex w-fit cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-[hsl(var(--text-muted))]">
         <input type="checkbox" checked={onlyReview} onChange={(e) => setOnlyReview(e.target.checked)} />
         Only pages to review ({flagged.length})
       </label>
@@ -157,7 +157,7 @@ export function PageStrip({ items, selected, onSelect }: {
             )}
           >
             <div className="relative aspect-[5/7] overflow-hidden rounded-[4px] border border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]">
-              <Img src={it.src} alt={`page ${it.page}`} loading="lazy" sizes="132px" maxWidth={320}
+              <Img src={it.src} alt={`Page ${it.page}`} loading="lazy" sizes="132px" maxWidth={320}
                    className="size-full" imgClassName="object-cover object-top" />
               {it.flag && (
                 <span className={cn("absolute right-1 top-1 size-2 rounded-full",

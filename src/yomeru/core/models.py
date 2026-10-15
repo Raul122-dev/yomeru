@@ -20,7 +20,7 @@ COMIC_FORMATS: dict[str, ComicFormat] = {
         "Left-to-right, top-to-bottom. Often vertical scroll. SFX are hangul/romanized sounds."),
     "manhua": ComicFormat("Manhua (Chinese)", "ltr", "China",
         "Left-to-right (mainland). Traditional/HK may be RTL. Default LTR if unsure."),
-    "comic": ComicFormat("Western Comic", "ltr", "Western",
+    "comic": ComicFormat("Western comic", "ltr", "Western",
         "Left-to-right, top-to-bottom. Panel 0 is top-left. Caption boxes at panel edges."),
     "auto": ComicFormat("Auto-detect", "auto", "unknown",
         "Detect from art style. Vertical Japanese text → manga RTL. Single strip → manhwa."),

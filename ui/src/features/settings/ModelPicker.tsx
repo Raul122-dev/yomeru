@@ -39,7 +39,7 @@ export function ModelPicker({
         onChange={(e) => onChange({ connection_id: e.target.value, model: "" })}
       >
         {(allowNone || !value.connection_id) && (
-          <option value="">{allowNone ? "— same as analysis model —" : "— choose a connection —"}</option>
+          <option value="">{allowNone ? "— Same as the reading model —" : "— Choose a connection —"}</option>
         )}
         {conns.map((c) => (
           <option key={c.id} value={c.id}>
@@ -52,7 +52,7 @@ export function ModelPicker({
           value={value.model}
           items={models}
           loading={isLoading}
-          placeholder="type or pick a model id"
+          placeholder="Type or pick a model ID"
           showVisionBadge={requireVision}
           onChange={(m) => onChange({ ...value, model: m })}
         />
@@ -62,7 +62,7 @@ export function ModelPicker({
       )}
       {requireVision && selected?.vision === false && (
         <p className="text-xs text-[hsl(var(--danger))]">
-          This model does not accept images — analysis needs a vision model.
+          This model does not accept images — Read & translate needs a vision model.
         </p>
       )}
       {hint && <p className="text-xs text-[hsl(var(--text-muted))]">{hint}</p>}

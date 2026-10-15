@@ -46,14 +46,14 @@ export function BackendPicker({
         {(backends.length === 0 || missing) && <option value={value.backend}>{value.backend}</option>}
         {backends.map((b: BackendInfo) => (
           <option key={b.name} value={b.name} disabled={!b.compatible}>
-            {b.name}{b.compatible ? "" : " (incompatible)"}
+            {b.title ?? b.name}{b.compatible ? "" : " (incompatible)"}
           </option>
         ))}
       </Select>
       {props.map(([key, p]) => (
         <OptionField
           key={key}
-          name={(p.title ?? key).toLowerCase()}
+          name={sentence(p.title ?? key)}
           schema={p}
           value={value.options[key] ?? p.default}
           onChange={(v) => setOpt(key, v)}
@@ -102,4 +102,11 @@ function OptionField({
       onChange={(e) => onChange(numeric ? Number(e.target.value) : e.target.value)}
     />
   );
+}
+
+const ACRONYMS = /\b(ocr|api|gpu|vram|url|id|ids|cjk|lama)\b/g;
+
+function sentence(s: string) {
+  const t = s.replace(/_/g, " ").toLowerCase().replace(ACRONYMS, (m) => (m === "lama" ? "LaMa" : m.toUpperCase()));
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }

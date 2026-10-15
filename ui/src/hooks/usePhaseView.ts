@@ -5,6 +5,7 @@ import { getRenderLog, getRun } from "../lib/api";
 import { getRunPhaseStatus, isPhaseComplete } from "../lib/phase";
 import type { PhaseName, Run, StageLog } from "../lib/types";
 import { usePhaseRunner } from "./usePhaseRunner";
+import { LABELS } from "../features/phases/PhaseBar";
 
 export interface PageStageLog {
   page: number;
@@ -44,7 +45,7 @@ export function usePhaseView(
   const hasOutput = isPhaseComplete(serverStatus) || serverStatus === "stale" || serverStatus === "cancelled";
   const prev = PREV[phase];
   const canRun = !run ? false : prev === null ? true : isPhaseComplete(getRunPhaseStatus(run, prev));
-  const blockedReason = prev ? `Finish ${prev} first.` : undefined;
+  const blockedReason = prev ? `Finish ${LABELS[prev]} first.` : undefined;
 
   useEffect(() => {
     if (serverStatus === "running" && !progress) listen(phase);

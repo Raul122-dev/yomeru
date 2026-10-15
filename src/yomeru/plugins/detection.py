@@ -20,7 +20,7 @@ class OgkaluOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@register("detection", "ogkalu", options=OgkaluOptions, needs_gpu=True,
+@register("detection", "ogkalu", title="Comic text detector", options=OgkaluOptions, needs_gpu=True,
           description="RT-DETR-v2 fine-tuned on manga: bubbles, text in bubbles, free text")
 class OgkaluBackend:
     def __init__(self, options: OgkaluOptions):

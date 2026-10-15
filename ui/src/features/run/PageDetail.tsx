@@ -59,7 +59,7 @@ const BUBBLE_STYLES: Record<string, { icon: string; color: string; label: string
   speech: { icon: "💬", color: "#3b82f6", label: "Speech" },
   thought: { icon: "💭", color: "#a78bfa", label: "Thought" },
   narration: { icon: "📋", color: "#22c55e", label: "Narration" },
-  sfx: { icon: "💥", color: "#ef4444", label: "SFX" },
+  sfx: { icon: "💥", color: "#ef4444", label: "Sound effect" },
   internal: { icon: "🗣", color: "#f59e0b", label: "Internal" },
 };
 
@@ -185,7 +185,7 @@ export function PageDetail({
             </span>
             {orig._edited_at && (
               <span className="rounded-full bg-[hsl(var(--accent2)/.15)] px-2 py-0.5 text-xs text-[hsl(var(--accent2))]">
-                edited
+                Edited
               </span>
             )}
             <span className="text-sm text-[hsl(var(--text-muted))]">
@@ -257,7 +257,7 @@ export function PageDetail({
             {isPhaseRunning ? (
               <div className="flex items-center gap-2 text-sm text-[hsl(var(--accent))]">
                 <Loader2 size={14} className="animate-spin" />
-                Re-analyzing…
+                Reading again…
               </div>
             ) : (
               <>
@@ -269,7 +269,7 @@ export function PageDetail({
                   onClick={handleReanalysis}
                   className="h-7 text-xs px-3 gap-1.5"
                 >
-                  <Send size={12} /> Re-analyze
+                  <Send size={12} /> Read again
                 </Button>
               </>
             )}
@@ -305,7 +305,7 @@ export function PageDetail({
                   <div className="flex items-center gap-3 px-4 py-2.5 bg-[hsl(var(--bg-subtle))] border-b border-[hsl(var(--border))]">
                     <span className="text-base">{style.icon}</span>
                     <span className="text-sm font-medium" style={{ color: isSkipped ? undefined : style.color }}>
-                      {d.speaker_id ?? "narrator"}
+                      {d.speaker_id ?? "Narrator"}
                     </span>
                     <span className="text-xs px-2 py-0.5 rounded bg-[hsl(var(--bg))] text-[hsl(var(--text-muted))]">
                       {style.label}
@@ -313,7 +313,7 @@ export function PageDetail({
 
                     <div className="ml-auto flex items-center gap-2 text-xs text-[hsl(var(--text-muted))]">
                       {d.region_id != null && (
-                        <span className="flex items-center gap-0.5 rounded bg-[hsl(var(--accent2)/.1)] px-2 py-0.5 text-[hsl(var(--accent2))] font-mono text-xs">
+                        <span className="flex items-center gap-0.5 rounded bg-[hsl(var(--accent2)/.1)] px-2 py-0.5 text-[hsl(var(--accent2))] font-mono text-xs" title={`Region ${d.region_id}`}>
                           <Hash size={10} />R{d.region_id}
                         </span>
                       )}
@@ -333,7 +333,7 @@ export function PageDetail({
                             ? "bg-[hsl(var(--danger)/.1)] border-[hsl(var(--danger)/.3)] text-[hsl(var(--danger))] hover:bg-[hsl(var(--danger)/.2)]"
                             : "bg-[hsl(var(--success)/.1)] border-[hsl(var(--success)/.3)] text-[hsl(var(--success))] hover:bg-[hsl(var(--success)/.2)]",
                         )}
-                        title={isSkipped ? "Click to include in next phases" : "Click to skip in next phases"}
+                        title={isSkipped ? "Click to include it in the next steps" : "Click to skip it in the next steps"}
                       >
                         {toggleSkipMut.isPending ? (
                           <Loader2 size={10} className="animate-spin" />
@@ -410,7 +410,7 @@ export function PageDetail({
                         <div className="flex items-center gap-2 px-4 py-2.5">
                           <input
                             className="flex-1 rounded border border-[hsl(var(--border))] bg-[hsl(var(--bg))] px-3 py-1.5 text-sm placeholder:text-[hsl(var(--text-muted)/.5)] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/.3)]"
-                            placeholder="Describe the correction for re-analysis…"
+                            placeholder="Describe what to fix when the page is read again…"
                             value={correctionDraft}
                             onChange={(e) => setCorrectionDraft(e.target.value)}
                             onKeyDown={(e) => {
@@ -434,7 +434,7 @@ export function PageDetail({
                           onClick={() => { setShowCorrectionIdx(i); setCorrectionDraft(""); }}
                           className="w-full px-4 py-2 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--accent))] hover:bg-[hsl(var(--bg-subtle))] transition-colors text-left"
                         >
-                          + Add correction for re-analysis
+                          + Add a correction for the next reading
                         </button>
                       )}
                     </div>

@@ -108,12 +108,21 @@ const DEFAULT_COLOR = "#6464c8";
 const LABELS = ["bubble", "text_bubble", "text_free", "sfx", "caption"];
 
 const LABEL_DESCRIPTIONS: Record<string, string> = {
-  bubble: "Speech/thought bubble",
-  text_bubble: "Text inside bubble",
-  text_free: "Free-floating text",
-  sfx: "Sound effect",
-  caption: "Narration/caption box",
+  bubble: "Speech or thought bubble outline",
+  text_bubble: "Text inside a bubble",
+  text_free: "Text outside bubbles",
+  sfx: "Drawn sound effect",
+  caption: "Narration or caption box",
 };
+
+const LABEL_NAMES: Record<string, string> = {
+  bubble: "Bubble",
+  text_bubble: "Text in bubble",
+  text_free: "Free text",
+  sfx: "Sound effect",
+  caption: "Caption",
+};
+const labelName = (l: string) => LABEL_NAMES[l] ?? l.replace(/_/g, " ");
 
 const ZOOM_STEP = 0.15;
 const ZOOM_MIN = 0.3;
@@ -304,7 +313,7 @@ function SidebarRow({
           }}
           className="flex items-center gap-1 text-[hsl(var(--text))] hover:text-[hsl(var(--accent2))] transition-colors"
         >
-          <span className="capitalize">{r.label.replace(/_/g, " ")}</span>
+          <span>{labelName(r.label)}</span>
           <ChevronDown size={9} />
         </button>
         <div className="flex items-center gap-1.5 mt-0.5">
@@ -313,7 +322,7 @@ function SidebarRow({
           </span>
           {r.isNew && (
             <span className="text-xs px-1 rounded bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]">
-              new
+              New
             </span>
           )}
           {r.score < 1 && !r.isNew && (
@@ -342,7 +351,7 @@ function SidebarRow({
                   className="h-2 w-2 rounded-full"
                   style={{ background: LABEL_COLORS[l] ?? DEFAULT_COLOR }}
                 />
-                <span className="capitalize">{l.replace(/_/g, " ")}</span>
+                <span>{labelName(l)}</span>
               </button>
             ))}
           </div>
@@ -384,7 +393,7 @@ function Legend({ show, onClose }: { show: boolean; onClose: () => void }) {
                 borderColor: LABEL_COLORS[l] ?? DEFAULT_COLOR,
               }}
             />
-            <span className="capitalize font-medium">{l.replace(/_/g, " ")}</span>
+            <span className="font-medium">{labelName(l)}</span>
             <span className="text-[hsl(var(--text-muted)/.6)] text-xs">
               — {LABEL_DESCRIPTIONS[l]}
             </span>
@@ -392,8 +401,8 @@ function Legend({ show, onClose }: { show: boolean; onClose: () => void }) {
         ))}
       </div>
       <div className="border-t border-[hsl(var(--border))] pt-2 space-y-1 text-xs text-[hsl(var(--text-muted))]">
-        <p><strong>Score %</strong> — Model confidence in the detection accuracy</p>
-        <p><strong>Dimensions</strong> — Width × Height in original pixels</p>
+        <p><strong>Score %</strong> — How sure the detector is about this region</p>
+        <p><strong>Dimensions</strong> — Width × height in original pixels</p>
       </div>
       <div className="border-t border-[hsl(var(--border))] pt-2 space-y-0.5 text-xs text-[hsl(var(--text-muted))]">
         <p className="font-medium text-[hsl(var(--text))]">Shortcuts</p>
@@ -402,9 +411,9 @@ function Legend({ show, onClose }: { show: boolean; onClose: () => void }) {
         <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">Ctrl+Shift+Z</kbd> Redo</p>
         <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">+/-</kbd> Zoom in/out</p>
         <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">0</kbd> Reset zoom</p>
-        <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">←/→</kbd> Prev/Next page</p>
+        <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">←/→</kbd> Previous/next page</p>
         <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">N</kbd> Draw new region</p>
-        <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">Esc</kbd> Deselect / Close</p>
+        <p><kbd className="px-1 rounded bg-[hsl(var(--bg-subtle))] border border-[hsl(var(--border))]">Esc</kbd> Deselect / close</p>
       </div>
     </div>
   );
@@ -1106,7 +1115,7 @@ export function DetectionEditor({
               </span>
               {isDirty && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-[hsl(var(--accent2)/.1)] text-[hsl(var(--accent2))]">
-                  unsaved
+                  Unsaved
                 </span>
               )}
             </div>
@@ -1116,7 +1125,7 @@ export function DetectionEditor({
               <div className="px-3 py-8 text-center text-xs text-[hsl(var(--text-muted))]">
                 No regions detected.
                 <br />
-                <span className="text-xs">Use Draw tool (N) to add regions.</span>
+                <span className="text-xs">Use the draw tool (N) to add regions.</span>
               </div>
             ) : (
               regions.map((r) => (

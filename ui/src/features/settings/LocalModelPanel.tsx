@@ -38,7 +38,7 @@ export function LocalModelPanel({ server, model }: { server?: string; model?: st
         <div className="flex items-center gap-2">
           {data.running
             ? <Badge variant="done">Ollama {data.version}</Badge>
-            : <Badge variant="failed">not running</Badge>}
+            : <Badge variant="failed">Not running</Badge>}
           <Button size="icon" variant="ghost" className="size-6" onClick={() => refetch()} title="Refresh">
             <RefreshCw size={12} className={isFetching ? "animate-spin" : ""} />
           </Button>
@@ -57,7 +57,7 @@ export function LocalModelPanel({ server, model }: { server?: string; model?: st
         {data.gpu
           ? <>GPU: {data.gpu.name} · {data.gpu.free_gb} GB free of {data.gpu.total_gb} GB</>
           : <>No CUDA GPU found — models run on the CPU (slow).</>}
-        {" · "}suggested: <span className="font-mono text-[hsl(var(--text))]">{data.suggested.tag}</span>
+        {" · "}Suggested: <span className="font-mono text-[hsl(var(--text))]">{data.suggested.tag}</span>
         {" "}({data.suggested.note})
       </p>
 
@@ -69,7 +69,7 @@ export function LocalModelPanel({ server, model }: { server?: string; model?: st
               ? vision.map((m) => (
                   <span key={m.name} className="mr-2 font-mono text-[hsl(var(--text))]">{m.name} <span className="text-[hsl(var(--text-muted))]">{m.size_gb} GB</span></span>
                 ))
-              : "none"}
+              : "None"}
           </p>
           {progress ? (
             <PullProgress tag={want} p={progress} />

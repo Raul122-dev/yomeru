@@ -102,11 +102,11 @@ export function Combobox({
         >
           {loading ? (
             <p className="p-3 text-xs text-[hsl(var(--text-muted))]">
-              loading models…
+              Loading models…
             </p>
           ) : filtered.length === 0 ? (
             <p className="p-3 text-xs text-[hsl(var(--text-muted))]">
-              {search ? "no matches" : "no models available"}
+              {search ? "No matches" : "No models available"}
             </p>
           ) : (
             filtered.map((item) => (

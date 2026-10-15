@@ -121,7 +121,7 @@ function Layout() {
         <MobileBar />
         <main className="mx-auto max-w-[1400px] px-4 py-6 md:px-8 md:py-8">
           <ErrorBoundary resetKey={pathname}>
-            <Suspense fallback={<p className="text-sm text-[hsl(var(--text-muted))]">loading…</p>}>
+            <Suspense fallback={<p className="text-sm text-[hsl(var(--text-muted))]">Loading…</p>}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/new" element={<NewRun />} />

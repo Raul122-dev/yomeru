@@ -156,6 +156,7 @@ export interface LocalModelsInfo {
 }
 
 export interface BackendInfo {
+  title?: string;
   name: string;
   description: string;
   needs_gpu: boolean;

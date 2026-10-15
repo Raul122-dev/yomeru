@@ -9,11 +9,11 @@ import { cn } from "../lib/utils";
 // Mirrors lib/rendering/pil.py _FONT_STYLES: for each style the FIRST
 // installed file in the list is used.
 const FONT_SLOTS = [
-  { name: "ComicNeue-Bold.ttf", style: "regular · bold", note: "1st choice for speech and shouting" },
-  { name: "ComicNeue-Regular.ttf", style: "thought · narration", note: "1st choice" },
-  { name: "AnimeAce.ttf", style: "regular · thought · narration", note: "used if ComicNeue is missing" },
-  { name: "Bangers-Regular.ttf", style: "bold", note: "used if ComicNeue-Bold is missing" },
-  { name: "CC Wild Words Roman.ttf", style: "regular", note: "after AnimeAce" },
+  { name: "ComicNeue-Bold.ttf", style: "Regular · bold", note: "1st choice for speech and shouting" },
+  { name: "ComicNeue-Regular.ttf", style: "Thought · narration", note: "1st choice" },
+  { name: "AnimeAce.ttf", style: "Regular · thought · narration", note: "used if ComicNeue is missing" },
+  { name: "Bangers-Regular.ttf", style: "Bold", note: "used if ComicNeue-Bold is missing" },
+  { name: "CC Wild Words Roman.ttf", style: "Regular", note: "after AnimeAce" },
   { name: "NotoSansCJK-Regular.ttc", style: "CJK", note: "Japanese, Korean, Chinese text" },
 ];
 
@@ -54,16 +54,12 @@ export function FontsCard() {
     <Card className="mb-4">
       <h2 className="mb-1 text-sm font-medium flex items-center gap-2">
         <Type size={13} className="text-[hsl(var(--accent2))]" />
-        fonts
+        Fonts
       </h2>
       <p className="mb-4 text-xs text-[hsl(var(--text-muted))] leading-relaxed">
-        Upload fonts via drag-and-drop below, or copy them manually to{" "}
-        <code className="font-mono text-xs bg-[hsl(var(--bg-subtle))] px-1 rounded">
-          src/yomeru/assets/fonts/
-        </code>
-        . The renderer picks fonts by file name: for each style it uses the first
-        installed file in the order below. Other uploaded fonts are only used as a
-        last resort. Re-rendering picks up font changes.
+        Drop font files below to use your own lettering. For each text style yomeru
+        uses the first installed font in the order below; other fonts you add are
+        only a last resort. Run rendering again to see a font change.
       </p>
 
       {/* recommended slots */}
@@ -96,7 +92,7 @@ export function FontsCard() {
                     : "text-[hsl(var(--text-muted)/.5)]",
                 )}
               >
-                {installed ? "installed" : "missing"}
+                {installed ? "Installed" : "Not installed"}
               </span>
             </div>
           );
@@ -107,7 +103,7 @@ export function FontsCard() {
       {fonts.length > 0 && (
         <div className="mb-4 space-y-1">
           <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))] mb-2">
-            installed ({fonts.length})
+            Installed ({fonts.length})
           </p>
           {fonts.map((f) => (
             <div
@@ -119,7 +115,7 @@ export function FontsCard() {
                 {f.name}
               </span>
               <span className="text-xs text-[hsl(var(--text-muted)/.6)]">
-                {f.size_kb} KB
+                {f.size_kb >= 1024 ? `${(f.size_kb / 1024).toFixed(1)} MB` : `${Math.round(f.size_kb)} KB`}
               </span>
               <button
                 onClick={() => remove.mutate(f.name)}
@@ -134,7 +130,7 @@ export function FontsCard() {
 
       {isLoading && (
         <p className="text-xs text-[hsl(var(--text-muted))]">
-          loading fonts…
+          Loading fonts…
         </p>
       )}
 
@@ -157,7 +153,7 @@ export function FontsCard() {
         <p className="text-xs text-[hsl(var(--text-muted))] text-center">
           {upload.isPending
             ? "uploading…"
-            : "drop .ttf / .otf / .ttc here, or click to browse"}
+            : "Drop .ttf / .otf / .ttc here, or click to browse"}
         </p>
         <input
           ref={inputRef}

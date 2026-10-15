@@ -117,7 +117,7 @@ function DialogueEditRow({
           >
             {isSkipped ? "—" : "✓"}
           </span>
-          <span className="font-mono text-xs text-[hsl(var(--accent2))] w-5">
+          <span className="font-mono text-xs text-[hsl(var(--accent2))] w-5" title={`Region ${row.region_id}`}>
             r{row.region_id}
           </span>
           {flags?.map((k) => <ReviewBadge key={k} kind={k} />)}
@@ -136,14 +136,14 @@ function DialogueEditRow({
           <button
             onClick={() => onChange({ skip: !isSkipped })}
             className="text-[hsl(var(--text-muted)/.5)] hover:text-[hsl(var(--text))] transition-colors"
-            title={isSkipped ? "enable render" : "skip render"}
+            title={isSkipped ? "Draw this line" : "Don't draw this line"}
           >
             {isSkipped ? <EyeOff size={11} /> : <Eye size={11} />}
           </button>
           <button
             onClick={() => setExpanded((v) => !v)}
             className="text-[hsl(var(--text-muted)/.5)] hover:text-[hsl(var(--text))] transition-colors"
-            title="style options"
+            title="Style options"
           >
             {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
           </button>
@@ -153,9 +153,15 @@ function DialogueEditRow({
       {/* original text + render info */}
       <div className="px-3 pb-1 flex gap-3 text-xs text-[hsl(var(--text-muted)/.6)]">
         <span className="truncate flex-1">{row.text}</span>
-        {row.font_size && <span>{row.font_size}px</span>}
-        {row.font_style && <span>{row.font_style}</span>}
-        {row.lines && <span>{row.lines.length}L</span>}
+        {(row.font_size || row.font_style || row.lines) && (
+          <span>
+            {[
+              row.font_size ? `${row.font_size} px` : null,
+              row.font_style,
+              row.lines ? `${row.lines.length} ${row.lines.length === 1 ? "line" : "lines"}` : null,
+            ].filter(Boolean).join(" · ")}
+          </span>
+        )}
       </div>
 
       {/* expanded style controls */}
@@ -164,7 +170,7 @@ function DialogueEditRow({
           {/* font style */}
           <div>
             <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-              style
+              Style
             </p>
             <div className="flex gap-1">
               {FONT_STYLES.map((s) => (
@@ -180,7 +186,7 @@ function DialogueEditRow({
                       : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))]",
                   )}
                 >
-                  {s}
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
                 </button>
               ))}
             </div>
@@ -189,7 +195,7 @@ function DialogueEditRow({
           {/* tone */}
           <div>
             <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-              tone
+              Tone
             </p>
             <div className="flex flex-wrap gap-1">
               {TONES.map((t) => (
@@ -203,7 +209,7 @@ function DialogueEditRow({
                       : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))]",
                   )}
                 >
-                  {t}
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
                 </button>
               ))}
             </div>
@@ -212,7 +218,7 @@ function DialogueEditRow({
           {/* font size override */}
           <div>
             <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-              size override
+              Font size
               {override.font_size_override && (
                 <button
                   onClick={() => onChange({ font_size_override: null })}
@@ -227,7 +233,7 @@ function DialogueEditRow({
               min={6}
               max={60}
               value={override.font_size_override ?? ""}
-              placeholder={String(row.font_size ?? "auto")}
+              placeholder={String(row.font_size ?? "Auto")}
               onChange={(e) =>
                 onChange({
                   font_size_override: e.target.value
@@ -246,7 +252,7 @@ function DialogueEditRow({
                 onClick={() => onChange({})}
                 className="text-xs text-[hsl(var(--text-muted)/.5)] hover:text-[hsl(var(--danger))] transition-colors"
               >
-                reset this
+                Reset this line
               </button>
             </div>
           )}
@@ -387,7 +393,7 @@ export function RenderEditor({
   if (rows.length === 0) {
     return (
       <div className="rounded border border-[hsl(var(--border))] px-4 py-6 text-center text-xs text-[hsl(var(--text-muted))]">
-        no render data for p{pageNum} — run typesetting first
+        No render data for page {pageNum} — run rendering first
       </div>
     );
   }
@@ -397,11 +403,11 @@ export function RenderEditor({
       {/* toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--bg-subtle))]">
         <span className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
-          render editor · p{pageNum}
+          Render editor · page {pageNum}
         </span>
         {isDirty && (
           <span className="text-xs text-[hsl(var(--accent2))]">
-            unsaved changes
+            Unsaved changes
           </span>
         )}
         {error && (
@@ -413,14 +419,14 @@ export function RenderEditor({
             disabled={!isDirty}
             className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
           >
-            <RotateCcw size={10} /> revert
+            <RotateCcw size={10} /> Revert
           </button>
           <button
             onClick={handleSave}
             disabled={!isDirty || isSaving}
             className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
           >
-            <Save size={10} /> {isSaving ? "saving…" : "save"}
+            <Save size={10} /> {isSaving ? "Saving…" : "Save"}
           </button>
           <button
             onClick={handleReRender}
@@ -432,7 +438,7 @@ export function RenderEditor({
               size={10}
               className={isReRendering ? "animate-spin" : ""}
             />
-            {isReRendering ? "re-rendering…" : "▶ re-render page"}
+            {isReRendering ? "Rendering…" : "Render this page again"}
           </button>
         </div>
       </div>

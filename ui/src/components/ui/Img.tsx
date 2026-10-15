@@ -50,7 +50,7 @@ export function Img({ src, sizes = "100vw", maxWidth = 2400, aspect, className, 
              className={cn("absolute inset-0 size-full scale-110 object-cover blur-xl", imgClassName)} />
       )}
       {failed ? (
-        <div className="grid size-full min-h-24 place-items-center text-xs text-[hsl(var(--text-muted))]">image unavailable</div>
+        <div className="grid size-full min-h-24 place-items-center text-xs text-[hsl(var(--text-muted))]">Image unavailable</div>
       ) : (
         <img
           {...rest}

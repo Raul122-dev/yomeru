@@ -104,18 +104,18 @@ export function DetectionPhase({ runId, pages }: DetectionPhaseProps) {
                   title={counts ? Object.entries(counts).map(([l, n]) => `${n} ${LABEL_NAMES[l] ?? l}`).join(" · ") : undefined}
                 >
                   <div className="relative aspect-[5/7] overflow-hidden rounded-[4px] bg-[hsl(var(--bg-subtle))]">
-                    <Img src={pageImageUrl(runId, p.filename)} alt={`page ${p.page}`} loading="lazy" sizes="160px" maxWidth={320}
+                    <Img src={pageImageUrl(runId, p.filename)} alt={`Page ${p.page}`} loading="lazy" sizes="160px" maxWidth={320}
                          className="size-full" imgClassName={cn("object-cover object-top", active && "opacity-60")} />
                     {det && (
                       <span className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-center gap-1 rounded-[4px] bg-[hsl(var(--bg-surface)/.92)] py-1 text-xs opacity-0 transition-opacity group-hover:opacity-100">
-                        <Pencil size={11} /> edit boxes
+                        <Pencil size={11} /> Edit boxes
                       </span>
                     )}
                   </div>
                   <div className="mt-1.5 flex items-baseline justify-between px-0.5">
                     <span className="font-mono text-xs font-medium">p{String(p.page).padStart(2, "0")}</span>
                     <span className="font-mono text-[11px] text-[hsl(var(--text-muted))]">
-                      {active ? "detecting…" : det ? `${det.regions.length} regions` : "—"}
+                      {active ? "Detecting…" : det ? `${det.regions.length} regions` : "—"}
                     </span>
                   </div>
                 </button>

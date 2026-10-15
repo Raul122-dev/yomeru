@@ -180,7 +180,7 @@ const NODE_TYPES = { page: PageNode };
 
 // ── layout ────────────────────────────────────────────────────────────────────
 const W = 192,
-  H = 172,
+  H = 236, // tallest card (thumbnail + footer) is ~221 px; rows must not overlap
   GAP_X = 56,
   GAP_Y = 48,
   COLS = 4;

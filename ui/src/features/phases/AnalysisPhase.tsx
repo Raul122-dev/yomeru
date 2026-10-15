@@ -115,7 +115,7 @@ function ContextSummary({ runId, context, names }: {
         {/* Scene */}
         <div className="space-y-2">
           <h4 className="text-xs font-medium uppercase tracking-wider text-[hsl(var(--text-muted))]">
-            Current Scene
+            Current scene
           </h4>
           {scene ? (
             <div className="rounded bg-[hsl(var(--bg-subtle))] p-3 space-y-2">
@@ -137,7 +137,7 @@ function ContextSummary({ runId, context, names }: {
         {/* Recent page summaries */}
         <div className="space-y-2">
           <h4 className="text-xs font-medium uppercase tracking-wider text-[hsl(var(--text-muted))]">
-            Story Progress
+            Story progress
           </h4>
           <div className="max-h-64 space-y-1.5 overflow-auto">
             {summaries.map((summary) => (
@@ -227,7 +227,7 @@ export function AnalysisPhase({ runId, pages }: AnalysisPhaseProps) {
       >
         {failedPages.length > 0 && !v.isRunning && (
           <div className="flex items-center gap-3 border-t border-[hsl(var(--border))] px-5 py-2.5 text-sm text-[hsl(var(--danger))]">
-            {failedPages.length} {failedPages.length === 1 ? "page" : "pages"} without analysis
+            {failedPages.length} {failedPages.length === 1 ? "page" : "pages"} not read yet
             <Button size="sm" variant="danger" className="ml-auto"
                     onClick={() => void v.start({ page_scope: failedPages })}>
               <RefreshCw size={12} /> Retry {failedPages.length === 1 ? "it" : "them"}
@@ -237,7 +237,7 @@ export function AnalysisPhase({ runId, pages }: AnalysisPhaseProps) {
       </PhaseHeader>
 
       {merged.length === 0 && !v.isRunning ? (
-        <EmptyState>Run analysis once detection is done. The model reads each page in order and keeps track of characters and story.</EmptyState>
+        <EmptyState>Run this step once detection is done. The model reads each page in order and keeps track of characters and story.</EmptyState>
       ) : (
         <>
           <FlowDiagram
@@ -263,7 +263,7 @@ export function AnalysisPhase({ runId, pages }: AnalysisPhaseProps) {
                   try {
                     await reanalyzeWithCorrections(runId, selected.page, str);
                     qc.invalidateQueries({ queryKey: ["run", runId] });
-                    toast(`Re-analysing page ${selected.page}…`);
+                    toast(`Reading page ${selected.page} again…`);
                   } catch (e) {
                     toast.error(e instanceof Error ? e.message : String(e));
                   }

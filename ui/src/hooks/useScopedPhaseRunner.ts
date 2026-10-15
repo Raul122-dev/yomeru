@@ -55,7 +55,7 @@ export function useScopedPhaseRunner({
     completedRef.current = true;
     setProgress({ status: failed ? "failed" : "done", error: failed ? error : undefined });
     cleanup();
-    if (failed) onError?.(error || "Phase failed");
+    if (failed) onError?.(error || "This step failed");
     else onComplete?.();
   }, [cleanup, onComplete, onError]);
 
@@ -109,7 +109,7 @@ export function useScopedPhaseRunner({
         const onErr = () => {
           ws.removeEventListener("open", onOpen);
           ws.removeEventListener("error", onErr);
-          reject(new Error("WebSocket connection failed"));
+          reject(new Error("Lost the connection to the server"));
         };
 
         if (ws.readyState === WebSocket.OPEN) {

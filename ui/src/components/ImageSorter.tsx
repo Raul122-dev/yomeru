@@ -172,7 +172,7 @@ function AddMoreCard({ onFiles }: { onFiles: (files: File[]) => void }) {
     >
       <Plus size={20} className="text-[hsl(var(--text-muted))]" />
       <span className="text-xs text-[hsl(var(--text-muted))]">
-        add pages
+        Add pages
       </span>
       <input
         ref={inputRef}
@@ -352,7 +352,7 @@ export function ImageSorter({ onChange }: ImageSorterProps) {
           }}
           className="hover:text-[hsl(var(--danger))] transition-colors"
         >
-          clear all
+          Clear all
         </button>
       </div>
 

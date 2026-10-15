@@ -43,7 +43,7 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
       />
 
       {!v.hasOutput ? (
-        <EmptyState>Run matching once read & translate is done to review which line goes in which bubble.</EmptyState>
+        <EmptyState>Run matching once Read & translate is done to review which line goes in which bubble.</EmptyState>
       ) : v.pageLogs.length === 0 ? (
         <EmptyState>No matching output yet.</EmptyState>
       ) : (
@@ -75,12 +75,12 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
               <div className="grid gap-5 lg:grid-cols-2">
                 <div>
                   <Label>Original</Label>
-                  <ImageViewer src={`${pageImageUrl(runId, sel.filename)}?v=${v.nonce}`} alt={sel.filename} label={`original · p${sel.page}`} />
+                  <ImageViewer src={`${pageImageUrl(runId, sel.filename)}?v=${v.nonce}`} alt={sel.filename} label={`Original · page ${sel.page}`} />
                 </div>
                 <div>
                   <Label>Assignments</Label>
                   {debugImg ? (
-                    <ImageViewer src={`${debugImageUrl(runId, debugImg)}?v=${v.nonce}`} alt={`matching p${sel.page}`} label={`matching · p${sel.page}`} />
+                    <ImageViewer src={`${debugImageUrl(runId, debugImg)}?v=${v.nonce}`} alt={`Matching for page ${sel.page}`} label={`Matching · page ${sel.page}`} />
                   ) : (
                     <EmptyState>No matching preview for this page.</EmptyState>
                   )}

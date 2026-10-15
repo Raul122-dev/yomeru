@@ -29,7 +29,7 @@ class VlmOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-@register("analysis", "vlm", options=VlmOptions, needs_gpu=False,
+@register("analysis", "vlm", title="API model (recommended)", options=VlmOptions, needs_gpu=False,
           description="A vision model reads each page and translates it in one call (any OpenAI/Anthropic-compatible API)")
 class VlmAnalyzer:
     def __init__(self, options: VlmOptions):
@@ -121,7 +121,7 @@ def _reply_schema(read_only: bool = False) -> dict:
     return out
 
 
-@register("analysis", "local", options=LocalOptions, needs_gpu=True,
+@register("analysis", "local", title="Local model (experimental)", options=LocalOptions, needs_gpu=True,
           description="Experimental — a vision model running on this machine (Ollama). "
                       "Free, but translations are clearly below the API models.")
 class LocalAnalyzer:

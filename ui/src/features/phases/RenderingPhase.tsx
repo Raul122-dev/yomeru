@@ -43,7 +43,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
               page: e.page,
               filename: e.filename,
               src: prodUrl(e.page),
-              meta: e.log?.s5_rendering ? `${e.log.s5_rendering.ok} ok` : "not rendered",
+              meta: e.log?.s5_rendering ? `${e.log.s5_rendering.ok} ok` : "Not rendered",
               flag: !e.log?.s5_rendering ? "error" : e.log.s5_rendering.skipped || review[e.page] ? "warn" : undefined,
               review: review[e.page]?.length,
             }))}
@@ -59,11 +59,11 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
               <div className="grid gap-5 lg:grid-cols-2">
                 <div>
                   <Label>Original</Label>
-                  <ImageViewer src={`${pageImageUrl(runId, sel.filename)}?v=${v.nonce}`} alt={sel.filename} label={`original · p${sel.page}`} />
+                  <ImageViewer src={`${pageImageUrl(runId, sel.filename)}?v=${v.nonce}`} alt={sel.filename} label={`Original · page ${sel.page}`} />
                 </div>
                 <div>
                   <Label>Rendered</Label>
-                  <ImageViewer key={`prod-${sel.page}`} src={`${prodUrl(sel.page)}&p=${sel.page}`} alt={`rendered p${sel.page}`} label={`rendered · p${sel.page}`} />
+                  <ImageViewer key={`prod-${sel.page}`} src={`${prodUrl(sel.page)}&p=${sel.page}`} alt={`Rendered page ${sel.page}`} label={`Rendered · page ${sel.page}`} />
                 </div>
               </div>
               <details className="mt-5 group">
@@ -72,8 +72,8 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                   <ImageViewer
                     key={`debug-${sel.page}`}
                     src={`/api/phases/${runId}/rendering/scanline-preview/${sel.page}?v=${v.nonce}&p=${sel.page}`}
-                    alt={`debug p${sel.page}`}
-                    label={`debug · p${sel.page}`}
+                    alt={`Layout debug for page ${sel.page}`}
+                    label={`Layout debug · page ${sel.page}`}
                   />
                   <p className="mt-2 text-xs text-[hsl(var(--text-muted))]">Green outline = detected bubble contour used to fit the text.</p>
                 </div>

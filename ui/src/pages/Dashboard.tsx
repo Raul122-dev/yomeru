@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { deleteRun, listRuns } from "../lib/api";
 import type { PhaseName, PhaseStatus, Run } from "../lib/types";
 import { buttonVariants } from "../components/ui/button";
-import { StatusIcon } from "../lib/status";
+import { STATUS_LABEL, StatusIcon } from "../lib/status";
+import { LABELS } from "../features/phases/PhaseBar";
 import { cn } from "../lib/utils";
 import { Img } from "../components/ui/Img";
 
@@ -32,7 +33,7 @@ function PipelineTicks({ run }: { run: Run }) {
       {PHASES.map((p) => {
         const s = (run.phase_status?.[p] ?? "pending") as PhaseStatus;
         return (
-          <span key={p} title={`${p}: ${s}`}
+          <span key={p} title={`${LABELS[p]}: ${STATUS_LABEL[s]}`}
             className={cn(
               "h-1 flex-1 rounded-full",
               s === "done" ? "bg-[hsl(var(--text)/.45)]"
@@ -62,7 +63,7 @@ function RunCard({ run }: { run: Run }) {
   const del = useMutation({
     mutationFn: async () => {
       const r = await deleteRun(run.id);
-      if (!r.ok) throw new Error(`delete failed (${r.status})`);
+      if (!r.ok) throw new Error(`Delete failed (${r.status})`);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["runs"] });
@@ -190,7 +191,7 @@ export default function Dashboard() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-[hsl(var(--text-muted))]">loading…</p>
+        <p className="text-sm text-[hsl(var(--text-muted))]">Loading…</p>
       ) : runs.length === 0 ? (
         <div className="screentone-fade rounded-[var(--radius-md)] border border-dashed border-[hsl(var(--border-strong))] px-8 py-16">
           <p className="eyebrow">No runs yet</p>

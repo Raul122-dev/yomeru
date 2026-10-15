@@ -35,7 +35,7 @@ export function PipelineSettingsForm({
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Models</h3>
         <BackendPicker
           phase="analysis"
-          label="read & translate technique"
+          label="Read & translate technique"
           value={value.analysis ?? { backend: "vlm", options: {} }}
           onChange={(v) => onChange({ ...value, analysis: { ...analysis, ...v } })}
         />
@@ -46,7 +46,7 @@ export function PipelineSettingsForm({
           />
         )}
         {value.analysis?.backend !== "local" && <ModelPicker
-          label="vision model"
+          label="Vision model"
           hint="Reads each page and translates. Must accept images."
           value={value.analysis_model}
           onChange={(m) => onChange({ ...value, analysis_model: m })}
@@ -61,24 +61,24 @@ export function PipelineSettingsForm({
         {sep.enabled && (
           <div className="ml-1 flex flex-col gap-3 border-l border-[hsl(var(--border))] pl-4">
             <Select
-              label="translation model"
+              label="Translation model"
               value={sep.local ? "local" : "api"}
               onChange={(e) => setSep({ local: e.target.value === "local" })}
             >
               <option value="api">API (a connection)</option>
-              <option value="local">Local — experimental</option>
+              <option value="local">Local (experimental)</option>
             </Select>
             {sep.local ? (
               <>
                 <div className="flex flex-wrap gap-3">
                   <Input
-                    label="local model"
+                    label="Local model"
                     hint="'auto' picks one for your GPU; or an Ollama tag (e.g. qwen3.5:9b)"
                     value={sep.local_model}
                     onChange={(e) => setSep({ local_model: e.target.value || "auto" })}
                   />
                   <Input
-                    label="server"
+                    label="Server"
                     value={sep.local_server}
                     onChange={(e) => setSep({ local_server: e.target.value })}
                   />
@@ -87,7 +87,7 @@ export function PipelineSettingsForm({
               </>
             ) : (
               <ModelPicker
-                label="text model"
+                label="Text model"
                 hint="Translates the whole chapter from what the vision model read. Any chat model works; it doesn't need vision."
                 value={value.translation_model}
                 onChange={(m) => onChange({ ...value, translation_model: m })}
@@ -103,20 +103,20 @@ export function PipelineSettingsForm({
       <section className="flex flex-col gap-4">
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Language</h3>
         <div className="flex items-center gap-2">
-          <Select label="source" value={value.language.source} onChange={(e) => set("language", { source: e.target.value })}>
+          <Select label="Source" value={value.language.source} onChange={(e) => set("language", { source: e.target.value })}>
             {SOURCE_LANGUAGES.map((l) => (
               <option key={l.value} value={l.value}>{l.label}</option>
             ))}
           </Select>
           <ArrowRight size={16} className="mt-5 shrink-0 text-[hsl(var(--text-muted))]" />
-          <Select label="target" value={value.language.target} onChange={(e) => set("language", { target: e.target.value })}>
+          <Select label="Target" value={value.language.target} onChange={(e) => set("language", { target: e.target.value })}>
             {TARGET_LANGUAGES.map((l) => (
               <option key={l.value} value={l.value}>{l.label}</option>
             ))}
           </Select>
         </div>
         <Select
-          label="format"
+          label="Format"
           value={value.language.comic_format}
           onChange={(e) => set("language", { comic_format: e.target.value })}
         >
@@ -133,7 +133,7 @@ export function PipelineSettingsForm({
           Every later phase relies on these regions.
         </p>
         <Slider
-          label="confidence threshold"
+          label="Confidence threshold"
           value={value.detection.threshold}
           min={0.1}
           max={0.9}
@@ -147,7 +147,7 @@ export function PipelineSettingsForm({
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Matching</h3>
         <BackendPicker
           phase="matching"
-          label="matching"
+          label="Matching technique"
           value={value.matching}
           onChange={(v) => onChange({ ...value, matching: v })}
         />
@@ -158,13 +158,13 @@ export function PipelineSettingsForm({
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Inpainting & rendering</h3>
         <BackendPicker
           phase="inpainting"
-          label="inpainting"
+          label="Inpainting technique"
           value={value.inpainting}
           onChange={(v) => onChange({ ...value, inpainting: v })}
         />
         <BackendPicker
           phase="rendering"
-          label="rendering"
+          label="Rendering technique"
           value={value.rendering}
           onChange={(v) => onChange({ ...value, rendering: { ...value.rendering, ...v } })}
         />

@@ -39,3 +39,4 @@ for normal dialogue. Research phase first; implementation after the owner approv
 
 ## Log (worker)
 - 2026-10-14: research + experiments outside the repo (no code changes).
+- 2026-10-15 (yoru): plugins can now declare a human `title=` in @register (shown in Settings). Please add `title="Scanline (programmatic)"` to the scanline registration in plugins/rendering.py (your file) and a title for the new backend.

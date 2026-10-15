@@ -5,13 +5,13 @@ import { cn } from "./utils";
 
 /** One vocabulary for phase status across the app. */
 export const STATUS_LABEL: Record<PhaseStatus, string> = {
-  pending: "pending",
-  running: "running",
-  done: "done",
-  partial: "partial",
-  failed: "failed",
-  stale: "outdated",
-  cancelled: "cancelled",
+  pending: "Pending",
+  running: "Running",
+  done: "Done",
+  partial: "Partial",
+  failed: "Failed",
+  stale: "Outdated",
+  cancelled: "Cancelled",
 };
 
 export const STATUS_HINT: Partial<Record<PhaseStatus, string>> = {
