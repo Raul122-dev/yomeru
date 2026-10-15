@@ -343,6 +343,9 @@ def render_page(req: RenderRequest, options, providers: list[Provider]) -> Rende
     budget = _Budget(options.max_cost_per_run_usd, req.edit_cache.spent_usd() if req.edit_cache else 0.0)
     with ThreadPoolExecutor(max(1, min(options.max_parallel, len(jobs)))) as ex:
         results = list(ex.map(lambda j: _edit(j, providers, req.edit_cache, budget, options.max_drift), jobs))
+    for p in providers:   # local servers give the GPU back to the rest of the pipeline
+        if getattr(p.impl, "local", False) and hasattr(p.impl, "release"):
+            p.impl.release()
 
     done = {j.event["dialogue_index"]: (j, img, rec) for j, (img, rec) in zip(jobs, results) if img is not None}
     for j, (img, rec) in zip(jobs, results):

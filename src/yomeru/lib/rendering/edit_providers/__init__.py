@@ -9,6 +9,7 @@ package through the `yomeru.edit_providers` entry point group:
         local = False                      # True = uses this machine's GPU
         def __init__(self, base_url: str, api_key: str, model: str, quality: str = ""): ...
         def edit(self, req: EditRequest) -> EditResult: ...   # raises EditError subclasses
+        def release(self) -> None: ...     # optional: free resources once a page is done
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ import importlib
 from importlib.metadata import entry_points
 from typing import Any, Callable
 
-_BUILTINS = ["yomeru.lib.rendering.edit_providers.openrouter"]
+_BUILTINS = ["yomeru.lib.rendering.edit_providers.openrouter", "yomeru.lib.rendering.edit_providers.comfyui"]
 _PROVIDERS: dict[str, Callable[..., Any]] = {}
 _loaded = False
 

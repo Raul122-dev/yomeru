@@ -277,3 +277,69 @@ def test_openrouter_classifies_errors(monkeypatch):
     monkeypatch.setattr(g, "_post", lambda path, body: sent.append(path) or {"choices": [{"message": {
         "images": [{"image_url": {"url": orr._data_url(Image.new("RGB", (64, 32)))}}]}}]})
     assert g.edit(req).image.size == (64, 32) and sent == ["/chat/completions"]
+
+
+def test_comfyui_runs_a_workflow_template(tmp_path, monkeypatch):
+    """Placeholders are filled (numbers stay numbers), the crop is uploaded,
+    the first saved image is the answer; an execution error is 'unavailable'."""
+    import io
+    from yomeru.core.contracts import EditRequest
+    from yomeru.lib.rendering.edit_providers import comfyui
+    import yomeru.core.paths as paths
+
+    (tmp_path / "workflows").mkdir()
+    (tmp_path / "workflows" / "wf.json").write_text(json.dumps({
+        "_yomeru": {"description": "x"},
+        "1": {"class_type": "LoadImage", "inputs": {"image": "{{image}}"}},
+        "2": {"class_type": "Enc", "inputs": {"prompt": "{{prompt}}", "seed": "{{seed}}", "note": "w={{width}}"}}}))
+    monkeypatch.setattr(paths, "DATA_DIR", tmp_path)
+    assert comfyui.find_workflow("qwen-image-2.1-edit") is not None      # shipped example
+    with pytest.raises(EditUnavailable):
+        comfyui.ComfyUI(base_url="", api_key="", model="nope", quality="")
+    c = comfyui.ComfyUI(base_url="http://x", api_key="", model="wf", quality="")
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 20), RED).save(buf, "PNG")
+    seen, state = {}, {"error": False}
+
+    def request(path, data=None, headers=None, timeout=60.0):
+        if path == "/upload/image":
+            return json.dumps({"name": "up.png", "subfolder": ""}).encode()
+        if path == "/prompt":
+            seen["graph"] = json.loads(data)["prompt"]
+            return json.dumps({"prompt_id": "p1", "node_errors": {}}).encode()
+        if path.startswith("/history/"):
+            if state["error"]:
+                return json.dumps({"p1": {"status": {"status_str": "error", "messages": [
+                    ["execution_error", {"exception_message": "out of memory"}]]}}}).encode()
+            return json.dumps({"p1": {"status": {"status_str": "success", "completed": True}, "outputs": {
+                "9": {"images": [{"filename": "o.png", "subfolder": "", "type": "output"}]}}}}).encode()
+        if path.startswith("/view?"):
+            return buf.getvalue()
+        if path == "/free":
+            seen["free"] = True
+            return b"{}"
+        raise AssertionError(path)
+
+    monkeypatch.setattr(c, "_request", request)
+    res = c.edit(EditRequest(image=Image.new("RGB", (64, 32)), prompt='say "hi"', size=(64, 32), seed=7))
+    assert res.image.size == (40, 20) and res.cost_usd == 0.0
+    g = seen["graph"]
+    assert "_yomeru" not in g and g["1"]["inputs"]["image"] == "up.png"
+    assert g["2"]["inputs"] == {"prompt": 'say "hi"', "seed": 7, "note": "w=64"}
+    state["error"] = True
+    with pytest.raises(EditUnavailable, match="out of memory"):
+        c.edit(EditRequest(image=Image.new("RGB", (64, 32)), prompt="x", size=(64, 32)))
+    c.release()
+    assert seen["free"]
+
+
+def test_local_providers_are_released_after_the_page(run):
+    class Local(Fake):
+        local = True
+        released = 0
+
+        def release(self):
+            Local.released += 1
+
+    render(run, {"scope": "all"}, providers(Local(), tag="local"))
+    assert Local.released == 1

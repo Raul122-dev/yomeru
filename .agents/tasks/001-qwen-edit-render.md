@@ -127,3 +127,11 @@ the bubble contour.
   (+ `lib/rendering/edit_providers/`); `lib/rendering/SPEC.md` backends table is outdated.
   UI note for the Fase 4 task: the render editor must keep `engine`/`seed` when it re-saves
   the overrides list.
+- 2026-10-15: `comfyui` adapter (generic: workflow template in API format with `{{image}}`,
+  `{{prompt}}`, `{{seed}}`, `{{width}}`, `{{height}}`; lookup path → `<data>/workflows/` →
+  shipped `assets/workflows/`), example `qwen-image-2.1-edit.json` (the validated turbo int8
+  setup), `release()` hook → `POST /free` after each page that used a local provider.
+  Verified: 162 tests, ruff, goldens identical; real page with Qwen in ComfyUI (5 dialogues,
+  146 s incl. cold load, VRAM back to idle after the page). Known: Qwen garbles some vertical
+  shouts (as in the tests); its background tone can differ slightly → visible patch on free
+  text (idea: match tone on the mask border before pasting).

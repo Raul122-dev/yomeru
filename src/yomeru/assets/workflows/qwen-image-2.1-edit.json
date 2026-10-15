@@ -1,0 +1,142 @@
+{
+ "_yomeru": {
+  "description": "Qwen-Image 2.1 edit, turbo int8, 8 steps (the setup validated for re-lettering). Needs these files in ComfyUI: diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors, text_encoders/qwen3vl_8b_w4a8.safetensors, vae/qwen_image_2.1_vae_bf16.safetensors. Placeholders: {{image}} {{prompt}} {{seed}} {{width}} {{height}}."
+ },
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen3vl_8b_w4a8.safetensors",
+   "type": "qwen_image",
+   "device": "default"
+  }
+ },
+ "3": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+  }
+ },
+ "11": {
+  "class_type": "QwenImage21Cache",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "device": "auto",
+   "dtype": "default"
+  }
+ },
+ "21": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "{{image}}"
+  }
+ },
+ "4": {
+  "class_type": "TextEncodeQwenImage21",
+  "inputs": {
+   "clip": [
+    "2",
+    0
+   ],
+   "prompt": "{{prompt}}",
+   "negative_prompt": "",
+   "resolution": 0,
+   "vae": [
+    "3",
+    0
+   ],
+   "images.image_1": [
+    "21",
+    0
+   ]
+  }
+ },
+ "30": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": "{{seed}}"
+  }
+ },
+ "31": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  }
+ },
+ "32": {
+  "class_type": "ManualSigmas",
+  "inputs": {
+   "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0.0"
+  }
+ },
+ "33": {
+  "class_type": "BasicGuider",
+  "inputs": {
+   "model": [
+    "11",
+    0
+   ],
+   "conditioning": [
+    "4",
+    0
+   ]
+  }
+ },
+ "6": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "30",
+    0
+   ],
+   "guider": [
+    "33",
+    0
+   ],
+   "sampler": [
+    "31",
+    0
+   ],
+   "sigmas": [
+    "32",
+    0
+   ],
+   "latent_image": [
+    "4",
+    2
+   ]
+  }
+ },
+ "7": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "6",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "8": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "7",
+    0
+   ],
+   "filename_prefix": "yomeru/edit"
+  }
+ }
+}
