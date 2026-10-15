@@ -89,7 +89,7 @@ def run(
             from yomeru.lib.rendering.scanline_engine import render_page
             # the facade takes the GPU lock only if the backend needs it
             rendered = render_page(run, page_num, use_translation=use_translation,
-                                   backend=backend, backend_options=backend_options)
+                                   backend=backend, backend_options=backend_options, edit_calls=True)
             scanline_prod = rendered.production_path
 
             # The only lossy encode: final page in the source's format

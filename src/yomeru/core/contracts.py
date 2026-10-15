@@ -129,6 +129,9 @@ class RenderRequest:
     lang_code: str                     # hyphenation language of the DRAWN text (pyphen code)
     drawn_language: str = ""           # name of the drawn language ("Spanish"), for image-edit prompts
     edit_cache: "EditCache | None" = None  # stored image edits of this page (image-edit backends)
+    # image-edit backends may call (and pay) models only in a rendering run; the
+    # preview endpoints re-render stale pages on view and must reuse stored edits
+    edit_calls: bool = False
 
 
 @dataclass

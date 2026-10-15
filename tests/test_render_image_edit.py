@@ -60,10 +60,10 @@ def providers(*fakes, tag="fake"):
     return [Provider(label=f"{tag}{i}", key=f"{tag}{i}", impl=f) for i, f in enumerate(fakes)]
 
 
-def render(run, opts, provs):
+def render(run, opts, provs, calls=True):
     from yomeru.lib.rendering.image_edit import render_page
     from yomeru.lib.rendering.scanline_engine import build_request
-    req = build_request(run, 1)
+    req = build_request(run, 1, edit_calls=calls)
     return render_page(req, ImageEditOptions(**opts), provs)
 
 
@@ -103,6 +103,9 @@ def test_refusal_falls_to_the_next_provider_and_total_failure_to_scanline(run):
     out = render(run, {"scope": "all"}, providers(refused, ok))
     ai = [e for e in out.events if e.get("engine") == "ai"]
     assert ai and all(e["provider"] == "fake1" and "refused" in e["fallback"][0] for e in ai)
+    n = len(refused.calls)
+    render(run, {"scope": "all"}, providers(refused, ok))     # a refusal is remembered for that crop and seed
+    assert len(refused.calls) == n
 
     out = render(run, {"scope": "all"}, providers(Fake(EditRefused("x")), Fake(EditUnavailable("down")), tag="other"))
     assert np.array_equal(np.asarray(out.image), np.asarray(scanline(run).image))
@@ -170,6 +173,20 @@ def test_cached_edits_are_not_paid_twice_and_a_new_seed_calls_again(run):
     assert len(fake.calls) == n + 1
 
 
+def test_previews_never_call_a_model(run):
+    """The preview endpoints re-render stale pages when they are viewed: they
+    reuse stored edits and draw the rest with scanline, never paying."""
+    fake = Fake()
+    out = render(run, {"scope": "all"}, providers(fake), calls=False)
+    assert not fake.calls and red_pixels(out.image) == 0
+    assert all("not sent" in e["fallback"][0] for e in out.events if e.get("fallback"))
+    paid = render(run, {"scope": "all"}, providers(fake))
+    n = len(fake.calls)
+    again = render(run, {"scope": "all"}, providers(fake), calls=False)
+    assert len(fake.calls) == n
+    assert np.array_equal(np.asarray(paid.image), np.asarray(again.image))
+
+
 def test_engine_override_beats_the_scope(run):
     from yomeru.core import artifacts
     base = scanline(run)
@@ -198,12 +215,12 @@ def test_backend_is_selectable_and_resolves_connections(run, tmp_path, monkeypat
         return Fake()
 
     monkeypatch.setitem(edit_providers._PROVIDERS, "_fake", factory)
-    out = render_page(run, 1, backend="image_edit", backend_options={
+    out = render_page(run, 1, backend="image_edit", edit_calls=True, backend_options={
         "scope": "all", "providers": [{"connection_id": "or", "adapter": "_fake", "model": "m"}]})
     assert seen["api_key"] == "k" and seen["model"] == "m"
     assert any(e.get("engine") == "ai" for e in out.events)
     # a deleted connection is skipped → scanline
-    out = render_page(run, 1, backend="image_edit", backend_options={
+    out = render_page(run, 1, backend="image_edit", edit_calls=True, backend_options={
         "scope": "all", "providers": [{"connection_id": "gone", "adapter": "_fake", "model": "m2"}]})
     assert not any(e.get("engine") == "ai" for e in out.events)
 

@@ -28,7 +28,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from yomeru.core.contracts import EditError, EditRequest, RenderRequest, RenderResult
+from yomeru.core.contracts import EditError, EditRefused, EditRequest, RenderRequest, RenderResult
 from yomeru.core.labels import is_free
 from yomeru.core.languages import text_rules
 from yomeru.lib.rendering.edit_prompt import PROMPT_VERSION, build_prompt
@@ -267,8 +267,10 @@ class _Budget:
             self.spent += cost or 0.0
 
 
-def _edit(job: _Job, providers: list[Provider], cache, budget: _Budget, max_drift: float) -> tuple[Image.Image | None, dict]:
-    """Walk the chain; returns (aligned crop or None, record for the render log)."""
+def _edit(job: _Job, providers: list[Provider], cache, budget: _Budget, max_drift: float,
+          calls: bool = True) -> tuple[Image.Image | None, dict]:
+    """Walk the chain; returns (aligned crop or None, record for the render log).
+    Without `calls` only stored answers are used."""
     from yomeru.core.gpu import gpu_lock
 
     rec: dict = {"fallback": []}
@@ -281,6 +283,8 @@ def _edit(job: _Job, providers: list[Provider], cache, budget: _Budget, max_drif
                 return img, rec | {k: meta.get(k) for k in ("provider", "model", "drift")} | {"cache_hit": True, "cost_usd": 0.0}
             rec["fallback"].append(f"{p.label}: {meta.get('reason', 'rejected')}")
             continue
+        if not calls:
+            continue
         if not budget.allows():
             rec["fallback"].append("cost cap reached")
             return None, rec
@@ -288,7 +292,12 @@ def _edit(job: _Job, providers: list[Provider], cache, budget: _Budget, max_drif
             with (gpu_lock() if getattr(p.impl, "local", False) else nullcontext()):
                 res = p.impl.edit(EditRequest(image=job.crop, prompt=job.prompt, size=job.crop.size, seed=job.seed))
         except EditError as e:
-            rec["fallback"].append(f"{p.label}: {type(e).__name__.removeprefix('Edit').lower()}: {str(e)[:160]}")
+            reason = f"{type(e).__name__.removeprefix('Edit').lower()}: {str(e)[:160]}"
+            rec["fallback"].append(f"{p.label}: {reason}")
+            if isinstance(e, EditRefused) and cache is not None:
+                # moderation answers the same for the same crop: don't ask again until a new seed
+                cache.put(key, job.crop, {"ok": False, "provider": p.label, "reason": reason, "cost_usd": 0,
+                                          "seed": job.seed, "dialogue_index": job.event.get("dialogue_index")})
             continue
         except Exception as e:   # a buggy adapter must cost one dialogue, not the page
             rec["fallback"].append(f"{p.label}: error: {type(e).__name__}: {str(e)[:160]}")
@@ -311,7 +320,9 @@ def _edit(job: _Job, providers: list[Provider], cache, budget: _Budget, max_drif
             return aligned, rec | {"provider": p.label, "model": res.model, "drift": drift, "cache_hit": False,
                                    "cost_usd": res.cost_usd, "seconds": res.seconds}
         rec["fallback"].append(f"{p.label}: {meta['reason']}")
-    if providers:
+    if not calls:
+        rec["fallback"].append("not sent to the image model yet (run rendering)")
+    elif providers:
         rec["fallback"].append("all providers failed")
     return None, rec
 
@@ -342,9 +353,10 @@ def render_page(req: RenderRequest, options, providers: list[Provider]) -> Rende
 
     budget = _Budget(options.max_cost_per_run_usd, req.edit_cache.spent_usd() if req.edit_cache else 0.0)
     with ThreadPoolExecutor(max(1, min(options.max_parallel, len(jobs)))) as ex:
-        results = list(ex.map(lambda j: _edit(j, providers, req.edit_cache, budget, options.max_drift), jobs))
+        results = list(ex.map(lambda j: _edit(j, providers, req.edit_cache, budget, options.max_drift,
+                                              req.edit_calls), jobs))
     for p in providers:   # local servers give the GPU back to the rest of the pipeline
-        if getattr(p.impl, "local", False) and hasattr(p.impl, "release"):
+        if req.edit_calls and getattr(p.impl, "local", False) and hasattr(p.impl, "release"):
             p.impl.release()
 
     done = {j.event["dialogue_index"]: (j, img, rec) for j, (img, rec) in zip(jobs, results) if img is not None}
