@@ -7,7 +7,9 @@
   `core/labels.py`; language rules through `core/languages.py`; model calls through `core/llm.py`.
 - Region ids (the detection `id`) are the cross-phase key — never list indexes.
 - Writes are atomic with per-writer temp names (`artifacts.tmp_path`).
-- Prefer simple code; no comments that repeat the code. Comments explain *why*.
+- Prefer simple code; no comments that repeat the code. Comments explain *why*, generically:
+  never reference specific comics, chapters, pages, characters, run ids or quoted lines
+  (the repo is public; case evidence goes in the commit message). Same for test docstrings and fixtures.
 - Remove dead code and dead settings instead of exposing them.
 
 ## Settings
