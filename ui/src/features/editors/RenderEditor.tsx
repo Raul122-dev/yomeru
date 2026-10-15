@@ -20,6 +20,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import type { ReviewItem } from "../../lib/api";
+import { ReviewBadge } from "../../lib/review";
 import { cn } from "../../lib/utils";
 import { useScopedPhaseRunner } from "../../hooks/useScopedPhaseRunner";
 import type { RenderEvent, StageLog } from "../../lib/types";
@@ -81,10 +83,12 @@ function DialogueEditRow({
   row,
   override,
   onChange,
+  flags,
 }: {
   row: DialogueRow;
   override: Partial<RenderOverride>;
   onChange: (fields: Partial<RenderOverride>) => void;
+  flags?: ReviewItem["kind"][];
 }) {
   const [expanded, setExpanded] = useState(false);
   const isSkipped = override.skip ?? row.status === "skip";
@@ -116,6 +120,7 @@ function DialogueEditRow({
           <span className="font-mono text-xs text-[hsl(var(--accent2))] w-5">
             r{row.region_id}
           </span>
+          {flags?.map((k) => <ReviewBadge key={k} kind={k} />)}
         </div>
 
         {/* translated text (editable) */}
@@ -260,6 +265,8 @@ interface RenderEditorProps {
   onReRendered?: () => void;
   /** Why re-rendering is not possible now (same rule as the phase header). */
   blockedReason?: string | null;
+  /** Review flags of this page (see lib/review). */
+  review?: ReviewItem[];
 }
 
 export function RenderEditor({
@@ -268,6 +275,7 @@ export function RenderEditor({
   stageLog,
   onReRendered,
   blockedReason,
+  review,
 }: RenderEditorProps) {
   const renders = stageLog.s5_rendering?.renders ?? [];
   const matches = stageLog.s3_matching?.matches ?? [];
@@ -437,6 +445,7 @@ export function RenderEditor({
             row={row}
             override={overrides[row.dialogue_index] ?? {}}
             onChange={(fields) => updateOverride(row.dialogue_index, fields)}
+            flags={review?.filter((r) => r.region_id === row.region_id).map((r) => r.kind)}
           />
         ))}
       </div>

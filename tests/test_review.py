@@ -68,3 +68,22 @@ def test_cbz_carries_comic_info(client):
         assert want in xml, want
     z = zipfile.ZipFile(io.BytesIO(client.get(f"/api/runs/{rid}/export?format=zip").content))
     assert "ComicInfo.xml" not in z.namelist()
+
+
+
+def test_review_flags_list_overflow_and_regions_not_from_the_detector(client):
+    from yomeru.core import artifacts
+    from yomeru.core.runs import Run
+    rid = _run(client)
+    run = Run.load(rid)
+    artifacts.add_region_origins(run, 1, {7: "located"})
+    artifacts.add_region_origins(run, 1, {8: "split_sfx"})
+    log = artifacts.page_artifact(run, 1, artifacts.RENDER_LOG)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(json.dumps({"s5_rendering": {"renders": [
+        {"region_id": 3, "status": "ok", "overflow": True, "text": "long"},
+        {"region_id": 7, "status": "ok", "text": "found"},
+        {"region_id": 9, "status": "ok", "text": "fine"}]}}))
+    got = client.get(f"/api/runs/{rid}/typeset/review").json()
+    kinds = {(i["region_id"], i["kind"]) for i in got["1"]}
+    assert kinds == {(3, "overflow"), (7, "located"), (8, "split_sfx")}

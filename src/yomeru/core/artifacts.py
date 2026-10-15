@@ -115,6 +115,23 @@ def load_detections(run: "Run") -> dict[int, dict[int, dict]]:
 
 
 TRANSLATIONS = "translations.json"
+REGION_ORIGINS = "region_origins.json"   # regions not from the detector: {page: {id: origin}}
+
+
+def load_region_origins(run: "Run") -> dict[int, dict[int, str]]:
+    f = run.output_dir() / REGION_ORIGINS
+    if not f.exists():
+        return {}
+    return {int(p): {int(r): o for r, o in d.items()} for p, d in json.loads(f.read_text()).items()}
+
+
+def add_region_origins(run: "Run", page: int, origins: dict[int, str]) -> None:
+    data = {str(p): {str(r): o for r, o in d.items()} for p, d in load_region_origins(run).items()}
+    data.setdefault(str(page), {}).update({str(r): o for r, o in origins.items()})
+    f = run.output_dir() / REGION_ORIGINS
+    tmp = tmp_path(f)
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(f)
 
 
 def load_translations(run: "Run") -> dict:

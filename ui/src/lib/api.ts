@@ -358,3 +358,7 @@ export const patchRun = (runId: string, body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+
+export interface ReviewItem { region_id: number; kind: "overflow" | "located" | "split_sfx"; text: string }
+export const getTypesetReview = (runId: string) =>
+  req<Record<string, ReviewItem[]>>(`/runs/${runId}/typeset/review`);

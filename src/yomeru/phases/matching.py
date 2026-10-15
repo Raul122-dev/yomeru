@@ -83,13 +83,14 @@ def run(
             ))
             matches, orphaned = res.matches, res.orphaned
             if res.located:
-                page_dets = _add_located_regions(run, page_num, res.located, page_dets)
+                page_dets = _add_located_regions(run, page_num, res.located, page_dets, "located")
             from yomeru.core.languages import profile
             if profile(source_lang).ocr_boxes:
                 from yomeru.lib.matching.cascade import split_repeated_sfx
                 splits = split_repeated_sfx(matches, dialogues, page_dets, img)
                 if splits:
-                    page_dets = _add_located_regions(run, page_num, [r for *_, rs in splits for r in rs], page_dets)
+                    page_dets = _add_located_regions(run, page_num, [r for *_, rs in splits for r in rs], page_dets,
+                                                     "split_sfx")
                     dialogues = _split_dialogues(run, analysis, splits)
                     res = backend.match_page(MatchRequest(
                         image=img, detections=page_dets, dialogues=dialogues,
@@ -299,7 +300,8 @@ def _save_debug_image(img, matches, dialogues, page_dets, orphaned, debug_dir, p
     debug_img.convert("RGB").save(str(out_path), quality=85)
 
 
-def _add_located_regions(run, page_num: int, located: list[dict], page_dets: dict) -> dict:
+def _add_located_regions(run, page_num: int, located: list[dict], page_dets: dict,
+                         origin: str = "located") -> dict:
     """Regions the matcher found by OCR (the detector missed them) become real
     detections in the active detections file, so their id joins like any
     other (editors, inpainting, render). Re-running matching does not add
@@ -314,9 +316,13 @@ def _add_located_regions(run, page_num: int, located: list[dict], page_dets: dic
         ix = max(0, min(a["x2"], b["x2"]) - max(a["x1"], b["x1"]))
         iy = max(0, min(a["y2"], b["y2"]) - max(a["y1"], b["y1"]))
         return ix * iy > 0.5 * (a["x2"] - a["x1"]) * (a["y2"] - a["y1"])
+    added = {}
     for det in located:
         if not any(same(det, r) for r in page["regions"]):
             page["regions"].append(det)
+            added[det["id"]] = origin
+    if added:
+        artifacts.add_region_origins(run, page_num, added)
     tmp = artifacts.tmp_path(f)
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
     tmp.replace(f)

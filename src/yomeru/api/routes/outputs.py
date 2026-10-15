@@ -84,6 +84,31 @@ def export_run(run_id: str, format: str = "cbz"):
     )
 
 
+# ── Review flags ───────────────────────────────────────────────────────────────
+
+@router.get("/{run_id}/typeset/review")
+def typeset_review(run_id: str):
+    """What deserves a human look, per page: text drawn past its box at the
+    minimum size (overflow), regions the detector missed and OCR found
+    (located), repeated sounds split from one reading entry (split_sfx)."""
+    run = _get_run(run_id)
+    origins = artifacts.load_region_origins(run)
+    out: dict[int, list[dict]] = {}
+    from yomeru.core.paths import list_page_files
+    for page in range(1, len(list_page_files(run.pages_dir())) + 1):
+        items = []
+        log = artifacts.load_render_log(run, page) or {}
+        drawn = {e.get("region_id"): e for e in (log.get("s5_rendering") or {}).get("renders", [])}
+        for e in drawn.values():
+            if e.get("overflow"):
+                items.append({"region_id": e.get("region_id"), "kind": "overflow", "text": e.get("text", "")})
+        for rid, kind in origins.get(page, {}).items():
+            items.append({"region_id": rid, "kind": kind, "text": (drawn.get(rid) or {}).get("text", "")})
+        if items:
+            out[page] = items
+    return out
+
+
 # ── Debug images ───────────────────────────────────────────────────────────────
 
 @router.get("/{run_id}/typeset/debug")

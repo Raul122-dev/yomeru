@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { pageImageUrl } from "../../lib/api";
 import { usePhaseView } from "../../hooks/usePhaseView";
+import { useTypesetReview } from "../../lib/review";
 import { RenderEditor } from "../editors/RenderEditor";
 import { ImageViewer } from "../../components/ui/ImageViewer";
 import { EmptyState, Label, PageStrip, Panel, PhaseHeader } from "./PhaseShell";
@@ -14,6 +15,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
   const qc = useQueryClient();
   const v = usePhaseView(runId, "rendering", pages, { withLogs: true, invalidate: ["typeset-status"] });
   const sel = v.selectedLog;
+  const review = useTypesetReview(runId, v.nonce);
   const prodUrl = (p: number) => `/api/phases/${runId}/rendering/scanline-production/${p}?v=${v.nonce}`;
 
   return (
@@ -42,7 +44,8 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
               filename: e.filename,
               src: prodUrl(e.page),
               meta: e.log?.s5_rendering ? `${e.log.s5_rendering.ok} ok` : "not rendered",
-              flag: !e.log?.s5_rendering ? "error" : e.log.s5_rendering.skipped ? "warn" : undefined,
+              flag: !e.log?.s5_rendering ? "error" : e.log.s5_rendering.skipped || review[e.page] ? "warn" : undefined,
+              review: review[e.page]?.length,
             }))}
             selected={v.selectedPage}
             onSelect={v.setSelectedPage}
@@ -82,6 +85,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                   pageNum={sel.page}
                   stageLog={sel.log}
                   blockedReason={v.canRun ? null : v.blockedReason}
+                  review={review[sel.page]}
                   onReRendered={() => {
                     qc.invalidateQueries({ queryKey: ["rendering-logs", runId] });
                     qc.invalidateQueries({ queryKey: ["typeset-status", runId] });

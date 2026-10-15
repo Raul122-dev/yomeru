@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { debugImageUrl, getDebugImages, pageImageUrl } from "../../lib/api";
 import { getStageDebugImage, groupDebugImages } from "../../lib/debug";
 import { usePhaseView } from "../../hooks/usePhaseView";
+import { useTypesetReview } from "../../lib/review";
 import { MatchingEditor } from "../editors/MatchingEditor";
 import { ImageViewer } from "../../components/ui/ImageViewer";
 import { EmptyState, Label, PageStrip, Panel, PhaseHeader } from "./PhaseShell";
@@ -15,6 +16,7 @@ interface MatchingPhaseProps {
 export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
   const qc = useQueryClient();
   const v = usePhaseView(runId, "matching", pages, { withLogs: true, invalidate: ["debug-images"] });
+  const review = useTypesetReview(runId, v.nonce);
   const { data: debugImages } = useQuery({
     queryKey: ["debug-images", runId],
     queryFn: () => getDebugImages(runId),
@@ -55,7 +57,8 @@ export function MatchingPhase({ runId, pages }: MatchingPhaseProps) {
                 filename: e.filename,
                 src: pageImageUrl(runId, e.filename),
                 meta: m ? `${m.matched}/${m.total_dialogues}` : "—",
-                flag: unmatched > 0 ? "warn" : undefined,
+                flag: unmatched > 0 || review[e.page] ? "warn" : undefined,
+                review: review[e.page]?.length,
               };
             })}
             selected={v.selectedPage}

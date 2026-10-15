@@ -2,6 +2,7 @@
  * Shared chrome for every phase view: header with status, run / run-again /
  * cancel, progress, and contextual notices (outdated, cancelled, blocked).
  */
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Play, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
@@ -115,6 +116,8 @@ export interface StripItem {
   src: string;
   meta?: React.ReactNode;
   flag?: "warn" | "error";
+  /** Number of things on this page that deserve a human look (lib/review). */
+  review?: number;
 }
 
 /** Portrait filmstrip of pages; the selected page has the blue edit mark. */
@@ -123,14 +126,24 @@ export function PageStrip({ items, selected, onSelect }: {
   selected: number | null;
   onSelect: (page: number) => void;
 }) {
+  const [onlyReview, setOnlyReview] = useState(false);
+  const flagged = items.filter((it) => (it.review ?? 0) > 0);
+  const shown = onlyReview ? flagged : items;
   return (
+    <div className="flex flex-col gap-1">
+    {flagged.length > 0 && (
+      <label className="flex w-fit cursor-pointer items-center gap-1.5 text-xs text-[hsl(var(--text-muted))]">
+        <input type="checkbox" checked={onlyReview} onChange={(e) => setOnlyReview(e.target.checked)} />
+        Only pages to review ({flagged.length})
+      </label>
+    )}
     <div
       className="scroll-strip -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-2 pt-1"
       role="listbox"
       aria-label="Pages"
       aria-orientation="horizontal"
     >
-      {items.map((it) => {
+      {shown.map((it) => {
         const active = it.page === selected;
         return (
           <button
@@ -153,11 +166,15 @@ export function PageStrip({ items, selected, onSelect }: {
             </div>
             <div className="mt-1.5 flex items-baseline justify-between gap-1 px-0.5">
               <span className="font-mono text-xs font-medium">p{String(it.page).padStart(2, "0")}</span>
-              <span className="truncate font-mono text-[11px] text-[hsl(var(--text-muted))]">{it.meta}</span>
+              <span className="truncate font-mono text-[11px] text-[hsl(var(--text-muted))]">
+                {it.review ? <span className="mr-1 text-[hsl(var(--warning-deep))]" title="Things to review on this page">⚑{it.review}</span> : null}
+                {it.meta}
+              </span>
             </div>
           </button>
         );
       })}
+    </div>
     </div>
   );
 }
