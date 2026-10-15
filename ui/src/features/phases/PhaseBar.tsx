@@ -29,8 +29,8 @@ interface Group {
   phases: SubPhase[];
 }
 
-const PHASE_ORDER: Phase[] = ["detection", "analysis", "matching", "inpainting", "rendering"];
-const LABELS: Record<Phase, string> = {
+export const PHASE_ORDER: Phase[] = ["detection", "analysis", "matching", "inpainting", "rendering"];
+export const LABELS: Record<Phase, string> = {
   detection: "Detection",
   analysis: "Read & translate",
   matching: "Matching",

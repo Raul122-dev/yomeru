@@ -105,11 +105,11 @@ export const getPhaseStatus = (runId: string, phase: PhaseName) =>
 export const getAllPhasesStatus = (runId: string) =>
   req<AllPhasesStatus>(`/phases/${runId}/status`);
 
-export const startAllPhases = (runId: string, options?: object) =>
+export const startAllPhases = (runId: string, options?: object, startFrom?: PhaseName) =>
   req<{ status: string }>(`/phases/${runId}/start-all`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ options: options || {} }),
+    body: JSON.stringify({ options: options || {}, ...(startFrom ? { start_from: startFrom } : {}) }),
   });
 
 export const cancelRun = (runId: string) =>

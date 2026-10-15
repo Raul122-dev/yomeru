@@ -2,10 +2,10 @@
  * Shared chrome for every phase view: header with status, run / run-again /
  * cancel, progress, and contextual notices (outdated, cancelled, blocked).
  */
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Play, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
-import { cancelRun } from "../../lib/api";
+import { cancelRun, getRun } from "../../lib/api";
 import type { PhaseStatus } from "../../lib/types";
 import { StatusBadge } from "../../lib/status";
 import { Button } from "../../components/ui/button";
@@ -30,6 +30,9 @@ export function PhaseHeader({
 }: PhaseHeaderProps) {
   const running = status === "running";
   const ran = status !== "pending";
+  // the run keeps the last error message (shown only on the dashboard before)
+  const { data: run } = useQuery({ queryKey: ["run", runId], queryFn: () => getRun(runId), enabled: status === "failed" });
+  const runError = run?.error;
   const cancel = useMutation({
     mutationFn: () => cancelRun(runId),
     onSuccess: () => toast("Stopping after the current page…"),
@@ -82,6 +85,9 @@ export function PhaseHeader({
         </div>
       )}
 
+      {status === "failed" && (
+        <Notice tone="error">{runError || "This step failed. Run it again; if it keeps failing, check the model provider in Settings."}</Notice>
+      )}
       {status === "stale" && <Notice tone="warn">An earlier phase changed after this one ran. Run it again to bring the pages up to date.</Notice>}
       {status === "cancelled" && <Notice>Stopped before finishing. Run it again to complete every page.</Notice>}
       {status === "partial" && <Notice tone="warn">Some pages failed or were not processed.</Notice>}
@@ -91,11 +97,12 @@ export function PhaseHeader({
   );
 }
 
-function Notice({ children, tone }: { children: React.ReactNode; tone?: "warn" }) {
+function Notice({ children, tone }: { children: React.ReactNode; tone?: "warn" | "error" }) {
   return (
     <p className={cn(
       "border-t border-[hsl(var(--border))] px-5 py-2.5 text-sm",
-      tone === "warn" ? "text-[hsl(var(--warning-deep))]" : "text-[hsl(var(--text-muted))]",
+      tone === "error" ? "text-[hsl(var(--danger))]"
+        : tone === "warn" ? "text-[hsl(var(--warning-deep))]" : "text-[hsl(var(--text-muted))]",
     )}>
       {children}
     </p>

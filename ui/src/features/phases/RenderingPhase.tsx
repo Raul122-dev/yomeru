@@ -41,8 +41,8 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
               page: e.page,
               filename: e.filename,
               src: prodUrl(e.page),
-              meta: e.log?.s5_rendering ? `${e.log.s5_rendering.ok} ok` : "—",
-              flag: e.log?.s5_rendering?.skipped ? "warn" : undefined,
+              meta: e.log?.s5_rendering ? `${e.log.s5_rendering.ok} ok` : "not rendered",
+              flag: !e.log?.s5_rendering ? "error" : e.log.s5_rendering.skipped ? "warn" : undefined,
             }))}
             selected={v.selectedPage}
             onSelect={v.setSelectedPage}
@@ -81,6 +81,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                   runId={runId}
                   pageNum={sel.page}
                   stageLog={sel.log}
+                  blockedReason={v.canRun ? null : v.blockedReason}
                   onReRendered={() => {
                     qc.invalidateQueries({ queryKey: ["rendering-logs", runId] });
                     qc.invalidateQueries({ queryKey: ["typeset-status", runId] });

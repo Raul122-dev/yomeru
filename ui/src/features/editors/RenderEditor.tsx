@@ -258,6 +258,8 @@ interface RenderEditorProps {
   pageNum: number;
   stageLog: StageLog;
   onReRendered?: () => void;
+  /** Why re-rendering is not possible now (same rule as the phase header). */
+  blockedReason?: string | null;
 }
 
 export function RenderEditor({
@@ -265,6 +267,7 @@ export function RenderEditor({
   pageNum,
   stageLog,
   onReRendered,
+  blockedReason,
 }: RenderEditorProps) {
   const renders = stageLog.s5_rendering?.renders ?? [];
   const matches = stageLog.s3_matching?.matches ?? [];
@@ -413,7 +416,8 @@ export function RenderEditor({
           </button>
           <button
             onClick={handleReRender}
-            disabled={isReRendering}
+            disabled={isReRendering || !!blockedReason}
+            title={blockedReason ?? undefined}
             className="flex items-center gap-1.5 rounded border border-[hsl(var(--accent2)/.4)] px-2.5 py-1 text-xs text-[hsl(var(--accent2))] hover:bg-[hsl(var(--accent2)/.08)] disabled:opacity-40 transition-colors"
           >
             <RefreshCw

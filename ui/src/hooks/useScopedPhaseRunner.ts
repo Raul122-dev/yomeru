@@ -8,7 +8,7 @@
  *   - Handles fast single-page runs gracefully (status text over progress bar)
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connectPhaseWs, startPhase } from "../lib/api";
+import { connectPhaseWs, getRun, startPhase } from "../lib/api";
 import type { PhaseName, PhaseStartPayload } from "../lib/types";
 
 export type ScopedStatus = "idle" | "running" | "done" | "failed";
@@ -33,14 +33,42 @@ export function useScopedPhaseRunner({
 }: UseScopedPhaseRunnerOptions) {
   const [progress, setProgress] = useState<ScopedProgress>({ status: "idle" });
   const wsRef = useRef<WebSocket | null>(null);
+  const pollRef = useRef<number | null>(null);
   const completedRef = useRef(false);
 
   const cleanup = useCallback(() => {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
     if (wsRef.current) {
-      wsRef.current.close();
+      const ws = wsRef.current;
       wsRef.current = null;
+      ws.close();
     }
   }, []);
+
+  // If the socket drops mid-run, the editor would spin forever: fall back to
+  // polling the run's phase status until the job ends.
+  const finish = useCallback((failed: boolean, error?: string) => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    setProgress({ status: failed ? "failed" : "done", error: failed ? error : undefined });
+    cleanup();
+    if (failed) onError?.(error || "Phase failed");
+    else onComplete?.();
+  }, [cleanup, onComplete, onError]);
+
+  const pollUntilDone = useCallback(() => {
+    if (pollRef.current !== null) return;
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const run = await getRun(runId);
+        const st = run.phase_status?.[phase];
+        if (st && st !== "running") finish(st === "failed", run.error ?? undefined);
+      } catch { /* keep polling */ }
+    }, 3000);
+  }, [runId, phase, finish]);
 
   useEffect(() => cleanup, [cleanup]);
 
@@ -62,26 +90,14 @@ export function useScopedPhaseRunner({
         if (event.phase && event.phase !== phase) return;
 
         if (event.type === "phase_done" || event.type === "phase_error") {
-          if (completedRef.current) return;
-          completedRef.current = true;
-
-          const failed = event.type === "phase_error" || event.status === "failed";
-          setProgress({
-            status: failed ? "failed" : "done",
-            error: failed ? event.error : undefined,
-          });
-
-          cleanup();
-
-          if (failed) {
-            onError?.(event.error || "Phase failed");
-          } else {
-            onComplete?.();
-          }
+          finish(event.type === "phase_error" || event.status === "failed", event.error);
         }
       });
 
       wsRef.current = ws;
+      ws.addEventListener("close", () => {
+        if (wsRef.current === ws && !completedRef.current) pollUntilDone();
+      });
 
       // Wait for WS to be open before starting
       await new Promise<void>((resolve, reject) => {
@@ -114,7 +130,7 @@ export function useScopedPhaseRunner({
         onError?.(msg);
       }
     },
-    [runId, phase, cleanup, onComplete, onError],
+    [runId, phase, cleanup, onError, finish, pollUntilDone],
   );
 
   const reset = useCallback(() => {
