@@ -10,6 +10,8 @@ Handles:
 """
 from __future__ import annotations
 
+import re
+
 from functools import lru_cache
 
 from PIL import ImageFont
@@ -178,6 +180,9 @@ def _split_word_punct(word: str) -> tuple[str, str, str]:
     return word[:i], word[i:j], word[j:]
 
 
+_ELLIPSIS_INSIDE = re.compile(r"(?<=\w)(\.\.\.|…)(?=\S)")
+
+
 def _try_hyphenate(
     word: str,
     hyph: object | None,
@@ -186,6 +191,11 @@ def _try_hyphenate(
     min_root_len: int = 5,
 ) -> tuple[str, str]:
     """Try syllabic hyphenation on a word that's too wide."""
+    # An ellipsis glued to a word ('¿Eh...?', 'Bueno…sí') is a natural break
+    # before the dots, with no hyphen: 'Eh' / '...?'.
+    m = _ELLIPSIS_INSIDE.search(word)
+    if m and measure_width(word[:m.start()], font) <= box_w:
+        return word[:m.start()], word[m.start():]
     if hyph is None:
         return "", word
     lead, root, trail = _split_word_punct(word)

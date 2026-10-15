@@ -534,3 +534,17 @@ def test_short_shout_grows_with_its_bubble_and_skips_the_page_cap():
                         skipped=set(), containers=boxes, use_translation=True, lang_code="es")
     ev = {e["region_id"]: e for e in layout_and_draw(req).events}
     assert ev[1]["font_size"] >= 80 and ev[1].get("shout")
+
+
+
+def test_ellipsis_glued_to_a_word_is_a_break_point():
+    """A short exclamation with a glued ellipsis can't be hyphenated, so a
+    narrow bubble forced it down to the minimum size; it now breaks before
+    the dots, without a hyphen."""
+    from yomeru.lib.rendering.pil import _get_font
+    from yomeru.lib.rendering.scanline import _splittable
+    from yomeru.lib.rendering.text_layout import _get_hyphenator, _try_hyphenate
+    f = _get_font("regular", 28)
+    assert _try_hyphenate("¿Eh...?", _get_hyphenator("es", aggressive=True), f, 60, 4) == ("¿Eh", "...?")
+    assert _try_hyphenate("Bueno…sí", None, f, 90, 4) == ("Bueno", "…sí")
+    assert _splittable("¿Eh...?", frozenset(), False) and not _splittable("¿Eh?", frozenset(), False)

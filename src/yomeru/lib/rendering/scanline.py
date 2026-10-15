@@ -223,7 +223,9 @@ def _splittable(word: str, protected: frozenset[str], force: bool) -> bool:
     """Proper names (words carried over verbatim from the source text) and
     short words are kept whole; `force` (nothing fits otherwise) only keeps
     names whole."""
-    from .text_layout import _split_word_punct
+    from .text_layout import _ELLIPSIS_INSIDE, _split_word_punct
+    if _ELLIPSIS_INSIDE.search(word):
+        return True   # breaks before the dots, never inside the word itself
     root = _split_word_punct(word)[1]
     if root.upper() in protected:
         return False
