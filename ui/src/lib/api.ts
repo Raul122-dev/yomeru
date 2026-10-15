@@ -99,6 +99,15 @@ export const retryPhase = (
     body: JSON.stringify({ page_scope: pageScope }),
   });
 
+/** Image-edit rendering: ask the model again (new seed) for some dialogues
+ * of a page, or for every one it drew or tried (`dialogues` null). */
+export const rerenderWithModel = (runId: string, page: number, dialogues: number[] | null) =>
+  req<{ status: string; dialogues: number[] }>(`/phases/${runId}/rendering/rerender/${page}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dialogues }),
+  });
+
 export const getPhaseStatus = (runId: string, phase: PhaseName) =>
   req<PhaseStatusResponse>(`/phases/${runId}/${phase}/status`);
 

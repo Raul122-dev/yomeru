@@ -6,6 +6,7 @@
  *   - Always sends `page_scope` in the payload
  *   - Provides an `onComplete` callback for data refresh
  *   - Handles fast single-page runs gracefully (status text over progress bar)
+ *   - `launch` replaces the plain phase start (e.g. an endpoint that edits inputs first)
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { connectPhaseWs, getRun, startPhase } from "../lib/api";
@@ -73,7 +74,7 @@ export function useScopedPhaseRunner({
   useEffect(() => cleanup, [cleanup]);
 
   const start = useCallback(
-    async (pageScope: number[], extraOptions?: Record<string, unknown>) => {
+    async (pageScope: number[], extraOptions?: Record<string, unknown>, launch?: () => Promise<unknown>) => {
       cleanup();
       completedRef.current = false;
       setProgress({ status: "running" });
@@ -122,7 +123,7 @@ export function useScopedPhaseRunner({
 
       // Now start the phase
       try {
-        await startPhase(runId, phase, payload);
+        await (launch ? launch() : startPhase(runId, phase, payload));
       } catch (err) {
         cleanup();
         const msg = err instanceof Error ? err.message : String(err);

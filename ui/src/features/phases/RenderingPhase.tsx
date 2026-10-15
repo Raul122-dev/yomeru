@@ -1,7 +1,8 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { pageImageUrl } from "../../lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getRun, pageImageUrl } from "../../lib/api";
 import { usePhaseView } from "../../hooks/usePhaseView";
 import { useTypesetReview } from "../../lib/review";
+import type { StageLog } from "../../lib/types";
 import { RenderEditor } from "../editors/RenderEditor";
 import { ImageViewer } from "../../components/ui/ImageViewer";
 import { EmptyState, Label, PageStrip, Panel, PhaseHeader } from "./PhaseShell";
@@ -16,6 +17,9 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
   const v = usePhaseView(runId, "rendering", pages, { withLogs: true, invalidate: ["typeset-status"] });
   const sel = v.selectedLog;
   const review = useTypesetReview(runId, v.nonce);
+  const { data: run } = useQuery({ queryKey: ["run", runId], queryFn: () => getRun(runId) });
+  const aiRender = run?.settings?.rendering?.backend === "image_edit";
+  const aiCount = (log?: StageLog | null) => log?.s5_rendering?.renders.filter((r) => r.engine === "ai").length ?? 0;
   const prodUrl = (p: number) => `/api/phases/${runId}/rendering/scanline-production/${p}?v=${v.nonce}`;
 
   return (
@@ -43,7 +47,9 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
               page: e.page,
               filename: e.filename,
               src: prodUrl(e.page),
-              meta: e.log?.s5_rendering ? `${e.log.s5_rendering.ok} ok` : "Not rendered",
+              meta: e.log?.s5_rendering
+                ? `${e.log.s5_rendering.ok} ok${aiRender && aiCount(e.log) ? ` · ${aiCount(e.log)} AI` : ""}`
+                : "Not rendered",
               flag: !e.log?.s5_rendering ? "error" : e.log.s5_rendering.skipped || review[e.page] ? "warn" : undefined,
               review: review[e.page]?.length,
             }))}
@@ -54,7 +60,8 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
           {sel?.log && (
             <Panel
               title={<>Page {sel.page} <span className="font-mono text-xs font-normal text-[hsl(var(--text-muted))]">{sel.filename}</span></>}
-              aside={`${sel.log.s5_rendering?.ok ?? 0} rendered · ${sel.log.s5_rendering?.skipped ?? 0} skipped`}
+              aside={`${sel.log.s5_rendering?.ok ?? 0} rendered · ${sel.log.s5_rendering?.skipped ?? 0} skipped`
+                + (aiRender ? ` · ${aiCount(sel.log)} by the image model` : "")}
             >
               <div className="grid gap-5 lg:grid-cols-2">
                 <div>
@@ -86,6 +93,7 @@ export function RenderingPhase({ runId, pages }: RenderingPhaseProps) {
                   stageLog={sel.log}
                   blockedReason={v.canRun ? null : v.blockedReason}
                   review={review[sel.page]}
+                  aiRender={aiRender}
                   onReRendered={() => {
                     qc.invalidateQueries({ queryKey: ["rendering-logs", runId] });
                     qc.invalidateQueries({ queryKey: ["typeset-status", runId] });

@@ -7,8 +7,11 @@
  *  - Re-render a single region without re-running the whole pipeline
  *  - Mark a dialogue as "skip" (won't be rendered)
  *
+ * With the image-edit backend each line also shows who drew it (the model or
+ * scanline, and why), can be forced to either, and can be asked again from the
+ * model (new seed) — one line or the whole page.
+ *
  * Overrides saved to: typeset/debug/p{N:02}_render_overrides.json
- * Consumed by: stages/rendering/pil.py per-dialogue render
  */
 import { useState, useCallback, useEffect } from "react";
 import {
@@ -19,8 +22,9 @@ import {
   EyeOff,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from "lucide-react";
-import type { ReviewItem } from "../../lib/api";
+import { rerenderWithModel, type ReviewItem } from "../../lib/api";
 import { ReviewBadge } from "../../lib/review";
 import { cn } from "../../lib/utils";
 import { useScopedPhaseRunner } from "../../hooks/useScopedPhaseRunner";
@@ -35,6 +39,10 @@ export interface RenderOverride {
   font_size_override?: number | null;
   tone?: string;
   skip?: boolean;
+  /** image-edit backend: who draws this line (absent = follow the backend's scope) */
+  engine?: "ai" | "scanline";
+  /** image-edit backend: bumped by "ask the model again" (server side) */
+  seed?: number;
 }
 
 interface DialogueRow {
@@ -49,7 +57,18 @@ interface DialogueRow {
   tone?: string;
   lines?: string[];
   bbox?: number[];
+  ai: boolean;
+  provider?: string;
+  cost_usd?: number;
+  cache_hit?: boolean;
+  fallback?: string[];
 }
+
+const ENGINES: { value: RenderOverride["engine"]; label: string }[] = [
+  { value: undefined, label: "Auto" },
+  { value: "ai", label: "Image model" },
+  { value: "scanline", label: "Scanline" },
+];
 
 const FONT_STYLES = ["auto", "regular", "bold", "thought", "narration"];
 // Only these change the drawing (shouting → bold, short shouts grow).
@@ -84,11 +103,18 @@ function DialogueEditRow({
   override,
   onChange,
   flags,
+  aiRender,
+  onAskModel,
+  busy,
 }: {
   row: DialogueRow;
   override: Partial<RenderOverride>;
   onChange: (fields: Partial<RenderOverride>) => void;
   flags?: ReviewItem["kind"][];
+  /** the run renders with the image-edit backend */
+  aiRender: boolean;
+  onAskModel: () => void;
+  busy: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isSkipped = override.skip ?? row.status === "skip";
@@ -121,6 +147,7 @@ function DialogueEditRow({
             r{row.region_id}
           </span>
           {flags?.map((k) => <ReviewBadge key={k} kind={k} />)}
+          {aiRender && <EngineBadge row={row} />}
         </div>
 
         {/* translated text (editable) */}
@@ -133,6 +160,16 @@ function DialogueEditRow({
 
         {/* controls */}
         <div className="flex flex-col items-end gap-1 shrink-0">
+          {aiRender && (
+            <button
+              onClick={onAskModel}
+              disabled={busy || isSkipped}
+              className="text-[hsl(var(--text-muted)/.5)] hover:text-[hsl(var(--accent2))] disabled:opacity-40 transition-colors"
+              title="Ask the image model again for this line (a new attempt, paid again)"
+            >
+              <Sparkles size={11} />
+            </button>
+          )}
           <button
             onClick={() => onChange({ skip: !isSkipped })}
             className="text-[hsl(var(--text-muted)/.5)] hover:text-[hsl(var(--text))] transition-colors"
@@ -153,7 +190,12 @@ function DialogueEditRow({
       {/* original text + render info */}
       <div className="px-3 pb-1 flex gap-3 text-xs text-[hsl(var(--text-muted)/.6)]">
         <span className="truncate flex-1">{row.text}</span>
-        {(row.font_size || row.font_style || row.lines) && (
+        {row.ai ? (
+          <span title={row.provider}>
+            {[row.provider?.split(" · ").pop(), row.cache_hit ? "kept" : row.cost_usd ? `$${row.cost_usd.toFixed(3)}` : null]
+              .filter(Boolean).join(" · ")}
+          </span>
+        ) : (row.font_size || row.font_style || row.lines) && (
           <span>
             {[
               row.font_size ? `${row.font_size} px` : null,
@@ -167,6 +209,30 @@ function DialogueEditRow({
       {/* expanded style controls */}
       {expanded && (
         <div className="px-3 pb-2.5 pt-0 flex flex-wrap gap-3">
+          {aiRender && (
+            <div>
+              <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
+                Drawn by
+              </p>
+              <div className="flex gap-1">
+                {ENGINES.map((e) => (
+                  <button
+                    key={e.label}
+                    onClick={() => onChange({ engine: e.value })}
+                    title={e.value === undefined ? "Image model for the dialogues the backend's setting picks" : undefined}
+                    className={cn(
+                      "rounded border px-1.5 py-0.5 text-xs transition-colors",
+                      override.engine === e.value
+                        ? "border-[hsl(var(--accent2))] text-[hsl(var(--accent2))]"
+                        : "border-[hsl(var(--border))] text-[hsl(var(--text-muted))]",
+                    )}
+                  >
+                    {e.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {/* font style */}
           <div>
             <p className="mb-1 text-xs uppercase tracking-widest text-[hsl(var(--text-muted))]">
@@ -262,6 +328,26 @@ function DialogueEditRow({
   );
 }
 
+function EngineBadge({ row }: { row: DialogueRow }) {
+  if (row.ai) {
+    return (
+      <span className="rounded border border-[hsl(var(--accent2)/.4)] px-1 text-[10px] uppercase tracking-wide text-[hsl(var(--accent2))]"
+        title={`Lettered by ${row.provider}${row.fallback?.length ? `\nBefore: ${row.fallback.join("\n")}` : ""}`}>
+        AI
+      </span>
+    );
+  }
+  if (row.fallback?.length) {
+    return (
+      <span className="rounded border border-[hsl(var(--warning)/.5)] px-1 text-[10px] uppercase tracking-wide text-[hsl(var(--warning))]"
+        title={`Drawn by scanline:\n${row.fallback.join("\n")}`}>
+        Scanline
+      </span>
+    );
+  }
+  return null;
+}
+
 // ── main component ────────────────────────────────────────────────────────────
 
 interface RenderEditorProps {
@@ -273,6 +359,8 @@ interface RenderEditorProps {
   blockedReason?: string | null;
   /** Review flags of this page (see lib/review). */
   review?: ReviewItem[];
+  /** The run renders with the image-edit backend. */
+  aiRender?: boolean;
 }
 
 export function RenderEditor({
@@ -282,6 +370,7 @@ export function RenderEditor({
   onReRendered,
   blockedReason,
   review,
+  aiRender = false,
 }: RenderEditorProps) {
   const renders = stageLog.s5_rendering?.renders ?? [];
   const matches = stageLog.s3_matching?.matches ?? [];
@@ -301,8 +390,15 @@ export function RenderEditor({
       tone: r.tone,
       lines: r.lines,
       bbox: r.bbox,
+      ai: r.engine === "ai",
+      provider: r.provider,
+      cost_usd: r.cost_usd,
+      cache_hit: r.cache_hit,
+      fallback: r.fallback,
     };
   });
+  const askedModel = rows.filter((r) => r.ai || r.fallback?.length).length;
+  const pageCost = rows.reduce((sum, r) => sum + (r.ai && !r.cache_hit ? r.cost_usd ?? 0 : 0), 0);
 
   // Per-dialogue overrides: { [dialogue_index]: Partial<RenderOverride> }
   const [overrides, setOverrides] = useState<
@@ -312,6 +408,7 @@ export function RenderEditor({
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadKey, setLoadKey] = useState(0);
 
   // Start from what is saved: a save sends the full list, so starting empty
   // used to silently erase earlier overrides.
@@ -326,13 +423,14 @@ export function RenderEditor({
       })
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => { alive = false; };
-  }, [runId, pageNum]);
+  }, [runId, pageNum, loadKey]);
 
   const { progress: rerunProgress, start: startRerun } = useScopedPhaseRunner({
     runId,
     phase: "rendering",
     onComplete: () => {
       setIsDirty(false);
+      setLoadKey((k) => k + 1);   // "ask the model again" bumps seeds server side
       onReRendered?.();
     },
     onError: (msg) => setError(msg),
@@ -384,6 +482,18 @@ export function RenderEditor({
     }
   };
 
+  const handleAskModel = async (dialogues: number[] | null) => {
+    setError(null);
+    try {
+      if (isDirty) {
+        await saveRenderOverrides(runId, pageNum, buildOverrideList());
+      }
+      await startRerun([pageNum], undefined, () => rerenderWithModel(runId, pageNum, dialogues));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleRevert = () => {
     setOverrides(saved);
     setIsDirty(false);
@@ -413,7 +523,22 @@ export function RenderEditor({
         {error && (
           <span className="text-xs text-[hsl(var(--danger))]">{error}</span>
         )}
+        {aiRender && askedModel > 0 && (
+          <span className="text-xs text-[hsl(var(--text-muted))]">
+            {rows.filter((r) => r.ai).length} by the image model{pageCost > 0 ? ` · $${pageCost.toFixed(3)}` : ""}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
+          {aiRender && (
+            <button
+              onClick={() => void handleAskModel(null)}
+              disabled={isReRendering || !!blockedReason || askedModel === 0}
+              title={blockedReason ?? "New attempt from the image model for every line it drew or tried on this page (paid again)"}
+              className="flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--text-muted))] hover:text-[hsl(var(--text))] disabled:opacity-40 transition-colors"
+            >
+              <Sparkles size={10} /> Ask the model again
+            </button>
+          )}
           <button
             onClick={handleRevert}
             disabled={!isDirty}
@@ -452,6 +577,9 @@ export function RenderEditor({
             override={overrides[row.dialogue_index] ?? {}}
             onChange={(fields) => updateOverride(row.dialogue_index, fields)}
             flags={review?.filter((r) => r.region_id === row.region_id).map((r) => r.kind)}
+            aiRender={aiRender}
+            onAskModel={() => void handleAskModel([row.dialogue_index])}
+            busy={isReRendering || !!blockedReason}
           />
         ))}
       </div>

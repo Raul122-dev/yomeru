@@ -135,3 +135,15 @@ the bubble contour.
   146 s incl. cold load, VRAM back to idle after the page). Known: Qwen garbles some vertical
   shouts (as in the tests); its background tone can differ slightly → visible patch on free
   text (idea: match tone on the mask border before pasting).
+- 2026-10-15: UI (owner asked to include it in this task). Settings: BackendPicker renders
+  lists of objects generically (ordered, add/remove/move), `x-widget: connection` (saved
+  connection picker) and `x-confirm` (ask before choosing a value: the cost warning of
+  scope `all`); adapter choices come from the provider registry. Render view/editor: AI badge
+  and model · cost (or "kept") per line, scanline badge with the fallback reasons, "Drawn by"
+  Auto / Image model / Scanline, "ask the model again" per line and per page, page count
+  of model-drawn lines; the editor keeps `engine`/`seed` when it saves.
+  Found while testing the UI: previews paid for edits on view → fixed (`edit_calls`, only the
+  rendering phase calls models). Verified on the branch server (port 7790, scratch data):
+  settings form, confirm dialog (cancel keeps `hard`), viewing pages makes no new edits,
+  per-line re-render end to end (seed 1, engine ai, new paid edit, row refreshed).
+  163 tests, ruff, goldens identical, tsc + build.

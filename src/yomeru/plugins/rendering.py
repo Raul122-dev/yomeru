@@ -35,13 +35,22 @@ class ScanlineRenderer:
         return layout_and_draw(req)
 
 
+def _adapter_choices(schema: dict) -> None:
+    from yomeru.lib.rendering.edit_providers import provider_names
+    schema["enum"] = provider_names()
+
+
 class EditModelRef(BaseModel):
     """One image-edit model: an adapter (wire protocol) on a saved connection."""
     model_config = ConfigDict(extra="forbid")
-    connection_id: str = Field(title="Connection")
+    connection_id: str = Field(title="Connection", json_schema_extra={"x-widget": "connection"})
     adapter: str = Field(default="openrouter", title="Adapter",
-                         description="Wire protocol of the connection (e.g. openrouter)")
-    model: str = Field(title="Model", description="Model id, e.g. microsoft/mai-image-2.6-flash")
+                         description="How to talk to the connection: openrouter (image models on OpenRouter) "
+                                     "or comfyui (a ComfyUI server running a workflow)",
+                         json_schema_extra=_adapter_choices)
+    model: str = Field(default="", title="Model",
+                       description="OpenRouter model id (e.g. microsoft/mai-image-2.6-flash) or ComfyUI "
+                                   "workflow name (e.g. qwen-image-2.1-edit)")
     quality: str = Field(default="", title="Quality", description="Passed to models that take it (e.g. high)")
 
 
@@ -54,8 +63,13 @@ class ImageEditOptions(BaseModel):
         default="hard", title="Dialogues",
         description="hard: SFX, free text, shouts and vertical lettering. all: every dialogue — every "
                     "dialogue of every page is one paid edit, so the cost grows with the chapter. "
-                    "manual: only the ones marked in the render editor.")
-    max_cost_per_run_usd: float = Field(default=5.0, ge=0, le=1000, title="Cost cap per run (USD)",
+                    "manual: only the ones marked in the render editor.",
+        json_schema_extra={"x-confirm": {"all": (
+            "Every dialogue of every page will be sent to the image model, one paid edit each. "
+            "For example, with a model at 0.017 USD per edit a 20-page chapter with 10 dialogues per page "
+            "costs about 3.40 USD, and re-renders that change the text cost again. "
+            "The cost cap per run still applies.\n\nUse it for all dialogues?")}})
+    max_cost_per_run_usd: float = Field(default=5.0, ge=0, le=100, title="Cost cap per run (USD)",
                                         description="Once reached, the rest is drawn by scanline")
     max_parallel: int = Field(default=4, ge=1, le=16, title="Parallel requests")
     max_drift: float = Field(default=10.0, ge=1, le=40, title="Max image drift",

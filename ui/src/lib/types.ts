@@ -133,7 +133,7 @@ export interface TypesetStatus {
 
 /** A registered technique of a phase (GET /config/backends/{phase}). */
 export interface BackendOptionSchema {
-  type?: "string" | "number" | "integer" | "boolean";
+  type?: "string" | "number" | "integer" | "boolean" | "array" | "object";
   enum?: string[];
   default?: unknown;
   title?: string;
@@ -141,6 +141,14 @@ export interface BackendOptionSchema {
   minimum?: number;
   maximum?: number;
   json_schema_extra_hidden?: boolean;
+  /** array options: the item schema (often a `$ref` into the options' `$defs`) */
+  items?: BackendOptionSchema;
+  $ref?: string;
+  properties?: Record<string, BackendOptionSchema>;
+  /** a value picked from app data instead of typed: "connection" = a saved connection id */
+  "x-widget"?: "connection";
+  /** enum value → message the user must accept before choosing it (e.g. a cost warning) */
+  "x-confirm"?: Record<string, string>;
 }
 
 export interface LocalModelsInfo {
@@ -164,7 +172,7 @@ export interface BackendInfo {
   schema_version: number;
   compatible: boolean;
   defaults: Record<string, unknown>;
-  options: { properties?: Record<string, BackendOptionSchema> };
+  options: { properties?: Record<string, BackendOptionSchema>; $defs?: Record<string, BackendOptionSchema> };
 }
 
 export interface DetectionRegion {
@@ -206,6 +214,14 @@ export interface RenderEvent {
   bubble_type?: string;
   bbox?: number[];
   box_size?: number[];
+  /** image-edit rendering: "ai" when a model lettered it (absent = scanline) */
+  engine?: "ai";
+  provider?: string;
+  model?: string;
+  cost_usd?: number;
+  cache_hit?: boolean;
+  /** why the model(s) did not letter it, in the order they were tried */
+  fallback?: string[];
 }
 
 export interface OrphanedRegion {

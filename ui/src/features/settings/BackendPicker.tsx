@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { getBackends } from "../../lib/api";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
+import { getBackends, getConfig } from "../../lib/api";
 import type { BackendInfo, BackendOptionSchema, PhaseName } from "../../lib/types";
+import { Button } from "../../components/ui/button";
 import { Input, Select } from "../../components/ui/input";
 import { Slider } from "../../components/ui/Slider";
 import { Switch } from "../../components/ui/Switch";
@@ -9,7 +11,10 @@ import { Switch } from "../../components/ui/Switch";
  * Technique selector for a phase + its options form, both generated from the
  * backend registry (GET /config/backends/{phase}): a newly registered backend
  * shows up here with its options — enum → select, bounded number → slider,
- * boolean → switch, other text/number → input. No UI change per plugin.
+ * boolean → switch, list of objects → editable ordered list, other
+ * text/number → input. Schema hints: `x-widget: "connection"` picks a saved
+ * connection, `x-confirm: {value: message}` asks before choosing a value.
+ * No UI change per plugin.
  */
 export function BackendPicker({
   phase,
@@ -55,6 +60,8 @@ export function BackendPicker({
           key={key}
           name={sentence(p.title ?? key)}
           schema={p}
+          defs={current?.options.$defs}
+          id={`${phase}-${key}`}
           value={value.options[key] ?? p.default}
           onChange={(v) => setOpt(key, v)}
         />
@@ -63,20 +70,43 @@ export function BackendPicker({
   );
 }
 
+type Defs = Record<string, BackendOptionSchema> | undefined;
+
+function resolve(p: BackendOptionSchema | undefined, defs: Defs): BackendOptionSchema {
+  if (!p) return {};
+  return p.$ref ? (defs?.[p.$ref.split("/").pop() ?? ""] ?? {}) : p;
+}
+
 function OptionField({
   name,
   schema: p,
+  defs,
+  id,
   value,
   onChange,
 }: {
   name: string;
   schema: BackendOptionSchema;
+  defs: Defs;
+  id: string;
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
+  if (p.type === "array" && resolve(p.items, defs).properties) {
+    return <ListField name={name} schema={p} defs={defs} id={id} value={value} onChange={onChange} />;
+  }
+  if (p["x-widget"] === "connection") {
+    return <ConnectionField name={name} hint={p.description} id={id} value={value} onChange={onChange} />;
+  }
   if (p.enum) {
+    const confirmFor = p["x-confirm"] ?? {};
     return (
-      <Select label={name} hint={p.description} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
+      <Select id={id} label={name} hint={p.description} value={String(value ?? "")}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (confirmFor[v] && !window.confirm(confirmFor[v])) return;
+          onChange(v);
+        }}>
         {p.enum.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
       </Select>
     );
@@ -95,6 +125,7 @@ function OptionField({
   }
   return (
     <Input
+      id={id}
       label={name}
       hint={p.description}
       type={numeric ? "number" : "text"}
@@ -104,7 +135,72 @@ function OptionField({
   );
 }
 
-const ACRONYMS = /\b(ocr|api|gpu|vram|url|id|ids|cjk|lama)\b/g;
+function ConnectionField({ name, hint, id, value, onChange }: {
+  name: string; hint?: string; id: string; value: unknown; onChange: (v: unknown) => void;
+}) {
+  const { data: cfg } = useQuery({ queryKey: ["config"], queryFn: getConfig });
+  const conns = cfg?.connections ?? [];
+  const known = conns.some((c) => c.id === value);
+  return (
+    <Select id={id} label={name} hint={hint ?? (conns.length ? undefined : "Add a connection in Connections, above")}
+      value={String(value ?? "")}
+      onChange={(e) => onChange(e.target.value)}>
+      <option value="">Choose a connection</option>
+      {!known && value ? <option value={String(value)}>{String(value)} (deleted)</option> : null}
+      {conns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+    </Select>
+  );
+}
+
+/** Ordered list of objects (e.g. a chain of models tried in order). */
+function ListField({ name, schema: p, defs, id, value, onChange }: {
+  name: string; schema: BackendOptionSchema; defs: Defs; id: string; value: unknown; onChange: (v: unknown) => void;
+}) {
+  const item = resolve(p.items, defs);
+  const fields = Object.entries(item.properties ?? {});
+  const list = (Array.isArray(value) ? value : []) as Record<string, unknown>[];
+  const set = (i: number, k: string, v: unknown) => onChange(list.map((it, j) => (j === i ? { ...it, [k]: v } : it)));
+  const move = (i: number, d: number) => {
+    const next = [...list];
+    [next[i], next[i + d]] = [next[i + d], next[i]];
+    onChange(next);
+  };
+  const blank = Object.fromEntries(fields.map(([k, f]) => [k, f.default ?? (f.enum ? f.enum[0] : "")]));
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">{name}</p>
+      {p.description && <p className="-mt-1 text-xs text-[hsl(var(--text-muted))]">{p.description}</p>}
+      {list.map((it, i) => (
+        <div key={i} className="rounded-md border border-[hsl(var(--border))] p-3">
+          <div className="mb-2 flex items-center gap-1">
+            <span className="font-mono text-xs text-[hsl(var(--text-muted))]">{i + 1}</span>
+            <div className="ml-auto flex gap-0.5">
+              <Button variant="ghost" size="icon" className="size-6" disabled={i === 0} onClick={() => move(i, -1)}
+                aria-label="Move up" title="Try earlier"><ArrowUp size={12} /></Button>
+              <Button variant="ghost" size="icon" className="size-6" disabled={i === list.length - 1}
+                onClick={() => move(i, 1)} aria-label="Move down" title="Try later"><ArrowDown size={12} /></Button>
+              <Button variant="ghost" size="icon" className="size-6" onClick={() => onChange(list.filter((_, j) => j !== i))}
+                aria-label="Remove" title="Remove"><X size={12} /></Button>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {fields.map(([k, f]) => (
+              <OptionField key={k} name={sentence(f.title ?? k)} defs={defs} id={`${id}-${i}-${k}`}
+                schema={i === 0 ? f : { ...f, description: undefined }}   // hints once, not per item
+                value={it[k] ?? f.default} onChange={(v) => set(i, k, v)} />
+            ))}
+          </div>
+        </div>
+      ))}
+      <Button variant="outline" size="sm" className="self-start" onClick={() => onChange([...list, blank])}>
+        <Plus size={12} /> Add
+      </Button>
+    </div>
+  );
+}
+
+const ACRONYMS = /\b(ocr|api|gpu|vram|url|id|ids|cjk|lama|usd)\b/g;
 
 function sentence(s: string) {
   const t = s.replace(/_/g, " ").toLowerCase().replace(ACRONYMS, (m) => (m === "lama" ? "LaMa" : m.toUpperCase()));
