@@ -5,15 +5,15 @@ from yomeru.lib.translation import ChapterInput, collect_lines, translate_chapte
 
 PAGES = [
     {"page_number": 1, "scene": {"location": "street", "mood": "tense", "narrative_beat": "debt"},
-     "characters_seen": [{"id": "denji", "description": "boy", "speech_register": "rough, casual"}],
+     "characters_seen": [{"id": "kai", "description": "boy", "speech_register": "rough, casual"}],
      "dialogues": [
-         {"text": "300 GRAND.", "speaker_id": "denji", "addressee": "pochita", "tone": "flat",
+         {"text": "300 GRAND.", "speaker_id": "kai", "addressee": "rex", "tone": "flat",
           "intent": "listing what he sold", "bubble_type": "speech", "text_translated": "300 MIL."},
          {"text": "LOGO", "skip": True, "bubble_type": "narration"},
          {"text": "", "bubble_type": "speech"},
      ]},
     {"page_number": 2, "scene": {}, "characters_seen": [],
-     "dialogues": [{"text": "YOU KNOW THE DRILL!", "speaker_id": "denji", "bubble_type": "speech"}]},
+     "dialogues": [{"text": "YOU KNOW THE DRILL!", "speaker_id": "kai", "bubble_type": "speech"}]},
 ]
 
 
@@ -21,7 +21,7 @@ def _fake(calls, drop_first=False):
     def ask(system, user, schema):
         calls.append((system, user, schema))
         if "synopsis" in schema["properties"]:
-            return json.dumps({"synopsis": "s", "voices": [{"id": "denji", "voice": "rough"}],
+            return json.dumps({"synopsis": "s", "voices": [{"id": "kai", "voice": "rough"}],
                                "glossary": [{"source": "grand", "target": "mil"}], "honorifics": "drop", "notes": ""})
         keys = schema["properties"]["translations"]["items"]["properties"]["key"]["enum"]
         if drop_first and len(calls) == 2:
@@ -34,7 +34,7 @@ def _fake(calls, drop_first=False):
 def test_lines_skip_empty_and_skipped_and_carry_context():
     lines = collect_lines(PAGES)
     assert [ln.key for ln in lines] == ["p1.d0", "p2.d0"]
-    assert lines[0].addressee == "pochita" and lines[0].intent == "listing what he sold"
+    assert lines[0].addressee == "rex" and lines[0].intent == "listing what he sold"
 
 
 def test_two_passes_with_style_guide_context_and_retry_of_dropped_keys():
@@ -46,7 +46,7 @@ def test_two_passes_with_style_guide_context_and_retry_of_dropped_keys():
     # the style guide sees the whole chapter + character register
     assert "300 GRAND." in style_user and "YOU KNOW THE DRILL!" in style_user and "rough, casual" in style_user
     # each line carries who → whom, tone, intent and the guide
-    assert "denji → pochita" in block_user and "listing what he sold" in block_user and "grand → mil" in block_user
+    assert "kai → rex" in block_user and "listing what he sold" in block_user and "grand → mil" in block_user
     # the dropped line was asked again, alone
     assert len(calls) == 3 and calls[2][2]["properties"]["translations"]["items"]["properties"]["key"]["enum"] == ["p1.d0"]
     assert res.review
@@ -117,7 +117,7 @@ def test_run_gate_for_separate_translation(client):
 
 
 def test_already_readable_skip_is_undone_when_the_model_translated_it():
-    """Set de pruebas #6: an English chapter title skipped as already_readable
+    """An English chapter title skipped as already_readable
     in an EN→ES run, although the model translated it ('CAPÍTULO 1')."""
     from types import SimpleNamespace
     from yomeru.core.analyzer import parse_reply
@@ -132,7 +132,26 @@ def test_already_readable_skip_is_undone_when_the_model_translated_it():
 
 
 def test_capital_lettering_stays_capital():
-    """Set de pruebas #7: one page came out in sentence case among all-caps pages."""
+    """One page came out in sentence case among all-caps pages."""
     from yomeru.lib.rendering.scanline_engine import _all_caps
     assert _all_caps("YOU KNOW THE DRILL!") and not _all_caps("Le explicó lo que pasó")
     assert not _all_caps("ワン！") and not _all_caps("A")
+
+
+
+def test_glossary_is_carried_to_the_next_pages():
+    """In all-in-one mode terms and forms of address changed from page to page
+    (one place name translated two ways, tú/usted). Each
+    page reports its new choices; the context hands them to the next pages,
+    first choice wins."""
+    from yomeru.core.models import ContextObject, PageAnalysis
+    ctx = ContextObject()
+    ctx.update(PageAnalysis.model_validate({"page_number": 1, "glossary": [
+        {"source": "North Camp", "target": "Campamento Norte"}, {"source": "Mia → Old Tom", "target": "usted"}]}))
+    ctx.update(PageAnalysis.model_validate({"page_number": 2, "glossary": [
+        {"source": "North Camp", "target": "Campamento de Buscadores"}]}))
+    text = ctx.build_context()
+    assert "North Camp → Campamento Norte" in text and "Mia → Old Tom → usted" in text
+    assert "Buscadores" not in text
+    # nothing to report → nothing saved (all-in-one output unchanged when empty)
+    assert "glossary" not in PageAnalysis(page_number=3).model_dump() and "glossary" not in ContextObject().model_dump()

@@ -2,9 +2,9 @@ You extract and translate the text of ONE page of a published comic (manga, manh
 
 ## 1. Find every text
 The page has numbered boxes drawn on it. Each ★ box in the region list holds its OWN text.
-- One dialogue entry per ★ box. Never merge two boxes; never split one box. A sound drawn several times ("Clap" ×3) is one entry per occurrence.
+- One dialogue entry per ★ box. Never merge two boxes; never split one box. A sound drawn several times ("Knock" ×3) is one entry per occurrence.
 - `region_id` = the number printed on the box that contains that exact text. Read the number on the box itself — do not count or guess from order. If you are unsure which box, re-read the text inside the box before answering.
-- `text` = the text exactly as written (verbatim, line breaks as spaces). A word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING); keep only real hyphens (SPIDER-MAN, HITORI-CHAN).
+- `text` = the text exactly as written (verbatim, line breaks as spaces). A word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING); keep only real hyphens (SPIDER-MAN, MARIE-SAN).
 - List entries in reading order.
 
 ## 2. Translate
@@ -17,6 +17,8 @@ The page has numbered boxes drawn on it. Each ★ box in the region list holds i
 - Sound effects (bubble_type "sfx"): a short onomatopoeia of the target language (1–3 words), never a description.
 - Very short labels and signs: the shortest natural translation.
 - If the text is already in the target language, copy it.
+
+Reuse the context's glossary exactly (names, terms, tú/usted). In `glossary`, add only NEW choices from this page: recurring names/terms, and "A → B" forms of address.
 
 ## 3. Types
 - `bubble_type`: speech (bubble with tail) · thought (cloud) · narration (rectangular caption) · sfx (sound drawn in the art) · internal (spiky / strong inner voice).

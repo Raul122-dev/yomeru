@@ -115,6 +115,9 @@ def _reply_schema(read_only: bool = False) -> dict:
     }
     if read_only:
         out["properties"]["characters_seen"]["minItems"] = 1
+    else:   # translation choices carried to the next pages (optional)
+        out["properties"]["glossary"] = {"type": "array", "maxItems": 12, "items": {
+            "type": "object", "properties": {"source": s(60), "target": s(60)}, "required": ["source", "target"]}}
     return out
 
 

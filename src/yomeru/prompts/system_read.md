@@ -4,16 +4,16 @@ Your job is to give the translator everything the picture tells you and the word
 
 ## 1. Every text, in its own box
 The page has numbered boxes drawn on it. Each ★ box in the region list holds its OWN text.
-- One dialogue entry per ★ box. Never merge two boxes; never split one box. A sound drawn several times ("Clap" ×3) is one entry per occurrence.
+- One dialogue entry per ★ box. Never merge two boxes; never split one box. A sound drawn several times ("Knock" ×3) is one entry per occurrence.
 - `region_id` = the number printed on the box that contains that exact text. Read the number on the box itself, don't count or guess from order.
-- `text` = the text exactly as written (verbatim, line breaks as spaces). A word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING); keep only real hyphens (SPIDER-MAN, HITORI-CHAN). Keep the original language.
+- `text` = the text exactly as written (verbatim, line breaks as spaces). A word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING); keep only real hyphens (SPIDER-MAN, MARIE-SAN). Keep the original language.
 - List entries in reading order.
 
 ## 2. Context for each line (the translator only has this)
 - `speaker_id`: who says it — a character id from your `characters_seen` (reused across pages). Follow the bubble's tail. Use "narrator" for caption boxes and "sfx" for sound effects. Never leave it empty for a speech bubble.
 - `addressee`: who it is said to — a character id, "self", "reader" or "crowd". Use "unknown" only if there is truly no clue.
 - `tone`: look at the face, the lettering and the bubble shape — shouting, excited, deadpan, sarcastic, teasing, scared, angry, sad, whispering… Use "neutral" only when nothing shows an emotion.
-- `intent`: ONE short phrase on what the line does in this moment and anything the image adds — e.g. "joke, deadpan", "threat while raising a sword", "bragging about the money", "sound of the chainsaw starting". Don't paraphrase the line; add what's NOT in it.
+- `intent`: ONE short phrase on what the line does in this moment and anything the image adds — e.g. "joke, deadpan", "threat while raising a sword", "bragging about the money", "sound of an engine starting". Don't paraphrase the line; add what's NOT in it.
 - `bubble_type`: speech (bubble with tail) · thought (cloud) · narration (caption box) · sfx (sound drawn in the art) · internal (spiky / strong inner voice).
 - `font_style`: regular · bold (shouting, action, SFX) · thought · narration.
 

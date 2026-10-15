@@ -96,7 +96,7 @@ class Dialogue(BaseModel):
     bbox: list[float] | None = None
     # Context for a separate translation step (read-only mode): who the line
     # is said to, and what is going on as it is said (sarcasm, threat, joke,
-    # "while starting the chainsaw"). Not used by the all-in-one mode.
+    # "while starting an engine"). Not used by the all-in-one mode.
     addressee: str | None = Field(default=None, exclude_if=lambda v: v is None)
     intent: str | None = Field(default=None, exclude_if=lambda v: v is None)
 
@@ -192,6 +192,19 @@ class Scene(BaseModel):
         return str(v)
 
 
+class GlossaryEntry(BaseModel):
+    source: str = ""
+    target: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, d: Any) -> Any:
+        if isinstance(d, dict):
+            return {"source": str(d.get("source") or d.get("term") or ""),
+                    "target": str(d.get("target") or d.get("translation") or "")}
+        return d
+
+
 class PageAnalysis(BaseModel):
     page_number: int
     panel_count: int = 0
@@ -200,6 +213,9 @@ class PageAnalysis(BaseModel):
     characters_seen: list[CharacterState] = Field(default_factory=list)
     scene: Scene = Field(default_factory=Scene)
     page_summary: str = ""
+    # Translation choices to keep across pages: names/terms and forms of
+    # address (a place name → its chosen translation, "A → B" → "usted").
+    glossary: list[GlossaryEntry] = Field(default_factory=list, exclude_if=lambda v: not v)
 
     @model_validator(mode="before")
     @classmethod
@@ -219,6 +235,7 @@ class ContextObject(BaseModel):
     scene: Scene | None = None
     page_summaries: list[dict] = Field(default_factory=list)
     chunk_summaries: list[str] = Field(default_factory=list)
+    glossary: dict[str, str] = Field(default_factory=dict, exclude_if=lambda v: not v)   # first choice wins
 
     def update(self, a: PageAnalysis) -> None:
         self.total_pages_processed += 1
@@ -231,6 +248,9 @@ class ContextObject(BaseModel):
                 self.characters[c.id] = c
         self.scene = a.scene
         self.page_summaries.append({"page": a.page_number, "summary": a.page_summary})
+        for g in a.glossary:
+            if g.source.strip() and g.target.strip():
+                self.glossary.setdefault(g.source.strip(), g.target.strip())
 
     def compress_chunk(self, analyses: list[PageAnalysis]) -> str:
         if not analyses: return ""
@@ -255,4 +275,8 @@ class ContextObject(BaseModel):
             lines.append(f"  p{ps['page']}: {ps['summary'][:80]}")
         if self.scene:
             lines.append(f"scene: {self.scene.location} — {self.scene.mood}")
+        if self.glossary:
+            lines.append("glossary (translations already used in this chapter — reuse them exactly):")
+            for src, tgt in list(self.glossary.items())[-40:]:
+                lines.append(f"  {src} → {tgt}")
         return "\n".join(lines)

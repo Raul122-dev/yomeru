@@ -100,7 +100,7 @@ Stable identification rules:
     {
       "panel_index": <int — which panel this bubble is in>,
       "speaker_id": <string | null>,
-      "text": <string — verbatim, line breaks as spaces; a word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING) — keep only real hyphens (SPIDER-MAN, HITORI-CHAN)>,
+      "text": <string — verbatim, line breaks as spaces; a word the lettering split across two lines with a hyphen (INTEREST- / ING) is written whole (INTERESTING) — keep only real hyphens (SPIDER-MAN, MARIE-SAN)>,
       "text_translated": <string — ONLY if translation was requested>,
       "tone": <string — see modifier table above, default "neutral">,
       "bubble_type": <"speech" | "thought" | "narration" | "sfx" | "internal">,
@@ -124,9 +124,15 @@ Stable identification rules:
     "mood": <string>,
     "narrative_beat": <string — one sentence: what happens and why it matters>
   },
-  "page_summary": <string — 1-2 sentences, include key actions and any revealed information>
+  "page_summary": <string — 1-2 sentences, include key actions and any revealed information>,
+  "glossary": [
+    {"source": <string — a name, place, title or recurring term, or "A → B" for how character A addresses B>,
+     "target": <string — the translation you used, or "tú" / "usted" / the honorific for an address>}
+  ]
 }
 ```
+
+**Consistency across pages:** if the context has a glossary, reuse those translations and forms of address exactly. In `glossary`, list only NEW choices made on this page (recurring names, places, invented terms, and who addresses whom formally or informally); empty list if none. Omit it when no translation was requested.
 
 ### Dialogue ordering
 
@@ -174,7 +180,7 @@ Cover pages, title pages, and chapter splash pages typically contain MANY region
 | Category | When to skip | `skip_reason` |
 |----------|-------------|---------------|
 | **Stylized/artistic titles** | Title text rendered with custom brush strokes, calligraphy, 3D effects, gradients, or artistic integration with illustration. The key indicator: the text IS part of the artwork/design, not placed ON it. Includes large kanji/kana titles in decorative brush fonts. | `"decorative_title"` |
-| **Logo-style text** | Series logos, brand names, franchise names (e.g., "Bocchi the Rock!", "ONE PIECE") with specific typography/design that is part of the brand identity. Even if the text is readable, it's a logo — not prose. | `"logo"` |
+| **Logo-style text** | Series logos, brand names, franchise names (e.g. the series title logo, a magazine or brand name) with specific typography/design that is part of the brand identity. Even if the text is readable, it's a logo — not prose. | `"logo"` |
 | **Credits / author attribution** | Author/artist/adapter credit lines: "Original Work: X", "Manga: Y", "原作：X", "作：Y", "画：Z", "Story by:", "Art by:". These are ALWAYS skip regardless of background complexity — they are metadata, not story content. | `"credits"` |
 | **Text already in the target language** | Only if the title/label is ALREADY written in the target language itself (e.g. Spanish text when the target is Spanish). Text in any other language — English included — is translated. | `"already_readable"` |
 | **Publisher/magazine metadata** | Magazine names, imprint logos, publishing house text, ISSN, volume numbers, "SIDE STORY" subtitles that are branding. | `"publisher"` |
@@ -235,7 +241,7 @@ When translating sound effects (bubble_type = "sfx"), you MUST produce an equiva
 **Rules:**
 1. **Translate to equivalent onomatopoeia**, not descriptions. The reader needs a SOUND, not an explanation.
 2. **Keep it short** — SFX renders as a small subtitle near the original art. 1-3 words max.
-3. **One entry per occurrence** — the same sound drawn several times ("Clap" ×3 down a panel) is several entries, one per place it appears, each with its own region_id (or null + bbox if it has no box). Never merge repeats into one entry.
+3. **One entry per occurrence** — the same sound drawn several times ("Knock" ×3 down a panel) is several entries, one per place it appears, each with its own region_id (or null + bbox if it has no box). Never merge repeats into one entry.
 4. **Use established comic/manga onomatopoeia** in the target language when possible.
 5. If no direct equivalent exists, transliterate or use the closest phonetic approximation.
 
