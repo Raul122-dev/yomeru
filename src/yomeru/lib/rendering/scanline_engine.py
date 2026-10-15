@@ -171,8 +171,8 @@ def harmonize_sizes(sizes, bboxes, adjustable, min_font, joinable=None) -> dict[
 
 
 def proper_names(source: str, drawn: str) -> frozenset[str]:
-    """Words the translation carries over verbatim from the source (names:
-    'IWASHITA', 'SHIMIZU', 'DENJI'). Never split at a syllable."""
+    """Words the translation carries over verbatim from the source (character
+    names). Never split at a syllable."""
     import re
     tok = lambda s: {w.upper() for w in re.findall(r"[^\W\d_]{3,}", s)}  # noqa: E731
     return frozenset(tok(source) & tok(drawn))
@@ -425,9 +425,9 @@ def layout_and_draw(req):
             if bubble_w < 80:
                 max_size = min(max_size, max(12, bubble_w // 4))
 
-        # A short shout ('¡SÍ!', '¡¡AI!!', '¡¿EHHH?!') is lettered big in comics:
-        # let it grow with its bubble, and keep it out of the page-median cap
-        # (test corpus: 29-50px in bubbles the original fills at ~90px).
+        # A short shout (one or two words) is lettered big in comics: let it
+        # grow with its bubble, and keep it out of the page-median cap, which
+        # shrank it to body-text size in bubbles the original fills.
         words_ = clean_text.split()
         is_shout = (not is_free and style == "bold" and tone in ("shouting", "screaming", "yelling", "angry", "excited")
                     and len(words_) <= 2 and len(clean_text.replace(" ", "")) <= 12)
@@ -470,8 +470,8 @@ def layout_and_draw(req):
             and vert_potential_font >= 12  # minimum legible size
             and bubble_h > bubble_w * 1.8
         ) or (
-            # A one-word Latin shout in a very tall, narrow bubble ("¡GYAAAH!",
-            # "¡SADAHARU!"): scanlators stack the letters; horizontal gave 9-11px.
+            # A one-word Latin shout in a very tall, narrow bubble: scanlators
+            # stack the letters; horizontal gave 9-11px.
             # Normal bubbles keep horizontal text ("¡NO!" stacked read badly).
             rules.stack_shouts and _all_caps(clean_text)   # stacked lowercase reads badly
             and len(words) == 1 and 3 <= char_count <= 14
@@ -479,7 +479,7 @@ def layout_and_draw(req):
             and vert_potential_font >= max(14, horiz_max_font * 1.8)
         )
 
-        # Vertical CJK lettering on the art (kaguya ch1 p8 blurbs) translated to
+        # Vertical CJK lettering on the art (e.g. cover blurbs) translated to
         # a Latin script: lay the line out along the column and turn it 90°
         # (spine-style), instead of a 12px horizontal staircase across the art.
         rotated_free = (
@@ -940,7 +940,7 @@ def _container_for(text_bbox, center, containers):
     through the text (< 70% inside) while another holds it whole (>= 90%):
     bubble boxes are rectangles and overlap, so a small caption next to a
     speech bubble had its centre inside the speech bubble's box and was drawn
-    on top of its dialogue (bocchi ch10 p2)."""
+    on top of its dialogue."""
     cx, cy = center
     first = next((c for c in containers if c[0] <= cx <= c[2] and c[1] <= cy <= c[3]), None)
     if first is None or _inside(text_bbox, first) >= 0.7:
@@ -960,7 +960,7 @@ def _was_erased(original: Image.Image, inpainted: Image.Image, box, min_changed:
 
 def _clear_of_columns(box, columns, gap: int = 6):
     """A horizontal free-text box crossed by a turned column keeps the larger
-    side of it (kaguya ch1 p8: the blurbs ran under the turned tagline)."""
+    side of it (otherwise it runs under the turned column)."""
     x1, y1, x2, y2 = box
     for cx1, cy1, cx2, cy2 in columns:
         if (cx1, cy1, cx2, cy2) == box or cy2 <= y1 or cy1 >= y2 or cx2 <= x1 or cx1 >= x2:
@@ -1156,8 +1156,8 @@ def _expand_free_text_bbox(
             break
 
     # Grow the same on both sides so the text stays where it was: a one-sided
-    # gain slid it off its spot — 'Plas' (bocchi ch10 p5) went out into the
-    # white page margin because only the margin side was uniform.
+    # gain slid it off its spot — an SFX went out into the white page margin
+    # because only the margin side was uniform.
     if x1 > 4 and x2 < img_w - 4:
         g = min(x1 - new_x1, new_x2 - x2)
         new_x1, new_x2 = x1 - g, x2 + g

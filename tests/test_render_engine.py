@@ -86,9 +86,8 @@ def test_hyphenation_uses_the_drawn_language(run):
 
 def test_two_dialogues_never_share_a_bubble(tmp_path, monkeypatch):
     """Two matches resolving to the same container were drawn on top of each
-    other (Bocchi p2: drummer + bassist text in one box; Chainsaw Man p2:
-    'MATAR A UN DEMONIO' over 'GRRRR'). One per container; the other is
-    reported as skipped 'same_container'."""
+    other. One per container; the other is reported as skipped
+    'same_container'."""
     src = GOLDEN.parent.parent / "zz_e2e_test" / "input"
     if not src.exists():
         pytest.skip("golden zz_e2e_test not captured")
@@ -101,8 +100,8 @@ def test_two_dialogues_never_share_a_bubble(tmp_path, monkeypatch):
     from yomeru.api.routes.phases import _phase_options
     for phase in ("matching", "inpainting"):
         assert _get_phase_fn(phase)(r, _phase_options(r, phase)).status == "done"
-    # Matching now fixes Bocchi p2 upstream (OCR check of region ids), so force
-    # the original collision: point the drummer's match at the bassist's region.
+    # Matching now fixes this case upstream (OCR check of region ids), so force
+    # the collision: point one dialogue's match at another dialogue's region.
     from yomeru.core import artifacts
     log = artifacts.load_render_log(r, 2)
     ms = log["s3_matching"]["matches"]
@@ -145,8 +144,8 @@ def test_render_overrides_round_trip_and_explicit_unskip(client):
 
 def test_font_search_takes_the_largest_size_that_fits():
     """R8: a size that fits (fill <= 0.95) is never discarded for a smaller one
-    to hit a 0.35-0.85 fill band ('¿CUÁNTO FUE ESO DE NUEVO?' fit at 21 with
-    fill 0.90 and ended at 18)."""
+    to hit a 0.35-0.85 fill band (a line that fit at 21 with fill 0.90 ended
+    at 18)."""
     from yomeru.lib.rendering.scanline_engine import largest_fitting_layout
     lh = 20
     # size 21 → 3 lines (fill 0.90); size 18 → 2 lines (fill 0.60, inside the old band)
@@ -216,14 +215,14 @@ def _ellipse_contour(w=240, h=300):
 
 def test_scanline_wraps_centre_first():
     """R5: widths were taken from the contour's top, then the block was
-    re-centred on the bbox: 'YA CONOCES EL TALADRO, ¡POCHITA!' at 35 in a
-    240x302 bubble came out in 5 lines. Centred on the bubble it takes 3."""
+    re-centred on the bbox: a short sentence at 35 in a 240x302 bubble came
+    out in 5 lines. Centred on the bubble it takes 3."""
     from yomeru.lib.rendering.pil import _get_font
     from yomeru.lib.rendering.scanline import scanline_layout
     font = _get_font("bold", 35)
     c = _ellipse_contour()
     lines = scanline_layout(Image.new("RGB", (280, 340), "white"), (20, 20, 260, 320),
-                            "YA CONOCES EL TALADRO, ¡POCHITA!", font, 35, "es", padding=12, precomputed_contour=c)
+                            "YA SABES QUÉ HACER, ¡MAX!", font, 35, "es", padding=12, precomputed_contour=c)
     assert lines and len(lines) <= 3, [pl.text for pl in (lines or [])]
     # the block sits around the centre and every line is inside its row
     mid = sum(pl.y for pl in lines) / len(lines)
@@ -232,7 +231,7 @@ def test_scanline_wraps_centre_first():
 
 def test_scanline_hyphenates_instead_of_failing():
     """R8: a word wider than the row made the whole size fail (no syllable
-    split in the contour path), dropping 'GRANDES.' down to 18 pt. 7-letter
+    split in the contour path), dropping a short line down to 18 pt. 7-letter
     words split only when forced (nothing fits whole)."""
     from yomeru.lib.rendering.pil import _get_font
     from yomeru.lib.rendering.scanline import scanline_layout
@@ -307,8 +306,8 @@ def test_proper_names_are_never_split():
 
 
 def test_wrap_moves_long_word_to_a_wider_row():
-    """Greedy filling put 'MILLONES.' on the narrow bottom row of an oval and
-    split it ('MILLO-/NES.') — it fits whole on the wide middle row."""
+    """Greedy filling put a long word on the narrow bottom row of an oval and
+    split it — it fits whole on the wide middle row."""
     from yomeru.lib.rendering.scanline import _wrap_into
     from yomeru.lib.rendering.pil import _get_font
     from yomeru.lib.rendering.text_layout import _get_hyphenator, measure_width
@@ -388,8 +387,7 @@ def test_temp_names_are_per_writer(tmp_path):
 
 
 def test_tiny_erased_region_is_never_left_empty():
-    """Set de pruebas: 7 regions were erased then skipped as no_fit (blank
-    bubbles). The minimum size was excluded from every search range, and there
+    """Regions were erased then skipped as no_fit (blank bubbles). The minimum size was excluded from every search range, and there
     was no last resort. Now the text is always drawn (at worst flagged overflow)."""
     from PIL import Image as _I
     from yomeru.core.contracts import RenderRequest
@@ -422,12 +420,13 @@ def test_tiny_erased_region_is_never_left_empty():
 
 
 def test_hyphenated_words_break_at_their_hyphen_without_doubling_it():
-    """Set de pruebas pattern #3: 'HITORI--CHAN', 'KAGURA--CHAN', 'BAJISTA--'."""
+    """A word with its own hyphen broken at that hyphen must not get a second one
+    ('NAME--SUFFIX')."""
     from yomeru.lib.rendering.pil import _get_font
     from yomeru.lib.rendering.text_layout import _get_hyphenator, _try_hyphenate
     f = _get_font("regular", 40)
     h = _get_hyphenator("es", aggressive=True)
-    for word in ("HITORI-CHAN", "KAGURA-CHAN", "BAJISTA-VOCALISTA", "SHINPACHI-KUN"):
+    for word in ("MARIE-CHAN", "LUCA-CHAN", "BAJISTA-VOCALISTA", "TAKUMI-KUN"):
         for w in (120, 200, 260):
             head, rest = _try_hyphenate(word, h, f, w, 4)
             assert "--" not in head and not rest.startswith("-")
@@ -444,7 +443,7 @@ def test_prompts_ask_to_rejoin_line_break_hyphens():
 
 
 def test_short_free_text_is_not_taller_than_its_box():
-    """Set de pruebas pattern #4: 20px-high SFX/notes were drawn at 30px over
+    """20px-high SFX/notes were drawn at 30px over
     panel borders and page edges (the bbox fallback ignored the box height)."""
     from PIL import Image as _I, ImageDraw as _D
     from yomeru.core.contracts import RenderRequest
@@ -463,8 +462,8 @@ def test_short_free_text_is_not_taller_than_its_box():
 
 
 def test_one_word_shout_in_tall_narrow_bubble_is_stacked():
-    """Set de pruebas #5 (gintama ch10 p2/p4): '¡GYAAH!' / '¡SADAHARU!' in tall,
-    narrow bubbles came out horizontal at 9-11px; scanlators stack the letters."""
+    """One-word shouts in tall, narrow bubbles came out horizontal at 9-11px;
+    scanlators stack the letters."""
     from PIL import Image as _I, ImageDraw as _D
     from yomeru.core.contracts import RenderRequest
     from yomeru.lib.rendering.scanline_engine import layout_and_draw
@@ -479,12 +478,12 @@ def test_one_word_shout_in_tall_narrow_bubble_is_stacked():
                             dialogues=[{"text": "X", "text_translated": text, "bubble_type": "speech"}],
                             overrides={}, skipped=set(), containers=[box], use_translation=True, lang_code="es")
         return layout_and_draw(req).events[0]["font_size"]
-    assert run("¡SADAHARU!") >= 20
+    assert run("¡MAGNÍFICO!") >= 20
 
 
 
 def test_vertical_cjk_free_text_translated_to_latin_is_turned():
-    """kaguya ch1 p8: a vertical Japanese tagline on the art came out as a
+    """A vertical Japanese tagline on the art came out as a
     horizontal staircase; it is now laid out along the column and turned 90°."""
     from PIL import Image as _I, ImageDraw as _D
     from yomeru.core.contracts import RenderRequest
@@ -514,8 +513,8 @@ def test_horizontal_free_text_keeps_clear_of_a_turned_column():
 
 
 def test_short_shout_grows_with_its_bubble_and_skips_the_page_cap():
-    """made-in-abyss ch10 p1: '¡SÍ!' / '¡IRÉ!' searched 50px but the page-median
-    cap took them to 29px in bubbles the original fills at ~90px."""
+    """A short shout searched at a large size but the page-median cap shrank it
+    to body-text size in a bubble the original fills with big lettering."""
     from PIL import Image as _I, ImageDraw as _D
     from yomeru.core.contracts import RenderRequest
     from yomeru.lib.rendering.scanline_engine import layout_and_draw

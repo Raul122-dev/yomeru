@@ -191,8 +191,8 @@ def _try_hyphenate(
     lead, root, trail = _split_word_punct(word)
     if not root or len(root) < min_root_len:
         return "", word
-    # A word that already has hyphens (BAJISTA-VOCALISTA, HITORI-CHAN) breaks
-    # right after one of them, without adding another ("BAJISTA--").
+    # A word that already has hyphens (NAME-SUFFIX) breaks right after one of
+    # them, without adding another ("NAME--").
     parts = sorted(set(hyph.positions(root)) | {i + 1 for i, ch in enumerate(root[:-1]) if ch == "-"})  # type: ignore[attr-defined]
     for pos in reversed(parts):
         head = root[:pos]

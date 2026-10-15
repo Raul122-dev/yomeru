@@ -183,7 +183,7 @@ def match_page(req: MatchRequest, matcher, ocr_weight: float, spatial_weight: fl
 
     # Text regions no dialogue landed in. Bubble containers are never
     # "orphans": they hold a text_bubble, not text of their own (they
-    # used to be counted — p1 reported 14 "empty bubbles" with none).
+    # used to be counted — a page reported many "empty bubbles" with none).
     orphaned = [
         r for r in page_dets.values()
         if r["id"] not in claimed_ids and is_text(r.get("label"))
@@ -226,7 +226,7 @@ LOCATE_MIN_RATIO = 0.75
 
 def split_repeated_sfx(matches, dialogues, page_dets, img):
     """A sound drawn several times that the reading merged into one entry
-    ('Clap Clap Clap' on one box, bocchi ch10 p5): page OCR finds the other
+    (the word repeated on one box): page OCR finds the other
     occurrences outside every detected region near the first one.
     Returns [(dialogue_index, word, translated_word, [new regions])]; the
     phase splits the dialogue into one per occurrence. Latin OCR only."""
@@ -254,7 +254,7 @@ def split_repeated_sfx(matches, dialogues, page_dets, img):
         def free(b):
             bx, by = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
             return not any(t[0] <= bx <= t[2] and t[1] <= by <= t[3] for t in taken)
-        # stylised SFX lettering reads poorly ('Clap' -> 'Uap'): loose ratio,
+        # stylised SFX lettering reads poorly (letters misread): loose ratio,
         # but only for free boxes near the first occurrence
         cands = sorted(((abs((b[0] + b[2]) / 2 - cx) + abs((b[1] + b[3]) / 2 - cy), b)
                         for b, t in lines if t and SequenceMatcher(None, word, t).ratio() >= 0.5 and free(b)),
@@ -404,9 +404,9 @@ VERIFY_WEAK = 0.3       # OCR clearly does NOT say the assigned dialogue
 
 
 def _verify_direct_claims(matches, used_region_ids, dialogues, page_dets, img, source_lang, img_w, img_h):
-    """The VLM's region_ids can be shifted along a chain of bubbles (qwen3.5:9b
-    on Chainsaw Man p1: each dialogue pointed at the NEXT one's bubble, the
-    first one's bubble was left orphaned and kept its English text). Read each
+    """The VLM's region_ids can be shifted along a chain of bubbles (each
+    dialogue points at the NEXT one's bubble, the first one's bubble is left
+    orphaned and keeps its source text). Read each
     claimed text region with OCR; when a reading clearly contradicts its
     dialogue and clearly matches another one, reassign the dialogues involved
     by text (optimal assignment over their regions + unclaimed text regions).

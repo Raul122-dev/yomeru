@@ -24,7 +24,7 @@ def test_previous_rules_are_reproduced():
 
 
 def test_text_rules_follow_the_written_script():
-    assert L.text_rules("¡SADAHARU!").stack_shouts
+    assert L.text_rules("¡MAGNÍFICO!").stack_shouts
     assert L.text_rules("天才も恋には").vertical_native and not L.text_rules("天才も恋には").stack_shouts
     assert L.text_rules("안녕하세요").script == "hangul"
 

@@ -359,7 +359,7 @@ def parse_reply(raw: str, req, label: str) -> PageAnalysis:
     data = _parse(raw)
     data["page_number"] = page_number
     # 'already_readable' = already in the target language. If the model's own
-    # translation differs from the text, it was not (kaguya ch1: English chapter
+    # translation differs from the text, it was not (e.g. an English chapter
     # title kept in an EN→ES run).
     for d in data.get("dialogues") or []:
         if isinstance(d, dict) and d.get("skip") and d.get("skip_reason") == "already_readable":

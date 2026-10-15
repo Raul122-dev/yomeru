@@ -142,9 +142,9 @@ def test_region_id_pointing_at_a_bubble_maps_to_its_text_region():
 
 
 def test_ocr_corrects_region_ids_shifted_along_a_chain(monkeypatch):
-    """The VLM can point each dialogue at the NEXT one's bubble (qwen3.5:9b on
-    Chainsaw Man p1; Gemini on Bocchi p2: the drummer's text was drawn in the
-    bassist's box and the drummer's box kept its English). OCR of the claimed
+    """The VLM can point each dialogue at the NEXT one's bubble: one text is
+    drawn in its neighbour's box and the first box keeps the source language.
+    OCR of the claimed
     regions contradicts the ids → dialogues are reassigned by text. When OCR
     agrees, nothing moves."""
     from PIL import Image
@@ -157,15 +157,15 @@ def test_ocr_corrects_region_ids_shifted_along_a_chain(monkeypatch):
         2: {"id": 2, "x1": 0, "y1": 100, "x2": 100, "y2": 150, "label": "text_bubble", "score": 1},
         3: {"id": 3, "x1": 0, "y1": 200, "x2": 100, "y2": 250, "label": "text_bubble", "score": 1},
     }
-    printed = {(0, 0, 100, 50): "I SOLD ONE OF MY BALLS TOO.",
+    printed = {(0, 0, 100, 50): "I SOLD MY OLD BIKE TOO.",
                (0, 100, 100, 150): "HOW MUCH WAS THAT AGAIN?",
-               (0, 200, 100, 250): "100 GRAND WASN'T IT?"}
+               (0, 200, 100, 250): "WAS IT A HUNDRED?"}
     monkeypatch.setattr("yomeru.lib.matching.ocr.ocr_region", lambda img, bb, lang="auto": printed[tuple(bb)])
     monkeypatch.setattr("yomeru.lib.matching.hungarian.ocr_region", lambda img, bb, *a, **k: printed[tuple(bb)])
 
     def run(ids):
         dlgs = [{"text": t, "region_id": r} for t, r in zip(
-            ["I SOLD ONE OF MY BALLS TOO.", "HOW MUCH WAS THAT AGAIN?", "100 GRAND WASN'T IT?"], ids)]
+            ["I SOLD MY OLD BIKE TOO.", "HOW MUCH WAS THAT AGAIN?", "WAS IT A HUNDRED?"], ids)]
         res = match_page(MatchRequest(image=Image.new("RGB", (100, 300)), detections=regions, dialogues=dlgs,
                                       source_language="English", comic_format="manga"),
                          build_matcher("hungarian"), 0.4, 0.4, 0.05)
@@ -180,7 +180,7 @@ def test_ocr_corrects_region_ids_shifted_along_a_chain(monkeypatch):
 
 
 def test_locate_finds_text_the_detector_missed(monkeypatch):
-    """Set de pruebas: 'SFX: GRR', 'SFX: SKID', 'Yay!' had no detected region,
+    """Short SFX/interjections had no detected region,
     so they were neither erased nor translated. Page OCR finds the words
     outside every detected text region -> a new text_free region."""
     from PIL import Image
@@ -201,7 +201,7 @@ def test_locate_finds_text_the_detector_missed(monkeypatch):
 
 
 def test_free_text_expands_evenly_so_it_stays_in_place():
-    """'Plas' (bocchi ch10 p5) slid into the white page margin: only the margin
+    """A free-text SFX slid into the white page margin: only the margin
     side was uniform, so the box grew one way and the text moved off its spot."""
     import numpy as np
     from PIL import Image
@@ -215,21 +215,21 @@ def test_free_text_expands_evenly_so_it_stays_in_place():
 
 
 def test_repeated_sfx_merged_by_the_reading_is_split_per_occurrence(monkeypatch):
-    """bocchi ch10 p5: 'Clap' x3 down a panel came as one entry 'Clap Clap Clap'
-    on the first box; the others stayed in English. OCR (which reads the
-    stylised lettering loosely: 'Uap') finds the free ones nearby."""
+    """An SFX repeated down a panel came as one entry with the word repeated,
+    on the first box; the others stayed in the source language. OCR (which reads the
+    stylised lettering loosely) finds the free ones nearby."""
     from types import SimpleNamespace
     from PIL import Image
     import yomeru.lib.matching.ocr as ocr
     from yomeru.lib.matching.cascade import split_repeated_sfx
     monkeypatch.setattr(ocr, "ocr_lines", lambda img, *a: [
-        ((114, 230, 160, 258), "Uap"),       # the first one, inside its own region
-        ((96, 315, 145, 346), "Uap"),        # second occurrence, free
-        ((900, 900, 950, 930), "Clap")])     # far away -> not this one
+        ((114, 230, 160, 258), "Kn0ck"),       # the first one, inside its own region
+        ((96, 315, 145, 346), "Kn0ck"),        # second occurrence, free
+        ((900, 900, 950, 930), "Knock")])     # far away -> not this one
     dets = {25: {"id": 25, "x1": 105, "y1": 225, "x2": 169, "y2": 272, "label": "text_free"}}
     m = SimpleNamespace(region=SimpleNamespace(center=(137, 248)))
-    dialogues = [{"text": "Clap Clap Clap", "text_translated": "Plas Plas Plas", "bubble_type": "sfx", "region_id": 25}]
+    dialogues = [{"text": "Knock Knock Knock", "text_translated": "Toc Toc Toc", "bubble_type": "sfx", "region_id": 25}]
     got = split_repeated_sfx({0: m}, dialogues, dets, Image.new("RGB", (1354, 1920)))
     assert len(got) == 1
     i, word, tr, regs = got[0]
-    assert (i, word, tr) == (0, "clap", "Plas") and [r["id"] for r in regs] == [26] and regs[0]["y1"] == 312
+    assert (i, word, tr) == (0, "knock", "Toc") and [r["id"] for r in regs] == [26] and regs[0]["y1"] == 312

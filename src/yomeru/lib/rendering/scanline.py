@@ -234,7 +234,7 @@ def _wrap_into(words: list[str], widths: list[int], font, is_cjk: bool, hyph,
                protected: frozenset[str] = frozenset(), force: bool = False) -> list[str] | None:
     """Fit the words into exactly these line widths (top to bottom). Search over
     break points, fullest line first, so a long word can move to a wider row
-    instead of failing (greedy filling pushed 'MILLONES.' onto the narrow
+    instead of failing (greedy filling pushed a long word onto the narrow
     bottom row). A word that fits no row whole may be split at a syllable
     (Latin, never names/short words unless forced). None if impossible."""
     from functools import lru_cache
