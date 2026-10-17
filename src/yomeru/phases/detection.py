@@ -124,20 +124,6 @@ def run(
     )
 
 
-def get_status(run: Run) -> dict:
-    """Check detection phase status and outputs."""
-    det_file = run.output_dir() / "page_detections.json"
-    if not det_file.exists():
-        return {"status": "pending", "pages_detected": 0}
-    import json
-    data = json.loads(det_file.read_text())
-    return {
-        "status": run.get_phase_status("detection"),
-        "pages_detected": len(data),
-        "total_regions": sum(len(entry["regions"]) for entry in data),
-    }
-
-
 def _save_detections(all_detections: dict[int, list[dict]], page_sizes: dict[int, tuple[int, int]], output_dir: Path) -> None:
     """Save all page detections to page_detections.json."""
     import json

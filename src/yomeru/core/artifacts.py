@@ -36,7 +36,6 @@ MATCHES_REFINED = "matches_refined.json"
 MASK_REFINED = "mask_refined.png"
 MASK_CURRENT = "mask_current.png"
 RENDER_OVERRIDES = "render_overrides.json"
-S3_MATCHING = "s3_matching.jpg"
 # Intermediates are lossless (PNG): the page used to go through JPEG twice
 # (inpainted q88, then render q90) before the final copy.
 S4_INPAINTED = "s4_inpainted.png"

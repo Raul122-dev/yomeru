@@ -37,10 +37,6 @@ WEIGHTS: dict[str, Weight] = {
 _locks: dict[str, threading.Lock] = {k: threading.Lock() for k in WEIGHTS}
 
 
-def is_downloaded(key: str) -> bool:
-    return WEIGHTS[key].path.is_file()
-
-
 def ensure_weight(key: str) -> Path:
     """Return the local path of a weight, downloading it the first time."""
     w = WEIGHTS[key]

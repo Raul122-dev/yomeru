@@ -15,18 +15,10 @@ See SPEC.md for the full input/output contract.
 from __future__ import annotations
 
 from yomeru.core.labels import TEXT_BUBBLE, is_free as is_free_label
-from typing import Any, Protocol
+from typing import Any
 
 import numpy as np
 from PIL import Image
-
-
-class BaseInpainter(Protocol):
-    """Interface every inpainting backend must satisfy."""
-    @property
-    def name(self) -> str: ...
-
-    def inpaint(self, image: Image.Image, mask: np.ndarray) -> Image.Image: ...
 
 
 _cache: dict[str, Any] = {}

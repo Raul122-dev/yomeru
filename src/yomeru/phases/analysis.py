@@ -180,18 +180,6 @@ def run(
     )
 
 
-def get_status(run: Run) -> dict:
-    """Check analysis phase status and outputs."""
-    analyses_file = run.active_analyses_file()
-    if not analyses_file.exists():
-        return {"status": "pending", "pages_analyzed": 0}
-    data = json.loads(analyses_file.read_text())
-    return {
-        "status": run.get_phase_status("analysis"),
-        "pages_analyzed": len(data),
-    }
-
-
 def _load_existing_analyses(output_dir: Path):
     """Load existing analyses for context rebuilding during retry."""
     from yomeru.core.models import PageAnalysis

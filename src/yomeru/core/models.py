@@ -29,18 +29,6 @@ COMIC_FORMATS: dict[str, ComicFormat] = {
 DEFAULT_FORMAT = "auto"
 
 
-def format_context_str(fmt_key: str) -> str:
-    fmt = COMIC_FORMATS.get(fmt_key, COMIC_FORMATS["auto"])
-    d = fmt.reading_order.upper() if fmt.reading_order != "auto" else "auto-detect"
-    return f"Format: {fmt.name}. Reading: {d}. {fmt.notes}"
-
-
-KNOWN_TONES = {
-    "neutral","calm","happy","excited","angry","sad","scared","surprised",
-    "whispering","shouting","thinking","serious","tense","sarcastic","eager",
-    "melancholic","determined","nervous","relieved","confused","proud","hopeful",
-}
-
 _D_ALIASES = {
     "panel_number":"panel_index","panel_idx":"panel_index","panelIndex":"panel_index",
     "speaker":"speaker_id","character":"speaker_id","character_id":"speaker_id",

@@ -337,30 +337,6 @@ def wrap_balanced(
     return lines
 
 
-def wrap_segments(
-    segments: list[str],
-    box_w: int,
-    max_lines: int,
-    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
-    lang_code: str | None,
-    is_cjk: bool = False,
-) -> list[str] | None:
-    """Wrap text with mandatory break points (from embedded newlines)."""
-    all_lines: list[str] = []
-    for segment in segments:
-        remaining = max_lines - len(all_lines)
-        if remaining <= 0:
-            return None
-        if is_cjk:
-            seg_lines = wrap_cjk(segment.strip(), box_w, remaining, font)
-        else:
-            seg_lines = wrap_latin(segment.strip(), box_w, remaining, font, lang_code)
-        if seg_lines is None:
-            return None
-        all_lines.extend(seg_lines)
-    return all_lines if len(all_lines) <= max_lines else None
-
-
 # ── unified wrapping ───────────────────────────────────────────────────────────
 
 def wrap_text(
@@ -395,7 +371,3 @@ def extract_embedded_breaks(text: str) -> tuple[str, list[str] | None]:
         return clean, lines
     return text, None
 
-
-def hyphen_count(lines: list[str]) -> int:
-    """Count lines ending with hyphens."""
-    return sum(1 for l in lines if l.endswith("-"))

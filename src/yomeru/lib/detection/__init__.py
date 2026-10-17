@@ -1,22 +1,10 @@
 """
-Detection stage — public interface.
+Detection stage — shared data model.
 
-Usage:
-    from yomeru.lib.detection import build_detector, TextRegion
-
-    detector = build_detector()
-    regions  = detector.detect(image, threshold=0.5)
-
-See SPEC.md for the full input/output contract.
+The technique is `ogkalu.OgkaluDetector`, created by the `ogkalu` detection
+plugin (`yomeru/plugins/detection.py`). See SPEC.md for the contract.
 """
 from __future__ import annotations
-
-from typing import Any, Protocol
-
-from PIL import Image
-
-
-# ── shared data model ─────────────────────────────────────────────────────────
 
 from dataclasses import dataclass
 
@@ -60,34 +48,3 @@ class TextRegion:
             return 0.0
         return (ox2 - ox1) * (oy2 - oy1) / max(1, (hx2 - hx1) * (hy2 - hy1))
 
-
-# ── protocol ──────────────────────────────────────────────────────────────────
-
-class BaseDetector(Protocol):
-    """Interface every detection backend must satisfy."""
-    @property
-    def name(self) -> str: ...
-
-    def detect(self, image: Image.Image, threshold: float = 0.5) -> list[TextRegion]: ...
-
-
-# ── factory ───────────────────────────────────────────────────────────────────
-
-_cache: dict[str, Any] = {}
-
-
-def build_detector(backend: str = "ogkalu") -> Any:
-    """
-    Return the cached detector. ogkalu RT-DETR is the only backend: every later
-    phase (matching, inpainting, rendering) is keyed on its bubble /
-    text_bubble / text_free regions, so the detector is not interchangeable.
-    "auto" and the retired "ctd" are accepted for old runs and resolve to ogkalu.
-    """
-    from .ogkalu import OgkaluDetector
-    if "ogkalu" not in _cache:
-        _cache["ogkalu"] = OgkaluDetector()
-    return _cache["ogkalu"]
-
-
-def list_backends() -> list[dict]:
-    return [{"key": "ogkalu", "label": "ogkalu RT-DETR", "available": True}]

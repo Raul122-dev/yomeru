@@ -18,9 +18,7 @@ See SPEC.md for the full input/output contract.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
-
-from PIL import Image
+from typing import Any
 
 from ..detection import TextRegion
 
@@ -36,22 +34,6 @@ class MatchResult:
     ocr_text: str = ""
 
 
-class BaseMatcher(Protocol):
-    """Interface every matching backend must satisfy."""
-
-    def match(
-        self,
-        image: Image.Image,
-        dialogues: list[dict],
-        regions: list[TextRegion],
-        hint_bboxes: list[tuple[int, int, int, int] | None],
-        source_language: str,
-        ocr_weight: float,
-        spatial_weight: float,
-        min_score: float,
-    ) -> dict[int, MatchResult]: ...
-
-
 _cache: dict[str, Any] = {}
 
 
@@ -59,9 +41,7 @@ def build_matcher(backend: str = "hungarian") -> Any:
     """
     Return a cached matcher instance.
 
-    backend: "hungarian" | "reading_order"
-      - "hungarian": Score-based optimal assignment (spatial + OCR)
-      - "reading_order": Sort-based positional matching (industry standard)
+    backend: "hungarian" — score-based optimal assignment (spatial + OCR)
     """
     if backend in _cache:
         return _cache[backend]
@@ -69,9 +49,6 @@ def build_matcher(backend: str = "hungarian") -> Any:
     if backend == "hungarian":
         from .hungarian import HungarianMatcher
         inst: Any = HungarianMatcher()
-    elif backend == "reading_order":
-        from .reading_order import ReadingOrderMatcher
-        inst = ReadingOrderMatcher()
     else:
         raise ValueError(f"unknown matcher backend: {backend!r}")
 

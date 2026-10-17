@@ -118,7 +118,6 @@ _SYMBOL_FONT_PATHS = [
 ]
 
 _symbol_font_cache: dict[int, ImageFont.FreeTypeFont | None] = {}
-_notdef_signature: int | None = None
 
 
 def _get_symbol_font(size: int) -> ImageFont.FreeTypeFont | None:
@@ -135,21 +134,6 @@ def _get_symbol_font(size: int) -> ImageFont.FreeTypeFont | None:
                 continue
     _symbol_font_cache[size] = None
     return None
-
-
-def _get_notdef_sig(font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> int:
-    """Get a signature of the .notdef glyph to detect missing characters."""
-    global _notdef_signature
-    if _notdef_signature is not None:
-        return _notdef_signature
-    # Render a character that definitely doesn't exist in the font
-    from PIL import Image as _Img, ImageDraw as _ID
-    img = _Img.new("L", (30, 30), 255)
-    d = _ID.Draw(img)
-    d.text((2, 2), "\U000E0000", font=font, fill=0)  # Tag character — never in display fonts
-    import numpy as np
-    _notdef_signature = int((np.array(img) < 128).sum())
-    return _notdef_signature
 
 
 def _is_symbol_char(ch: str) -> bool:
@@ -200,39 +184,6 @@ def _render_text_with_fallback(
 
 
 # ── outline drawing ───────────────────────────────────────────────────────────
-
-def _spaced_line_width(text: str, font, spacing: int) -> int:
-    """Compute total width of text rendered with letter spacing."""
-    if not text:
-        return 0
-    total = 0
-    for ch in text:
-        total += int(font.getlength(ch)) + spacing
-    return total - spacing  # no trailing space
-
-
-def _draw_text_spaced(
-    draw: ImageDraw.ImageDraw,
-    pos: tuple[int, int],
-    text: str,
-    font,
-    fill: tuple[int, int, int],
-    outline_color: tuple[int, int, int] | None,
-    outline_width: int,
-    spacing: int,
-    size: int = 20,
-) -> None:
-    """Draw text character by character with extra spacing and symbol fallback."""
-    x, y = pos
-    sym_font = _get_symbol_font(size) if any(_is_symbol_char(ch) for ch in text) else None
-    for ch in text:
-        use_font = sym_font if (_is_symbol_char(ch) and sym_font) else font
-        if outline_color and outline_width > 0:
-            _draw_text_with_outline(draw, (x, y), ch, use_font, fill, outline_color, outline_width)
-        else:
-            draw.text((x, y), ch, font=use_font, fill=fill)
-        x += int(use_font.getlength(ch)) + spacing
-
 
 def _draw_text_with_outline(
     draw: ImageDraw.ImageDraw,

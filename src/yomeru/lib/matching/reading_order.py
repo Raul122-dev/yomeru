@@ -1,77 +1,13 @@
 """
-Reading-order based matcher.
+Manga reading order of text regions.
 
-Matches text regions to dialogues by sorting both into manga reading order
-and pairing by position. This is the standard approach used by all major
-manga translation tools (manga-image-translator, etc.).
-
-Algorithm:
-  1. Sort text regions into reading order (RTL top-to-bottom for manga)
-  2. Dialogues are assumed to already be in reading order (from VLM/translator)
-  3. Match positionally: sorted_regions[i] ↔ dialogues[i]
-
-For manga reading order:
-  - Group regions into rows (adaptive Y-gap threshold)
-  - Within each row, sort right-to-left
-  - This handles standard manga panel flow automatically
-
-Handles N≠M (different counts of regions vs dialogues) gracefully by
-matching as many as possible from the top.
+Used by the cascade's positional fallback: regions are grouped into rows
+(adaptive Y-gap threshold) and sorted right-to-left (or left-to-right) inside
+each row, which follows the usual panel flow.
 """
 from __future__ import annotations
 
-
-from PIL import Image
-
 from ..detection import TextRegion
-from . import MatchResult
-
-
-class ReadingOrderMatcher:
-    """Match regions to dialogues by reading order (positional identity)."""
-
-    def match(
-        self,
-        image: Image.Image,
-        dialogues: list[dict],
-        regions: list[TextRegion],
-        hint_bboxes: list[tuple[int, int, int, int] | None] | None = None,
-        source_language: str = "auto",
-        right_to_left: bool = True,
-        **kwargs,
-    ) -> dict[int, MatchResult]:
-        """
-        Match by reading order.
-
-        1. Sort regions into manga reading order
-        2. Pair sorted_regions[i] with dialogues[i]
-        """
-        if not regions or not dialogues:
-            return {}
-
-        # Sort regions into reading order
-        sorted_indices = _sort_reading_order(regions, right_to_left)
-
-        # Match positionally
-        results: dict[int, MatchResult] = {}
-        n_matches = min(len(sorted_indices), len(dialogues))
-
-        for dlg_idx in range(n_matches):
-            region_idx = sorted_indices[dlg_idx]
-            region = regions[region_idx]
-
-            # Score based on how well the position matches
-            # (for reading order, all matches are "confident" since order is the signal)
-            results[dlg_idx] = MatchResult(
-                dialogue_index=dlg_idx,
-                region=region,
-                spatial_score=1.0,
-                text_score=0.0,
-                total_score=0.8,  # High confidence for reading-order match
-                ocr_text="",
-            )
-
-        return results
 
 
 def _sort_reading_order(
