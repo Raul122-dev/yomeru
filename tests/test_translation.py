@@ -55,7 +55,7 @@ def test_two_passes_with_style_guide_context_and_retry_of_dropped_keys():
 def test_final_text_priority(tmp_path, monkeypatch):
     """user edit > separate translation > reading's text_translated."""
     from yomeru.core import artifacts
-    from yomeru.core.annotations import AnnotationStore
+    from yomeru.core.edits import PageEdits
 
     class R:
         def output_dir(self):
@@ -72,7 +72,7 @@ def test_final_text_priority(tmp_path, monkeypatch):
     assert a[1]["dialogues"][0]["text_translated"] == "¡YA SABES!"
     edited = json.loads(json.dumps(a[1]))
     edited["dialogues"][0]["text_translated"] = "MIO"
-    AnnotationStore(tmp_path).save_edit(2, edited)
+    PageEdits(tmp_path).save_edit(2, edited)
     assert artifacts.load_analyses(run)[1]["dialogues"][0]["text_translated"] == "MIO"
 
 

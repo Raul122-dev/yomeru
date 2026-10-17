@@ -175,59 +175,21 @@ def delete_run(run_id: str):
     run.delete()
 
 
-# ── annotations / edits ──────────────────────────────────────────────────────
-
-@router.get("/{run_id}/annotations")
-def get_annotations(run_id: str):
-    from yomeru.core.annotations import AnnotationStore
-    run = Run.load(run_id)
-    if not run: raise HTTPException(404, "run not found")
-    store = AnnotationStore(run.output_dir())
-    return {"annotations": store.get_annotations(), "summary": store.summary()}
-
-
-@router.post("/{run_id}/annotations/{page_number}")
-def add_annotation(run_id: str, page_number: int, body: dict):
-    from yomeru.core.annotations import AnnotationStore
-    run = Run.load(run_id)
-    if not run: raise HTTPException(404, "run not found")
-    store = AnnotationStore(run.output_dir())
-    return store.add_annotation(
-        page_number=page_number,
-        field=body.get("field", ""),
-        note=body.get("note", ""),
-        original_value=body.get("original_value", ""),
-    )
-
-
-@router.delete("/{run_id}/annotations/{page_number}/{annotation_id}", status_code=204)
-def delete_annotation(run_id: str, page_number: int, annotation_id: str):
-    from yomeru.core.annotations import AnnotationStore
-    run = Run.load(run_id)
-    if not run: raise HTTPException(404, "run not found")
-    AnnotationStore(run.output_dir()).delete_annotation(page_number, annotation_id)
-
-
-@router.get("/{run_id}/edits")
-def get_edits(run_id: str):
-    from yomeru.core.annotations import AnnotationStore
-    run = Run.load(run_id)
-    if not run: raise HTTPException(404, "run not found")
-    return AnnotationStore(run.output_dir()).get_edits()
-
+# ── page edits (edited page analyses, edits.json) ────────────────────────────
 
 @router.put("/{run_id}/edits/{page_number}")
 def save_edit(run_id: str, page_number: int, body: dict):
-    from yomeru.core.annotations import AnnotationStore
+    from yomeru.core.edits import PageEdits
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
-    AnnotationStore(run.output_dir()).save_edit(page_number, body)
+    PageEdits(run.output_dir()).save_edit(page_number, body)
     return {"ok": True}
 
 
 @router.delete("/{run_id}/edits/{page_number}", status_code=204)
 def revert_edit(run_id: str, page_number: int):
-    from yomeru.core.annotations import AnnotationStore
+    """Drop the user's edits of a page: it goes back to the model's reading."""
+    from yomeru.core.edits import PageEdits
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
-    AnnotationStore(run.output_dir()).revert_edit(page_number)
+    PageEdits(run.output_dir()).revert([page_number])

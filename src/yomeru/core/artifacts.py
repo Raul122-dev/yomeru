@@ -192,8 +192,8 @@ def load_analyses(run: "Run") -> list[dict]:
                 t = lines.get(f"p{a.get('page_number')}.d{i}")
                 if t:
                     d["text_translated"] = t
-    from yomeru.core.annotations import AnnotationStore
-    return AnnotationStore(run.output_dir()).merged_analyses(raw)
+    from yomeru.core.edits import PageEdits
+    return PageEdits(run.output_dir()).merged_analyses(raw)
 
 
 def page_analysis(analyses: list[dict], page: int) -> dict:

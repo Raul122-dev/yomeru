@@ -225,23 +225,7 @@ export const editorImageUrl = (url: string, w = 1600) =>
 export const pageThumbUrl = (id: str, filename: str, w = 320) =>
   `/api/runs/${id}/pages/${encodeURIComponent(filename)}?w=${w}`;
 
-// ── annotations ───────────────────────────────────────────────────────────────
-export const getAnnotations = (id: str) =>
-  req<{ annotations: Record<string, unknown[]>; summary: unknown }>(
-    `/runs/${id}/annotations`,
-  );
-export const addAnnotation = (id: str, page: number, body: object) =>
-  req(`/runs/${id}/annotations/${page}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-export const deleteAnnotation = (id: str, page: number, annId: str) =>
-  fetch(`/api/runs/${id}/annotations/${page}/${annId}`, { method: "DELETE" });
-
 // ── edits ─────────────────────────────────────────────────────────────────────
-export const getEdits = (id: str) =>
-  req<Record<string, unknown>>(`/runs/${id}/edits`);
 export const saveEdit = (id: str, page: number, body: object) =>
   req(`/runs/${id}/edits/${page}`, {
     method: "PUT",

@@ -250,19 +250,8 @@ def _save_analyses(
 
     # Also clear any user edits for re-analyzed pages (fresh data replaces old edits)
     if is_scoped:
-        from yomeru.core.annotations import AnnotationStore
-        store = AnnotationStore(output_dir)
-        edits = store.get_edits()
-        changed = False
-        for entry in new_entries:
-            pn = str(entry["page_number"])
-            if pn in edits:
-                del edits[pn]
-                changed = True
-        if changed:
-            (output_dir / "edits.json").write_text(
-                json.dumps(edits, indent=2, ensure_ascii=False)
-            )
+        from yomeru.core.edits import PageEdits
+        PageEdits(output_dir).revert(e["page_number"] for e in new_entries)
 
     # A refined analyses file shadows page_analyses.json as a whole: put the
     # fresh results for the re-analysed pages into it so downstream sees them.

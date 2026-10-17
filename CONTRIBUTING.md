@@ -95,7 +95,7 @@ cd ui && npm run build
 2. **Stable vs scanline**: ALL rendering changes go in `get_scanline_preview()` in phases.py, NOT in pil.py (unless it's a shared utility).
 3. **Font normalization**: Can override vertical/special layouts. Check `all(len(pl.text)==1 ...)` guard.
 4. **Bubble regions filter**: Must include BOTH `"bubble"` and `"text_bubble"` labels.
-5. **edits.json merge**: Both matching and rendering must use `AnnotationStore.merged_analyses()`.
+5. **edits.json merge**: every reader must go through `artifacts.load_analyses()` (user edits, separate translation).
 6. **LaMa on large images**: Always goes through downscale path (>2048px). Don't bypass.
 
 ## Pending Work

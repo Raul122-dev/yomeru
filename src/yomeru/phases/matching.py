@@ -334,7 +334,7 @@ def _split_dialogues(run, analysis: dict, splits) -> list[dict]:
     its region with one word; a copy per extra occurrence points at its new
     region. Saved as an edit of the page (edits.json), like any other."""
     import copy
-    from yomeru.core.annotations import AnnotationStore
+    from yomeru.core.edits import PageEdits
     page = copy.deepcopy(analysis)
     for i, word, tr_word, regs in splits:
         d = page["dialogues"][i]
@@ -346,5 +346,5 @@ def _split_dialogues(run, analysis: dict, splits) -> list[dict]:
             page["dialogues"].append(extra)
         print(f"    [split] D{i} '{word}' x{len(regs) + 1} -> regions "
               f"{[r['id'] for r in regs]}", file=sys.stderr)
-    AnnotationStore(run.output_dir()).save_edit(page["page_number"], page)
+    PageEdits(run.output_dir()).save_edit(page["page_number"], page)
     return page["dialogues"]
