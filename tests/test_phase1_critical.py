@@ -103,14 +103,13 @@ def test_scoped_reanalysis_only_touches_its_pages(tmp_path):
     from yomeru.core.models import PageAnalysis
     out = tmp_path
     (out / "page_analyses.json").write_text(json.dumps([{"page_number": p, "dialogues": []} for p in (1, 2, 3)]))
-    (out / "page_analyses_refined.json").write_text(json.dumps([{"page_number": p, "dialogues": [], "old": True} for p in (1, 2, 3)]))
     (out / "edits.json").write_text(json.dumps({"1": {"x": 1}, "2": {"x": 2}, "3": {"x": 3}}))
     fresh = [PageAnalysis(page_number=2)]
     _save_analyses(fresh, out, [], "auto", is_scoped=True)
     edits = json.loads((out / "edits.json").read_text())
     assert set(edits) == {"1", "3"}
-    refined = {e["page_number"]: e for e in json.loads((out / "page_analyses_refined.json").read_text())}
-    assert refined[1].get("old") and refined[3].get("old") and not refined[2].get("old")
+    saved = {e["page_number"] for e in json.loads((out / "page_analyses.json").read_text())}
+    assert saved == {1, 2, 3}
 
 
 # ── manual matches ───────────────────────────────────────────────────────────

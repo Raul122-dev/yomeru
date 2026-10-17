@@ -141,19 +141,13 @@ class Run:
         name = "page_detections_refined.json" if refined else "page_detections.json"
         return self.output_dir() / name
 
-    def analyses_file(self, refined: bool = False) -> Path:
-        name = "page_analyses_refined.json" if refined else "page_analyses.json"
-        return self.output_dir() / name
+    def analyses_file(self) -> Path:
+        return self.output_dir() / "page_analyses.json"
 
     def active_detections_file(self) -> Path:
         """Returns refined if exists, else original."""
         r = self.detections_file(refined=True)
         return r if r.exists() else self.detections_file(refined=False)
-
-    def active_analyses_file(self) -> Path:
-        """Returns refined if exists, else original."""
-        r = self.analyses_file(refined=True)
-        return r if r.exists() else self.analyses_file(refined=False)
 
     def _write_meta(self, data: dict) -> None:
         # Atomic write: write to temp file then rename to prevent race conditions

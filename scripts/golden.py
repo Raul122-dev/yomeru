@@ -31,7 +31,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-EDIT_FILES = ["page_detections_refined.json", "page_analyses_refined.json", "edits.json"]
+EDIT_FILES = ["page_detections_refined.json", "edits.json"]
 DEBUG_EDIT_GLOBS = ["p*_matches_refined.json", "p*_mask_refined.png", "p*_render_overrides.json"]
 
 

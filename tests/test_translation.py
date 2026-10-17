@@ -61,7 +61,7 @@ def test_final_text_priority(tmp_path, monkeypatch):
         def output_dir(self):
             return tmp_path
 
-        def active_analyses_file(self):
+        def analyses_file(self):
             return tmp_path / "page_analyses.json"
     run = R()
     (tmp_path / "page_analyses.json").write_text(json.dumps(PAGES))

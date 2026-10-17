@@ -253,19 +253,6 @@ def _save_analyses(
         from yomeru.core.edits import PageEdits
         PageEdits(output_dir).revert(e["page_number"] for e in new_entries)
 
-    # A refined analyses file shadows page_analyses.json as a whole: put the
-    # fresh results for the re-analysed pages into it so downstream sees them.
-    refined_f = output_dir / "page_analyses_refined.json"
-    if refined_f.exists():
-        fresh_nums = {e["page_number"] for e in new_entries}
-        try:
-            refined = json.loads(refined_f.read_text())
-        except json.JSONDecodeError:
-            refined = []
-        refined = [e for e in refined if e.get("page_number") not in fresh_nums] + new_entries
-        refined.sort(key=lambda x: x.get("page_number", 0))
-        refined_f.write_text(json.dumps(refined, indent=2, ensure_ascii=False))
-
 
 def _save_context(ctx, output_dir: Path) -> None:
     """Save context object for downstream use."""

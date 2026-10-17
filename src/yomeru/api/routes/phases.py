@@ -500,7 +500,7 @@ def _translation_state(run: Run) -> dict:
 @router.get("/{run_id}/translation")
 def get_translation(run_id: str):
     run = _get_run(run_id)
-    if not run.active_analyses_file().exists():
+    if not run.analyses_file().exists():
         raise HTTPException(404, "read the pages first")
     st = _translation_state(run)
     st.pop("style", None)
@@ -520,7 +520,7 @@ def retranslate(run_id: str, body: TranslateRequest | None = None):
     from yomeru.lib.translation import affected_keys, collect_lines, glossary_of
     from yomeru.phases.analysis import translate_run
     run = _get_run(run_id)
-    if not run.active_analyses_file().exists():
+    if not run.analyses_file().exists():
         raise HTTPException(400, "read the pages first")
     req = body or TranslateRequest()
     translation = _translation_settings(run)

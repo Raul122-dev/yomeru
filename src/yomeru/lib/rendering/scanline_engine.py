@@ -62,7 +62,7 @@ def input_paths(run: Run, page_num: int) -> list[Path]:
     return [a.page_artifact(run, page_num, n) for n in
             (a.RENDER_LOG, a.MATCHES_REFINED, a.RENDER_OVERRIDES)] + [
         a.existing_page_artifact(run, page_num, a.S4_INPAINTED),
-        run.active_analyses_file(),
+        run.analyses_file(),
         run.output_dir() / "edits.json",       # merged into the dialogues
         run.output_dir() / a.TRANSLATIONS,     # separate translation step
         run.active_detections_file(),          # bubble containers

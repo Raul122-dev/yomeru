@@ -7,14 +7,14 @@ It also resolves the user's edits once, so phases (and future backends) see
 "effective" inputs:
 
     active detections  = page_detections_refined.json if present, else original
-    effective analyses = active analyses file + edits.json (per page)
+    effective analyses = page_analyses.json + translations.json + edits.json (per page)
     effective matches  = s3 matches + pNN_matches_refined.json (manual wins)
 
 Layout (unchanged — old runs keep working):
 
     <run>/pages/NNN_<name>.<ext>
     <run>/output/page_detections[_refined].json
-    <run>/output/page_analyses[_refined].json, edits.json, context.json
+    <run>/output/page_analyses.json, translations.json, edits.json, context.json
     <run>/output/typeset/<page name>                      final page
     <run>/output/typeset/debug/pNN_<artifact>             per-page artifacts
     <run>/output/typeset/debug/edits/pNN_<key>.png|.json   image-edit model answers (paid, kept)
@@ -181,7 +181,7 @@ def load_analyses(run: "Run") -> list[dict]:
     """Active analyses with the final text of each line: the user's edits
     (edits.json) > the separate translation step > the reading's own
     `text_translated`."""
-    f = run.active_analyses_file()
+    f = run.analyses_file()
     if not f.exists():
         return []
     raw = json.loads(f.read_text())

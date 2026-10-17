@@ -3,7 +3,6 @@ Editing routes — CRUD for refined artifacts.
 
 Handles saving and reverting user-edited data for each phase's output:
   - Detections (phase 1 output)
-  - Analyses (phase 2 output)
   - Matches (phase 3 output)
   - Masks (phase 4 input override)
   - Render overrides (phase 5 input override)
@@ -91,50 +90,10 @@ def revert_page_detections(run_id: str, page_num: int):
 def get_analyses(run_id: str):
     """Return all page analyses with user edits merged on top."""
     run = _get_run(run_id)
-    if not run.active_analyses_file().exists():
+    if not run.analyses_file().exists():
         raise HTTPException(404, "analyses not ready")
     # separate translation + user edits (skip toggles, translation edits…)
     return artifacts.load_analyses(run)
-
-
-@router.put("/{run_id}/analyses/{page_num}/refined")
-def save_analysis_page(run_id: str, page_num: int, body: dict):
-    """Save refined analysis (translations, speaker, tone) for a single page."""
-    run = _get_run(run_id)
-    refined_f = run.analyses_file(refined=True)
-
-    if refined_f.exists():
-        try:
-            all_analyses: list[dict] = json.loads(refined_f.read_text())
-        except Exception:
-            all_analyses = []
-    else:
-        orig = run.analyses_file(refined=False)
-        all_analyses = json.loads(orig.read_text()) if orig.exists() else []
-
-    all_analyses = [a for a in all_analyses if a.get("page_number") != page_num]
-    body["page_number"] = page_num
-    all_analyses.append(body)
-    all_analyses.sort(key=lambda a: a.get("page_number", 0))
-    refined_f.write_text(json.dumps(all_analyses, indent=2, ensure_ascii=False))
-    return {"ok": True, "page_number": page_num}
-
-
-@router.delete("/{run_id}/analyses/{page_num}/refined", status_code=204)
-def revert_analysis_page(run_id: str, page_num: int):
-    """Remove refined analysis for a page (revert to original VLM output)."""
-    run = _get_run(run_id)
-    refined_f = run.analyses_file(refined=True)
-    if refined_f.exists():
-        try:
-            all_analyses = json.loads(refined_f.read_text())
-            all_analyses = [a for a in all_analyses if a.get("page_number") != page_num]
-            if all_analyses:
-                refined_f.write_text(json.dumps(all_analyses, indent=2, ensure_ascii=False))
-            else:
-                refined_f.unlink()
-        except Exception as e:
-            raise HTTPException(500, f"revert failed: {e}")
 
 
 # ── Matches ────────────────────────────────────────────────────────────────────
