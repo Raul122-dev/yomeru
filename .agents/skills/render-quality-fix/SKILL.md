@@ -10,8 +10,8 @@ Rendering is judged by how the page reads. Work from a REAL failing page.
 1. Reproduce: find the event in the run's render log (`output/typeset/debug/pNN_render_log.json`,
    `s5_rendering.renders`: status, skip_reason, font_size, bbox) and the matched region
    (`s3_matching.matches`, check the region label).
-2. Locate the decision in `lib/rendering/scanline_engine.py` (`layout_and_draw` is a pure function
-   of a `RenderRequest`). Language/script-dependent decisions go through `core/languages.py`
+2. Locate the decision in `stages/rendering/scanline_engine.py` (`layout_and_draw` is a pure function
+   of a `RenderRequest`). Language/script-dependent decisions go through `config/languages.py`
    (`text_rules(text)`), never a new `if lang ...`.
 3. Write a regression test with a synthetic `RenderRequest` (white page, original with dark
    strokes where text was, so the region counts as erased) that fails on the old code.

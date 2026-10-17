@@ -5,7 +5,7 @@ description: Use when adding a language or a language-specific tuning.
 
 # Add a language or a language-specific rule
 
-All language behaviour lives in `src/yomeru/core/languages.py`:
+All language behaviour lives in `backend/yomeru/config/languages.py`:
 `GENERAL` → `SCRIPTS[script]` → `LANGUAGES[name]`, each layer overriding only what differs.
 
 New language:
@@ -21,4 +21,4 @@ New tuning (e.g. opening marks ¡¿, French space before ! ?):
 2. Read it where the decision is made — `profile(setting)` for run-level source/target rules,
    `text_rules(text)` for rules that depend on the script a text is written in.
 3. Test the field AND the behaviour; existing goldens stay identical for languages you didn't touch.
-Never add `if language in (...)` or `is_cjk_text` decisions outside `core/languages.py`.
+Never add `if language in (...)` or `is_cjk_text` decisions outside `config/languages.py`.

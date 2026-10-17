@@ -3,9 +3,9 @@
 Decide which detected region each dialogue of the reading goes into.
 
 ## Contract
-- Phase: `phases/matching.py` → backend `cascade` (`plugins/matching.py`) →
-  `lib/matching/cascade.match_page`, a pure function of
-  `core/contracts.MatchRequest` (page image, active detections, dialogues with
+- Phase: `stages/matching/phase.py` → backend `cascade` (`stages/matching/plugins.py`) →
+  `stages/matching/cascade.match_page`, a pure function of
+  `pipeline/contracts.MatchRequest` (page image, active detections, dialogues with
   user edits merged, source language, comic format) returning a `PageMatch`
   (`{dialogue_index: MatchResult}`, orphaned regions, rescued count, regions
   located by OCR). The phase writes the render log the editors read

@@ -19,11 +19,11 @@ Why, links to `.agents/context/*`, related code, decisions already taken.
 
 ## Files owned
 Only these may change (add more only after asking below):
-- `src/yomeru/...`
+- `backend/yomeru/...`
 - `tests/...`
 
 ## Acceptance
-- [ ] `uv run pytest -q` passes; `uv run ruff check --select F src tests` clean
+- [ ] `uv run pytest -q` passes; `uv run ruff check --select F yomeru tests scripts` clean
 - [ ] <specific checks: test that fails on old code, goldens identical, UI build, …>
 
 ## Questions (worker → orchestrator)

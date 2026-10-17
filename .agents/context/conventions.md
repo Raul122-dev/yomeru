@@ -1,10 +1,10 @@
 # Conventions
 
 ## Code
-- Python 3.12, `uv`. Backend in `src/yomeru/`; every pipeline technique lives in `lib/`,
+- Python 3.12, `uv`. Backend in `backend/yomeru/` (commands run from `backend/`); every pipeline technique lives in its stage package `stages/<stage>/`,
   phases only orchestrate, backends never touch `Run`, paths, `meta.json` or progress.
-- File names and edit resolution only through `core/artifacts.py`; labels through
-  `core/labels.py`; language rules through `core/languages.py`; model calls through `core/llm.py`.
+- File names and edit resolution only through `runs/artifacts.py`; labels through
+  `config/labels.py`; language rules through `config/languages.py`; model calls through `infra/llm.py`.
 - Region ids (the detection `id`) are the cross-phase key — never list indexes.
 - Writes are atomic with per-writer temp names (`artifacts.tmp_path`).
 - Prefer simple code; no comments that repeat the code. Comments explain *why*, generically:
@@ -39,7 +39,7 @@
 
 ## UI
 - React + Vite + shadcn/ui + Tailwind; `npx tsc --noEmit -p . && npm test && npm run build` before
-  committing; the build output `src/yomeru/static/` is generated and never committed. Pure logic in
-  `ui/src/lib` gets vitest tests next to it (`*.test.ts`).
+  committing; the build output `backend/yomeru/static/` is generated and never committed. Pure logic in
+  `frontend/src/lib` gets vitest tests next to it (`*.test.ts`).
 - Images only through `components/ui/Img` (never a raw full-size `<img>`, never `no-store`).
 - Phase views compose `usePhaseView` + `PhaseShell`.

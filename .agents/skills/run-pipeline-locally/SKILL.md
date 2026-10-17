@@ -15,5 +15,5 @@ description: Use when you need to run yomeru end to end to verify a change.
    one phase: `POST /api/phases/<id>/<phase>/start`.
 6. Look at every rendered page before claiming it works: `output/typeset/debug/pNN_scanline_production.png`
    and the render log. "All phases done" is not "correct".
-7. Don't edit files under `src/yomeru/` while a run is in progress with `--reload`: the server
+7. Don't edit files under `backend/yomeru/` while a run is in progress with `--reload`: the server
    restarts and the job is marked interrupted.

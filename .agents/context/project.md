@@ -24,7 +24,7 @@ their own model provider. Roadmap phases: 0–2 done (bugs, structure, UI, plugi
   are keyed on its region ids. CTD was removed — don't bring it back.
 - **Every phase is a plugin** behind a fixed input/output contract: the technique can
   change (e.g. render with an image model), the data chain can't.
-- **Language-specific rules** live only in `core/languages.py` profiles (code-only).
+- **Language-specific rules** live only in `config/languages.py` profiles (code-only).
 - **Bind 127.0.0.1, no auth; API keys never leave the server** (masked in the API).
 - **Model weights are never in the repo** (downloaded on first use into `data/models/`).
 - **UI:** React + Vite + shadcn/ui + Tailwind, dark mode. No new screens that depend
