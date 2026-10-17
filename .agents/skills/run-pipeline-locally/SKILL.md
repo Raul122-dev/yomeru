@@ -5,7 +5,7 @@ description: Use when you need to run yomeru end to end to verify a change.
 
 # Run the pipeline locally
 
-1. `uv sync` (first run downloads weights into `data/models/`; needs a GPU for speed, CPU works).
+1. `cd backend && uv sync` (first run downloads weights into `data/models/`; needs a GPU for speed, CPU works).
 2. `bash dev.sh` → UI on :3000 (hot reload), API on :7788. Or `bash start.sh` for the built UI.
 3. Settings → add a connection (OpenAI/Anthropic-compatible) and pick a vision model.
    Use a cheap model for tests. Never commit `data/config.json`.
