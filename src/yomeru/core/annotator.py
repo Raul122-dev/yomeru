@@ -13,9 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw
-
-from yomeru.core.images import overlay_font
+from PIL import Image, ImageDraw, ImageFont
 
 
 @dataclass
@@ -227,7 +225,14 @@ def _draw_numbered_boxes(image: Image.Image, regions: list) -> Image.Image:
         draw.ellipse([bx1, by1, bx2, by2], fill=(r, g, b, 250), outline=(255, 255, 255, 255), width=1)
 
         font_size = max(11, badge_size - 8)
-        font = overlay_font(font_size)
+        # This image is what the analysis model sees: the badge font is part of
+        # the model input (and of the analysis golden), so it stays DejaVu Sans
+        # Bold. By file name, PIL looks it up in the system font directories
+        # (no distro-specific path); PIL's default font if it is not installed.
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
+        except OSError:
+            font = ImageFont.load_default()
         cx, cy = (bx1 + bx2) // 2, (by1 + by2) // 2
         draw.text((cx, cy), str(num), fill=(255, 255, 255, 255), font=font, anchor="mm")
 
