@@ -221,17 +221,13 @@ def _save_match_log(run, matches, dialogues, page_dets, orphaned, page_num, img_
 
 def _save_debug_image(img, matches, dialogues, page_dets, orphaned, debug_dir, page_num):
     """Generate a visual debug image showing matching results overlaid on the page."""
-    from PIL import ImageDraw, ImageFont
+    from PIL import ImageDraw
+    from yomeru.core.images import overlay_font
 
     debug_img = img.copy()
     draw = ImageDraw.Draw(debug_img, "RGBA")
 
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
-        font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-    except Exception:
-        font = ImageFont.load_default()
-        font_sm = font
+    font, font_sm = overlay_font(14), overlay_font(11, bold=False)
 
     # Colors
     COLOR_MATCHED_DIRECT = (34, 197, 94, 100)    # green fill

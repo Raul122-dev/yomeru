@@ -13,7 +13,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+from yomeru.core.images import overlay_font
 
 
 @dataclass
@@ -225,10 +227,7 @@ def _draw_numbered_boxes(image: Image.Image, regions: list) -> Image.Image:
         draw.ellipse([bx1, by1, bx2, by2], fill=(r, g, b, 250), outline=(255, 255, 255, 255), width=1)
 
         font_size = max(11, badge_size - 8)
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-        except Exception:
-            font = ImageFont.load_default()
+        font = overlay_font(font_size)
         cx, cy = (bx1 + bx2) // 2, (by1 + by2) // 2
         draw.text((cx, cy), str(num), fill=(255, 255, 255, 255), font=font, anchor="mm")
 

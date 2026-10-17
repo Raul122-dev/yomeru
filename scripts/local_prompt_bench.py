@@ -2,6 +2,7 @@
 with the frozen Gemini analyses (reference) on what matters downstream.
 
     python scripts/local_prompt_bench.py full compact      # prompt variants
+    python scripts/local_prompt_bench.py --out DIR full     # results dir (default data/prompt_bench)
 Metrics per page: dialogues, ★ text regions covered, region ids that disagree
 with OCR of the claimed box, false skips, seconds; plus every translation next
 to Gemini's for review.
@@ -18,7 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 CASES = [("data/goldens/d4c17c9bf8f5/input", (1, 2, 3), "manga"),
          ("data/goldens/zz_e2e_test/input", (2, 3), "manga")]
-OUT = Path("/home/yoru/.hermes/cache/scratch/prompt_bench")
+OUT = ROOT / "data" / "prompt_bench"
 
 
 def run_variant(variant: str, model: str = "qwen3.5:9b") -> dict:
@@ -76,6 +77,9 @@ def run_variant(variant: str, model: str = "qwen3.5:9b") -> dict:
 
 
 if __name__ == "__main__":
+    args = sys.argv[1:]
+    if args[:1] == ["--out"]:
+        OUT, args = Path(args[1]), args[2:]
     OUT.mkdir(parents=True, exist_ok=True)
-    for v in sys.argv[1:] or ["full", "compact"]:
+    for v in args or ["full", "compact"]:
         (OUT / f"{v}.json").write_text(json.dumps(run_variant(v), ensure_ascii=False, indent=1))

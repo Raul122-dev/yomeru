@@ -212,15 +212,11 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
     ]
 
     # Generate debug image
-    from PIL import ImageDraw, ImageFont
+    from PIL import ImageDraw
+    from yomeru.core.images import overlay_font
     debug_img = img.copy().convert("RGBA")
     draw = ImageDraw.Draw(debug_img, "RGBA")
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
-        font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-    except Exception:
-        font = ImageFont.load_default()
-        font_sm = font
+    font, font_sm = overlay_font(14), overlay_font(11, bold=False)
 
     COLOR_MATCHED = (59, 130, 246, 100)   # blue fill
     BORDER_MATCHED = (59, 130, 246, 220)

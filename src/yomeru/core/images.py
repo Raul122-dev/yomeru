@@ -90,3 +90,15 @@ def serve_image(request: Request, src: Path, w: int | None = None) -> Response:
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
     return FileResponse(path, headers=headers)
+
+
+def overlay_font(size: int, bold: bool = True):
+    """Font for the labels of debug overlays: a shipped font, so they look the
+    same on every host (never a distro font path)."""
+    from PIL import ImageFont
+    from yomeru.core.paths import FONTS_DIR
+    name = "ComicNeue-Bold.ttf" if bold else "ComicNeue-Regular.ttf"
+    try:
+        return ImageFont.truetype(str(FONTS_DIR / name), size)
+    except OSError:
+        return ImageFont.load_default(size)
