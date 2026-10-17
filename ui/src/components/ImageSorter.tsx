@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { X, GripVertical, Plus, ZoomIn } from "lucide-react";
+import { isArchive, readArchive, type ArchiveInfo } from "../lib/archive";
 import { cn } from "../lib/utils";
 
 export interface SortableFile {
@@ -177,7 +178,7 @@ function AddMoreCard({ onFiles }: { onFiles: (files: File[]) => void }) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.cbz,.zip"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -192,6 +193,9 @@ function AddMoreCard({ onFiles }: { onFiles: (files: File[]) => void }) {
 // ── main component ────────────────────────────────────────────────────────────
 interface ImageSorterProps {
   onChange: (files: File[]) => void;
+  /** A chapter archive was added: its ComicInfo.xml (if any). */
+  onArchive?: (info: ArchiveInfo) => void;
+  onError?: (message: string) => void;
 }
 
 let _idCounter = 0;
@@ -199,7 +203,7 @@ function makeId() {
   return `img-${++_idCounter}`;
 }
 
-export function ImageSorter({ onChange }: ImageSorterProps) {
+export function ImageSorter({ onChange, onArchive, onError }: ImageSorterProps) {
   const [items, setItems] = useState<SortableFile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [preview, setPreview] = useState<SortableFile | null>(null);
@@ -212,7 +216,9 @@ export function ImageSorter({ onChange }: ImageSorterProps) {
     };
   }, []);
 
-  const addFiles = useCallback(
+  const [unpacking, setUnpacking] = useState(false);
+
+  const addImages = useCallback(
     (files: File[]) => {
       const imageFiles = files.filter((f) => f.type.startsWith("image/"));
       if (!imageFiles.length) return;
@@ -228,6 +234,31 @@ export function ImageSorter({ onChange }: ImageSorterProps) {
       });
     },
     [onChange],
+  );
+
+  // Archives are unpacked in place: their pages join the list in archive order.
+  const addFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.some(isArchive)) return addImages(files);
+      setUnpacking(true);
+      const out: File[] = [];
+      for (const f of files) {
+        if (!isArchive(f)) {
+          out.push(f);
+          continue;
+        }
+        try {
+          const a = await readArchive(f);
+          out.push(...a.pages);
+          onArchive?.(a.info);
+        } catch (e) {
+          onError?.(e instanceof Error ? e.message : String(e));
+        }
+      }
+      setUnpacking(false);
+      addImages(out);
+    },
+    [addImages, onArchive, onError],
   );
 
   const removeItem = useCallback(
@@ -273,7 +304,7 @@ export function ImageSorter({ onChange }: ImageSorterProps) {
     e.preventDefault();
     setDraggingOver(false);
     const files = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith("image/"),
+      f.type.startsWith("image/") || isArchive(f),
     );
     if (files.length) addFiles(files);
   };
@@ -300,15 +331,15 @@ export function ImageSorter({ onChange }: ImageSorterProps) {
         </div>
         <div className="text-center">
           <p className="text-sm font-medium text-[hsl(var(--text))]">
-            Select or drop manga pages
+            {unpacking ? "Unpacking…" : "Select or drop manga pages"}
           </p>
           <p className="mt-1 text-xs text-[hsl(var(--text-muted))]">
-            JPG, PNG, WebP · drag to reorder after adding
+            JPG, PNG, WebP, or a chapter as .cbz / .zip · drag to reorder after adding
           </p>
         </div>
         <input
           type="file"
-          accept="image/*"
+          accept="image/*,.cbz,.zip"
           multiple
           className="hidden"
           onChange={(e) => {

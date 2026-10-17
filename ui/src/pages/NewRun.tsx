@@ -107,7 +107,17 @@ export default function NewRun() {
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[hsl(var(--text-muted))]">
               Pages
             </label>
-            <ImageSorter onChange={setFiles} />
+            <ImageSorter
+              onChange={setFiles}
+              onError={setError}
+              onArchive={(info) => {
+                // ComicInfo.xml pre-fills what the user has not typed yet
+                if (info.series) setSeries((v) => v || info.series!);
+                if (info.number) setChapter((v) => v || info.number!);
+                const title = info.title || (info.series && info.number ? `${info.series} ${info.number}` : "");
+                if (title) setName((v) => v || title);
+              }}
+            />
           </div>
         </div>
       </Card>
