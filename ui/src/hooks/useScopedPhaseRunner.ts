@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { connectPhaseWs, getRun, startPhase } from "../lib/api";
 import type { PhaseName, PhaseStartPayload } from "../lib/types";
 
-export type ScopedStatus = "idle" | "running" | "done" | "failed";
+type ScopedStatus = "idle" | "running" | "done" | "failed";
 
 interface ScopedProgress {
   status: ScopedStatus;

@@ -32,7 +32,7 @@ import type { RenderEvent, StageLog } from "../../lib/types";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-export interface RenderOverride {
+interface RenderOverride {
   dialogue_index: number;
   text_translated?: string;
   font_style?: string;

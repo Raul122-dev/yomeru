@@ -22,7 +22,7 @@ import { X, GripVertical, Plus, ZoomIn } from "lucide-react";
 import { isArchive, readArchive, type ArchiveInfo } from "../lib/archive";
 import { cn } from "../lib/utils";
 
-export interface SortableFile {
+interface SortableFile {
   id: string;
   file: File;
   preview: string;

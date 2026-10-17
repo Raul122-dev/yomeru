@@ -41,20 +41,6 @@ def get_detections(run_id: str):
     return json.loads(f.read_text())
 
 
-@router.get("/{run_id}/detections/{page_num}")
-def get_page_detections(run_id: str, page_num: int):
-    """Return detections for a single page (prefers refined)."""
-    run = _get_run(run_id)
-    f = run.active_detections_file()
-    if not f.exists():
-        raise HTTPException(404, "detections not ready")
-    all_dets = json.loads(f.read_text())
-    page = next((d for d in all_dets if d.get("page_number") == page_num), None)
-    if not page:
-        raise HTTPException(404, f"page {page_num} not found")
-    return page
-
-
 @router.put("/{run_id}/detections/{page_num}")
 def save_page_detections(run_id: str, page_num: int, body: dict):
     """Save refined detections for a single page."""

@@ -5,7 +5,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getTypesetReview, type ReviewItem } from "./api";
 
-export const REVIEW_LABEL: Record<ReviewItem["kind"], { short: string; hint: string }> = {
+const REVIEW_LABEL: Record<ReviewItem["kind"], { short: string; hint: string }> = {
   overflow: { short: "Overflow", hint: "Didn't fit at the smallest size — drawn past its box. Shorten the text or resize it." },
   located: { short: "Found by OCR", hint: "The detector missed this text; it was found by reading the page. Check its box." },
   split_sfx: { short: "Split sound", hint: "A repeated sound read as one line was split, one per place it appears. Check each copy." },

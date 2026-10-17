@@ -2,11 +2,9 @@
 Unified phases API — single entry point for all phase operations.
 
 Routes:
-  POST /api/phases/{run_id}/{phase}/start   — Start a phase
-  POST /api/phases/{run_id}/{phase}/retry   — Retry failed pages
-  GET  /api/phases/{run_id}/{phase}/status  — Get phase status
+  POST /api/phases/{run_id}/{phase}/start   — Start a phase (all pages or `page_scope`)
   POST /api/phases/{run_id}/start-all       — Run all phases sequentially
-  GET  /api/phases/{run_id}/status          — Get all phases status
+  GET  /api/phases/{run_id}/status          — Status of every phase + the running job
   WS   /api/phases/{run_id}/ws             — Progress stream
 """
 from __future__ import annotations
@@ -66,21 +64,6 @@ def start_phase(run_id: str, phase: str, body: PhaseStartRequest | None = None):
             lambda emit: run_phase(run, phase, options=options, on_progress=emit, page_scope=req.page_scope),
             first_phase=phase)
     return {"status": "started", "phase": phase, "run_id": run_id}
-
-
-@router.post("/{run_id}/{phase}/retry")
-def retry_phase(run_id: str, phase: str, body: PhaseStartRequest | None = None):
-    """Re-run a phase that already ran (all pages, or `page_scope`)."""
-    run = _get_run(run_id)
-    _validate_phase(phase)
-    if run.get_phase_status(phase) == "pending":
-        raise HTTPException(400, detail=f"Phase '{phase}' hasn't been run yet")
-    req = body or PhaseStartRequest()
-    options = _build_phase_options(run, phase, req.options)
-    _launch(run, phase,
-            lambda emit: run_phase(run, phase, options=options, on_progress=emit, page_scope=req.page_scope),
-            first_phase=phase)
-    return {"status": "started", "phase": phase, "run_id": run_id, "mode": "retry"}
 
 
 @router.post("/{run_id}/cancel")
@@ -407,24 +390,6 @@ def start_all_phases(run_id: str, body: StartAllRequest | None = None):
 
 
 # ── Status ─────────────────────────────────────────────────────────────────────
-
-@router.get("/{run_id}/{phase}/status")
-def phase_status(run_id: str, phase: str):
-    """Get status for a specific phase."""
-    run = _get_run(run_id)
-    _validate_phase(phase)
-
-    meta = run.meta()
-    status = meta.get("phase_status", {}).get(phase, "pending")
-    deps_met = not check_dependencies(run, phase)
-
-    return {
-        "phase": phase,
-        "status": status,
-        "dependencies_met": deps_met,
-        "dependencies": PHASE_DEPS[phase],
-    }
-
 
 @router.get("/{run_id}/status")
 def all_phases_status(run_id: str):

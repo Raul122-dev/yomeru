@@ -7,7 +7,7 @@ import type { PhaseName, Run, StageLog } from "../lib/types";
 import { usePhaseRunner } from "./usePhaseRunner";
 import { LABELS } from "../features/phases/PhaseBar";
 
-export interface PageStageLog {
+interface PageStageLog {
   page: number;
   filename: string;
   log: StageLog | null;

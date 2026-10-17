@@ -12,7 +12,7 @@ import { getUiPhaseStatus } from "../../lib/phase";
 import { Button } from "../../components/ui/button";
 import { LABELS, PHASE_ORDER, type Phase } from "../phases/PhaseBar";
 
-export type RunState =
+type RunState =
   | { kind: "running"; phase: Phase }
   | { kind: "failed"; phase: Phase; error?: string | null }
   | { kind: "pending"; from: Phase; count: number; reason: string }

@@ -17,9 +17,9 @@ import { cn } from "../../lib/utils";
 import { pageThumbUrl } from "../../lib/api";
 
 // ── types ─────────────────────────────────────────────────────────────────────
-export type PageStatus = "pending" | "processing" | "done" | "error";
+type PageStatus = "pending" | "processing" | "done" | "error";
 
-export interface PageNodeData extends Record<string, unknown> {
+interface PageNodeData extends Record<string, unknown> {
   runId: string;
   pageNumber: number;
   filename: string;
@@ -243,7 +243,7 @@ function makeEdges(pages: { page: number }[], activePage?: number): Edge[] {
 }
 
 // ── main component ────────────────────────────────────────────────────────────
-export interface FlowDiagramProps {
+interface FlowDiagramProps {
   runId: string;
   pages: { page: number; filename: string }[]; // from GET /runs/:id/pages
   analyses: Record<string, unknown>[]; // from GET /runs/:id/analyses (may be partial)

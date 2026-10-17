@@ -1,5 +1,4 @@
 import type {
-  AllPhasesStatus,
   AppConfig,
   CreateRunOpts,
   DetectionRegion,
@@ -15,37 +14,11 @@ import type {
   PhaseName,
   PhaseStartPayload,
   PhaseStatus,
-  PhaseStatusResponse,
   RenderEvent,
   Run,
   StageLog,
   BackendInfo,
   LocalModelsInfo,
-  TypesetStatus,
-} from "./types";
-
-export type {
-  AllPhasesStatus,
-  AppConfig,
-  CreateRunOpts,
-  DetectionRegion,
-  FontInfo,
-  MatchEvent,
-  Connection,
-  ModelInfo,
-  OrphanedRegion,
-  PipelineSettings,
-  Preset,
-  Protocol,
-  DeepPartial,
-  PhaseName,
-  PhaseStartPayload,
-  PhaseStatus,
-  PhaseStatusResponse,
-  RenderEvent,
-  Run,
-  StageLog,
-  BackendInfo,
   TypesetStatus,
 } from "./types";
 
@@ -88,17 +61,6 @@ export const startPhase = (
     body: JSON.stringify(payload ?? {}),
   });
 
-export const retryPhase = (
-  runId: string,
-  phase: PhaseName,
-  pageScope?: number[],
-) =>
-  req<{ status: string }>(`/phases/${runId}/${phase}/retry`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page_scope: pageScope }),
-  });
-
 /** Image-edit rendering: ask the model again (new seed) for some dialogues
  * of a page, or for every one it drew or tried (`dialogues` null). */
 export const rerenderWithModel = (runId: string, page: number, dialogues: number[] | null) =>
@@ -107,12 +69,6 @@ export const rerenderWithModel = (runId: string, page: number, dialogues: number
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dialogues }),
   });
-
-export const getPhaseStatus = (runId: string, phase: PhaseName) =>
-  req<PhaseStatusResponse>(`/phases/${runId}/${phase}/status`);
-
-export const getAllPhasesStatus = (runId: string) =>
-  req<AllPhasesStatus>(`/phases/${runId}/status`);
 
 export const startAllPhases = (runId: string, options?: object, startFrom?: PhaseName) =>
   req<{ status: string }>(`/phases/${runId}/start-all`, {
@@ -147,8 +103,6 @@ export function connectPhaseWs(
 
 // detections
 export const getDetections = (id: str) => req<any[]>(`/runs/${id}/detections`);
-export const getPageDetections = (id: str, page: number) =>
-  req<any>(`/runs/${id}/detections/${page}`);
 export const savePageDetections = (id: str, page: number, body: object) =>
   req<{ ok: boolean; regions: number }>(`/runs/${id}/detections/${page}`, {
     method: "PUT",
@@ -232,8 +186,11 @@ export const saveEdit = (id: str, page: number, body: object) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-export const revertEdit = (id: str, page: number) =>
-  fetch(`/api/runs/${id}/edits/${page}`, { method: "DELETE" });
+/** Drop the user's edits of a page: it goes back to the model's reading. */
+export const revertEdit = async (id: str, page: number) => {
+  const r = await fetch(`${B}/runs/${id}/edits/${page}`, { method: "DELETE" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+};
 
 // ── editing (artifact CRUD) ───────────────────────────────────────────────────
 export const savePageMatches = (id: str, page: number, body: object) =>
@@ -293,8 +250,6 @@ export const pullLocalModel = (model: string, server?: string) =>
   });
 export const getTypesetStatus = (id: str) =>
   req<TypesetStatus>(`/runs/${id}/typeset/status`);
-export const typesetPageUrl = (id: str, filename: str) =>
-  `/api/runs/${id}/typeset/pages/${filename}`;
 export const getDebugImages = (id: str) =>
   req<{ images: string[] }>(`/runs/${id}/typeset/debug`);
 export const debugImageUrl = (id: str, filename: str) =>

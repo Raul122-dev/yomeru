@@ -6,7 +6,7 @@ const WIDTHS = [160, 320, 640, 1024, 1600, 2400];
 const MAX_RETRIES = 2;
 
 /** Append ?w= (or &w=) to an image endpoint URL. */
-export function sized(url: string, w: number) {
+function sized(url: string, w: number) {
   return `${url}${url.includes("?") ? "&" : "?"}w=${w}`;
 }
 

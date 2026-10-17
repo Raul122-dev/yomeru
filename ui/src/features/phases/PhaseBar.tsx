@@ -50,7 +50,7 @@ function isPhaseClickable(phase: Phase, statuses: Record<Phase, PhaseStatus>): b
   return PHASE_ORDER.slice(0, PHASE_ORDER.indexOf(phase)).every((p) => isPhaseComplete(statuses[p]));
 }
 
-export function buildGroups(run: Run): Group[] {
+function buildGroups(run: Run): Group[] {
   const statuses = getPhaseStatuses(run);
   const sub = (key: Phase): SubPhase => ({
     key,

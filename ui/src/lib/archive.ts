@@ -19,7 +19,7 @@ export interface ArchiveInfo {
   number?: string;
 }
 
-export interface Archive {
+interface Archive {
   pages: File[];
   info: ArchiveInfo;
 }

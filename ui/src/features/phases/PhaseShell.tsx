@@ -13,7 +13,7 @@ import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 import { Img } from "../../components/ui/Img";
 
-export interface PhaseHeaderProps {
+interface PhaseHeaderProps {
   runId: string;
   title: string;
   description: string;
@@ -110,7 +110,7 @@ function Notice({ children, tone }: { children: React.ReactNode; tone?: "warn" |
   );
 }
 
-export interface StripItem {
+interface StripItem {
   page: number;
   filename: string;
   src: string;

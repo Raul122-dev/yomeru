@@ -12,7 +12,7 @@ import { EmptyState, Panel, PhaseHeader } from "./PhaseShell";
 import { TranslationReview } from "./TranslationReview";
 import { patchRun } from "../../lib/api";
 
-export interface AnalysisPhaseProps {
+interface AnalysisPhaseProps {
   runId: string;
   pages: { page: number; filename: string }[];
   showRunButton?: boolean;

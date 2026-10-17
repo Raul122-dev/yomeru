@@ -1,9 +1,9 @@
-export type DebugStageKey =
+type DebugStageKey =
   | "s2_detection"
   | "s3_matching"
   | "s4_inpainted";
 
-export type DebugImageGroups = Record<
+type DebugImageGroups = Record<
   string,
   Partial<Record<DebugStageKey, string>>
 >;
@@ -14,7 +14,7 @@ const DEBUG_STAGE_KEYS: DebugStageKey[] = [
   "s4_inpainted",
 ];
 
-export function getDebugPageKey(pageNum: number) {
+function getDebugPageKey(pageNum: number) {
   return `p${String(pageNum).padStart(2, "0")}`;
 }
 

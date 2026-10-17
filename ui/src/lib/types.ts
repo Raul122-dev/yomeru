@@ -14,18 +14,6 @@ export type PhaseStatus =
   | "stale"
   | "cancelled";
 
-export interface PhaseStatusResponse {
-  phase: PhaseName;
-  status: PhaseStatus;
-  dependencies_met: boolean;
-  dependencies: PhaseName[];
-}
-
-export interface AllPhasesStatus {
-  run_id: string;
-  phases: PhaseStatusResponse[];
-}
-
 export interface Run {
   id: string;
   name: string;

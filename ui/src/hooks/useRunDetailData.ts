@@ -7,7 +7,7 @@ import {
   type DerivedRunPhaseState,
 } from "../lib/phase";
 
-export interface RunPage {
+interface RunPage {
   page: number;
   filename: string;
 }

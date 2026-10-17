@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { connectPhaseWs, startPhase } from "../lib/api";
 import type { PhaseName, PhaseStartPayload, PhaseStatus } from "../lib/types";
 
-export interface PhaseEvent {
+interface PhaseEvent {
   type?: string;
   phase?: PhaseName | string;
   total?: number;
