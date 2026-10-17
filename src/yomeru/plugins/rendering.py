@@ -68,9 +68,15 @@ class ImageEditOptions(BaseModel):
             "Every dialogue of every page will be sent to the image model, one paid edit each. "
             "For example, with a model at 0.017 USD per edit a 20-page chapter with 10 dialogues per page "
             "costs about 3.40 USD, and re-renders that change the text cost again. "
-            "The cost cap per run still applies.\n\nUse it for all dialogues?")}})
-    max_cost_per_run_usd: float = Field(default=5.0, ge=0, le=100, title="Cost cap per run (USD)",
-                                        description="Once reached, the rest is drawn by scanline")
+            "The limits per rendering still apply.\n\nUse it for all dialogues?")}})
+    max_cost_usd: float = Field(
+        default=5.0, ge=0, le=100, title="Cost cap per rendering (USD)",
+        description="Counted from zero each time rendering runs or a page is re-rendered; once reached, "
+                    "the rest of that rendering is drawn by scanline (calls already running still finish)")
+    max_edits: int = Field(
+        default=300, ge=0, le=5000, title="Max edits per rendering",
+        description="Limit on model calls per rendering, for models that report no cost (local ones); "
+                    "whichever limit comes first stops the calls")
     max_parallel: int = Field(default=4, ge=1, le=16, title="Parallel requests")
     max_drift: float = Field(default=10.0, ge=1, le=40, title="Max image drift",
                              description="Edits that moved the art around the bubble more than this are rejected")

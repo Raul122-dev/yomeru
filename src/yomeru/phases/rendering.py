@@ -54,70 +54,78 @@ def run(
 
     results: list[PageResult] = []
 
-    for analysis in sorted(analyses, key=lambda a: a.get("page_number", 0)):
-        page_num = analysis.get("page_number", 0)
-        page_path = page_map.get(page_num)
-        if not page_path:
-            continue
-
-        on_progress({"type": "page_start", "phase": "rendering", "page": page_num, "filename": page_path.name})
-        t0 = time.time()
-
-        try:
-            # Invalidate cached scanline previews so they regenerate on next view
-            for scan_file in (
-                artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PREVIEW),
-                artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PRODUCTION),
-            ):
-                if scan_file.exists():
-                    scan_file.unlink()
-
-            # Check prerequisites
-            if not artifacts.existing_page_artifact(run, page_num, artifacts.S4_INPAINTED).exists():
-                on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No inpainted image"})
-                results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No inpainted image"))
+    # one execution: image-edit spend caps count from here and local model
+    # servers are released once at the end, not after every page
+    from yomeru.core.contracts import EditSession
+    session = EditSession()
+    try:
+        for analysis in sorted(analyses, key=lambda a: a.get("page_number", 0)):
+            page_num = analysis.get("page_number", 0)
+            page_path = page_map.get(page_num)
+            if not page_path:
                 continue
 
-            log = artifacts.load_render_log(run, page_num)
-            if log is None:
-                on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No match log"})
-                results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No match log"))
-                continue
+            on_progress({"type": "page_start", "phase": "rendering", "page": page_num, "filename": page_path.name})
+            t0 = time.time()
 
-            # Scanline engine renders the page; a failure here fails the page
-            # (it used to be logged as a warning and the page counted as done).
-            from yomeru.lib.rendering.scanline_engine import render_page
-            # the facade takes the GPU lock only if the backend needs it
-            rendered = render_page(run, page_num, use_translation=use_translation,
-                                   backend=backend, backend_options=backend_options, edit_calls=True)
-            scanline_prod = rendered.production_path
+            try:
+                # Invalidate cached scanline previews so they regenerate on next view
+                for scan_file in (
+                    artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PREVIEW),
+                    artifacts.page_artifact(run, page_num, artifacts.SCANLINE_PRODUCTION),
+                ):
+                    if scan_file.exists():
+                        scan_file.unlink()
 
-            # The only lossy encode: final page in the source's format
-            out_path = typeset_dir / page_path.name
-            with Image.open(scanline_prod) as im:
-                if out_path.suffix.lower() in (".jpg", ".jpeg"):
-                    im.convert("RGB").save(str(out_path), quality=95, subsampling=0)
-                else:
-                    im.save(str(out_path))
-            # The engine's own records: what was really drawn (size, lines, box)
-            ok_count = sum(1 for e in rendered.events if e["status"] == "ok")
-            skip_count = len(rendered.events) - ok_count
-            artifacts.update_render_log(run, page_num, "s5_rendering",
-                                        {"ok": ok_count, "skipped": skip_count, "renders": rendered.events})
+                # Check prerequisites
+                if not artifacts.existing_page_artifact(run, page_num, artifacts.S4_INPAINTED).exists():
+                    on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No inpainted image"})
+                    results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No inpainted image"))
+                    continue
 
-            elapsed = round(time.time() - t0, 2)
-            print(f"  p{page_num}: {ok_count} rendered, {skip_count} skipped [{elapsed}s]", file=sys.stderr)
-            on_progress({
-                "type": "page_done", "phase": "rendering", "page": page_num,
-                "renders_ok": ok_count, "renders_skipped": skip_count, "elapsed": elapsed,
-            })
-            results.append(PageResult(page_num=page_num, filename=page_path.name, success=True))
+                log = artifacts.load_render_log(run, page_num)
+                if log is None:
+                    on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": "No match log"})
+                    results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error="No match log"))
+                    continue
 
-        except Exception as e:
-            elapsed = round(time.time() - t0, 2)
-            print(f"  p{page_num}: error — {e}", file=sys.stderr)
-            on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": str(e)})
-            results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error=str(e)))
+                # Scanline engine renders the page; a failure here fails the page
+                # (it used to be logged as a warning and the page counted as done).
+                from yomeru.lib.rendering.scanline_engine import render_page
+                # the facade takes the GPU lock only if the backend needs it
+                rendered = render_page(run, page_num, use_translation=use_translation,
+                                       backend=backend, backend_options=backend_options,
+                                       edit_session=session)
+                scanline_prod = rendered.production_path
+
+                # The only lossy encode: final page in the source's format
+                out_path = typeset_dir / page_path.name
+                with Image.open(scanline_prod) as im:
+                    if out_path.suffix.lower() in (".jpg", ".jpeg"):
+                        im.convert("RGB").save(str(out_path), quality=95, subsampling=0)
+                    else:
+                        im.save(str(out_path))
+                # The engine's own records: what was really drawn (size, lines, box)
+                ok_count = sum(1 for e in rendered.events if e["status"] == "ok")
+                skip_count = len(rendered.events) - ok_count
+                artifacts.update_render_log(run, page_num, "s5_rendering",
+                                            {"ok": ok_count, "skipped": skip_count, "renders": rendered.events})
+
+                elapsed = round(time.time() - t0, 2)
+                print(f"  p{page_num}: {ok_count} rendered, {skip_count} skipped [{elapsed}s]", file=sys.stderr)
+                on_progress({
+                    "type": "page_done", "phase": "rendering", "page": page_num,
+                    "renders_ok": ok_count, "renders_skipped": skip_count, "elapsed": elapsed,
+                })
+                results.append(PageResult(page_num=page_num, filename=page_path.name, success=True))
+
+            except Exception as e:
+                elapsed = round(time.time() - t0, 2)
+                print(f"  p{page_num}: error — {e}", file=sys.stderr)
+                on_progress({"type": "page_error", "phase": "rendering", "page": page_num, "error": str(e)})
+                results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error=str(e)))
+    finally:
+        session.close()
 
     done = sum(1 for r in results if r.success)
     failed = [r.page_num for r in results if not r.success]
