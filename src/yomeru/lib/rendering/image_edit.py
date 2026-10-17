@@ -11,14 +11,15 @@ Per page:
      the lettering came back unchanged;
   4. scanline draws the remaining dialogues on the inpainted page and every edit
      is pasted inside its bubble only (models sometimes add text elsewhere).
-Edits are cached by content, so re-rendering a page does not pay twice.
+Every answer is cached by content with its measures, and the verdict is taken
+when it is read: re-rendering a page never pays twice, and a looser
+`max_drift` can accept an answer that was rejected before.
 """
 from __future__ import annotations
 
 import hashlib
 import io
 import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
@@ -28,7 +29,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from yomeru.core.contracts import EditError, EditRefused, EditRequest, RenderRequest, RenderResult
+from yomeru.core.contracts import EditError, EditRefused, EditRequest, EditSession, RenderRequest, RenderResult
 from yomeru.core.labels import is_free
 from yomeru.core.languages import text_rules
 from yomeru.lib.rendering.edit_prompt import PROMPT_VERSION, build_prompt
@@ -36,6 +37,7 @@ from yomeru.lib.rendering.edit_prompt import PROMPT_VERSION, build_prompt
 SHOUT_TONES = {"shouting", "screaming", "yelling", "angry", "excited"}
 SEED = 1234                  # base seed; the editor's re-render adds to it
 MAX_SIDE, MIN_SIDE = 1024, 512
+MIN_LETTERING_DIFF = 15.0    # below this the answer gave the source lettering back
 
 
 @dataclass
@@ -201,16 +203,33 @@ def align(ref: Image.Image, out: Image.Image, mask: np.ndarray, text_box: tuple[
     return Image.fromarray(np.dstack([best[0], best[2] * 255])), best[1]
 
 
-def unchanged(ref: Image.Image, edited: Image.Image, text_box: tuple[int, int, int, int], min_diff: float = 15.0) -> bool:
-    """The model gave the lettering back as it was (blurred so a slight
-    misalignment of the same strokes does not count as a change)."""
+def lettering_diff(ref: Image.Image, edited: Image.Image, text_box: tuple[int, int, int, int]) -> float | None:
+    """How much the source lettering changed (blurred so a slight misalignment
+    of the same strokes does not count as a change); None for a box too small
+    to tell."""
     x1, y1, x2, y2 = text_box
     if x2 - x1 < 4 or y2 - y1 < 4:
-        return False
+        return None
 
     def g(im):
         return cv2.GaussianBlur(np.asarray(im.convert("L"), np.float32), (9, 9), 0)[y1:y2, x1:x2]
-    return float(np.abs(g(ref) - g(edited)).mean()) < min_diff
+    return round(float(np.abs(g(ref) - g(edited)).mean()), 2)
+
+
+def verdict(job: _Job, image: Image.Image, meta: dict, max_drift: float) -> str:
+    """Why a stored answer cannot be pasted ("" = usable). Taken on every read,
+    so the options in force decide, not the ones of the run that paid for it."""
+    if meta.get("refused") or "drift" not in meta:     # moderation: only a new seed asks again
+        return meta.get("reason") or "refused"
+    drift = meta.get("drift")
+    if drift is None:
+        return "answer does not cover the bubble"
+    if drift > max_drift:
+        return f"image moved (drift {drift} > {max_drift})"
+    diff = meta["lettering_diff"] if "lettering_diff" in meta else lettering_diff(job.crop, image, job.text_box)
+    if diff is not None and diff < MIN_LETTERING_DIFF:
+        return "lettering left unchanged"
+    return ""
 
 
 def _cache_key(job: _Job, provider: Provider) -> str:
@@ -252,25 +271,10 @@ def _jobs(req: RenderRequest, base: RenderResult, scope: str) -> list[_Job]:
     return jobs
 
 
-class _Budget:
-    """Run-wide spend cap shared by the page's parallel calls."""
-
-    def __init__(self, cap: float, spent: float):
-        self.cap, self.spent, self.lock = cap, spent, threading.Lock()
-
-    def allows(self) -> bool:
-        with self.lock:
-            return self.spent < self.cap
-
-    def add(self, cost: float | None) -> None:
-        with self.lock:
-            self.spent += cost or 0.0
-
-
-def _edit(job: _Job, providers: list[Provider], cache, budget: _Budget, max_drift: float,
-          calls: bool = True) -> tuple[Image.Image | None, dict]:
+def _edit(job: _Job, providers: list[Provider], cache, session: EditSession | None,
+          options) -> tuple[Image.Image | None, dict]:
     """Walk the chain; returns (aligned crop or None, record for the render log).
-    Without `calls` only stored answers are used."""
+    Without a session only stored answers are used."""
     from yomeru.core.gpu import gpu_lock
 
     rec: dict = {"fallback": []}
@@ -279,48 +283,48 @@ def _edit(job: _Job, providers: list[Provider], cache, budget: _Budget, max_drif
         hit = cache.get(key) if cache is not None else None
         if hit is not None:
             img, meta = hit
-            if meta.get("ok"):
+            reason = verdict(job, img, meta, options.max_drift)
+            if not reason:
                 return img, rec | {k: meta.get(k) for k in ("provider", "model", "drift")} | {"cache_hit": True, "cost_usd": 0.0}
-            rec["fallback"].append(f"{p.label}: {meta.get('reason', 'rejected')}")
+            rec["fallback"].append(f"{p.label}: {reason}")
             continue
-        if not calls:
+        if session is None:
             continue
-        if not budget.allows():
-            rec["fallback"].append("cost cap reached")
+        if not session.start_edit(options.max_cost_usd, options.max_edits):
+            rec["fallback"].append(f"limit of this rendering reached ({options.max_cost_usd} USD "
+                                   f"or {options.max_edits} edits)")
             return None, rec
         try:
             with (gpu_lock() if getattr(p.impl, "local", False) else nullcontext()):
                 res = p.impl.edit(EditRequest(image=job.crop, prompt=job.prompt, size=job.crop.size, seed=job.seed))
-        except EditError as e:
-            reason = f"{type(e).__name__.removeprefix('Edit').lower()}: {str(e)[:160]}"
+        except Exception as e:
+            session.end_edit(None, answered=False)
+            if isinstance(e, EditError):
+                reason = f"{type(e).__name__.removeprefix('Edit').lower()}: {str(e)[:160]}"
+            else:   # a buggy adapter must cost one dialogue, not the page
+                reason = f"error: {type(e).__name__}: {str(e)[:160]}"
             rec["fallback"].append(f"{p.label}: {reason}")
             if isinstance(e, EditRefused) and cache is not None:
                 # moderation answers the same for the same crop: don't ask again until a new seed
-                cache.put(key, job.crop, {"ok": False, "provider": p.label, "reason": reason, "cost_usd": 0,
+                cache.put(key, job.crop, {"refused": True, "provider": p.label, "reason": reason, "cost_usd": 0,
                                           "seed": job.seed, "dialogue_index": job.event.get("dialogue_index")})
             continue
-        except Exception as e:   # a buggy adapter must cost one dialogue, not the page
-            rec["fallback"].append(f"{p.label}: error: {type(e).__name__}: {str(e)[:160]}")
-            continue
-        budget.add(res.cost_usd)
+        session.end_edit(res.cost_usd, answered=True)
         aligned, drift = align(job.crop, res.image, job.mask, job.text_box)
-        reason = ("answer does not cover the bubble" if drift == float("inf")
-                  else f"image moved (drift {drift} > {max_drift})" if drift > max_drift
-                  else "lettering left unchanged" if unchanged(job.crop, aligned, job.text_box) else "")
-        drift = None if drift == float("inf") else drift
-        ok = not reason
-        meta = {"ok": ok, "provider": p.label, "model": res.model, "cost_usd": res.cost_usd, "seconds": res.seconds,
-                "drift": drift, "seed": job.seed, "dialogue_index": job.event.get("dialogue_index"),
+        # every answer is kept with its measures: the verdict is taken on read
+        meta = {"provider": p.label, "model": res.model, "cost_usd": res.cost_usd, "seconds": res.seconds,
+                "drift": None if drift == float("inf") else drift,
+                "lettering_diff": lettering_diff(job.crop, aligned, job.text_box),
+                "seed": job.seed, "dialogue_index": job.event.get("dialogue_index"),
                 "answer_size": list(res.image.size)}
-        if reason:
-            meta["reason"] = reason
         if cache is not None:
             cache.put(key, aligned, meta)
-        if ok:
-            return aligned, rec | {"provider": p.label, "model": res.model, "drift": drift, "cache_hit": False,
-                                   "cost_usd": res.cost_usd, "seconds": res.seconds}
-        rec["fallback"].append(f"{p.label}: {meta['reason']}")
-    if not calls:
+        reason = verdict(job, aligned, meta, options.max_drift)
+        if not reason:
+            return aligned, rec | {"provider": p.label, "model": res.model, "drift": meta["drift"],
+                                   "cache_hit": False, "cost_usd": res.cost_usd, "seconds": res.seconds}
+        rec["fallback"].append(f"{p.label}: {reason}")
+    if session is None:
         rec["fallback"].append("not sent to the image model yet (run rendering)")
     elif providers:
         rec["fallback"].append("all providers failed")
@@ -351,13 +355,15 @@ def render_page(req: RenderRequest, options, providers: list[Provider]) -> Rende
             j.event["fallback"] = ["no image-edit provider configured"]
         return base
 
-    budget = _Budget(options.max_cost_per_run_usd, req.edit_cache.spent_usd() if req.edit_cache else 0.0)
+    session = req.edit_session
+    if session is not None:
+        for p in providers:
+            # local servers give the GPU back once the execution ends (per page
+            # the model would load cold again on every page)
+            if getattr(p.impl, "local", False) and hasattr(p.impl, "release"):
+                session.release_at_end(p.key, p.impl.release)
     with ThreadPoolExecutor(max(1, min(options.max_parallel, len(jobs)))) as ex:
-        results = list(ex.map(lambda j: _edit(j, providers, req.edit_cache, budget, options.max_drift,
-                                              req.edit_calls), jobs))
-    for p in providers:   # local servers give the GPU back to the rest of the pipeline
-        if req.edit_calls and getattr(p.impl, "local", False) and hasattr(p.impl, "release"):
-            p.impl.release()
+        results = list(ex.map(lambda j: _edit(j, providers, req.edit_cache, session, options), jobs))
 
     done = {j.event["dialogue_index"]: (j, img, rec) for j, (img, rec) in zip(jobs, results) if img is not None}
     for j, (img, rec) in zip(jobs, results):

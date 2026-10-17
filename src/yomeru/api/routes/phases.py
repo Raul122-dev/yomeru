@@ -340,7 +340,12 @@ def rerender_with_image_edit(run_id: str, page_num: int, body: RerenderRequest |
     """Ask the image-edit model again (new seed, so the cache is bypassed) for
     some dialogues of a page — listed ones are also marked to be drawn by it —
     then re-render that page."""
+    from yomeru.core.settings import run_settings
     run = _get_run(run_id)
+    if page_num not in dict(artifacts.page_files(run)):
+        raise HTTPException(404, detail=f"Page {page_num} not found")
+    if run_settings(run.meta()).rendering.backend != "image_edit":
+        raise HTTPException(400, detail="This run is not rendered with an image-edit model")
     if run.get_phase_status("rendering") == "pending":
         raise HTTPException(400, detail="Phase 'rendering' hasn't been run yet")
     req = body or RerenderRequest()
@@ -359,8 +364,10 @@ def rerender_with_image_edit(run_id: str, page_num: int, body: RerenderRequest |
         if req.dialogues is not None:
             o["engine"] = "ai"
     artifacts.debug_dir(run, create=True)
-    artifacts.page_artifact(run, page_num, artifacts.RENDER_OVERRIDES).write_text(
-        json.dumps(list(overrides.values()), indent=2))
+    f = artifacts.page_artifact(run, page_num, artifacts.RENDER_OVERRIDES)
+    tmp = artifacts.tmp_path(f)
+    tmp.write_text(json.dumps(list(overrides.values()), indent=2))
+    tmp.replace(f)
     options = _build_phase_options(run, "rendering", {})
     _launch(run, "rendering",
             lambda emit: run_phase(run, "rendering", options=options, on_progress=emit, page_scope=[page_num]),

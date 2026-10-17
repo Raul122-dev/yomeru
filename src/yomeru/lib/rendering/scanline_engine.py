@@ -199,7 +199,7 @@ def is_cached(run: Run, page_num: int) -> bool:
     return sig.exists() and sig.read_text() == settings_signature(run)
 
 
-def build_request(run: Run, page_num: int, use_translation: bool | None = None, edit_calls: bool = False):
+def build_request(run: Run, page_num: int, use_translation: bool | None = None, edit_session=None):
     """Everything the render needs for one page, resolved from the run's files
     (edits, refined matches, overrides, settings). Backends only see this."""
     from yomeru.core.contracts import RenderRequest
@@ -244,24 +244,25 @@ def build_request(run: Run, page_num: int, use_translation: bool | None = None, 
         lang_code=profile(drawn_lang).hyphenation,
         drawn_language=drawn_lang if drawn_lang != "auto" else "",
         edit_cache=artifacts.PageEditCache(run, page_num),
-        edit_calls=edit_calls,
+        edit_session=edit_session,
     )
 
 
 def render_page(run: Run, page_num: int, use_translation: bool | None = None,
                 backend: str | None = None, backend_options: dict | None = None,
-                edit_calls: bool = False) -> RenderOutput:
+                edit_session=None) -> RenderOutput:
     """Render one page with the run's rendering backend; writes preview +
     production images atomically. Facade used by the phase, the preview
-    endpoints and tests. `edit_calls`: image-edit backends may call models
-    (only the rendering phase does; previews reuse stored edits)."""
+    endpoints and tests. `edit_session` (contracts.EditSession): image-edit
+    backends may call models (only the rendering phase passes one; previews
+    reuse stored edits)."""
     from yomeru.core.settings import run_settings
     from yomeru.plugins import get_backend
 
     from contextlib import nullcontext
     from yomeru.core.gpu import gpu_lock
 
-    req = build_request(run, page_num, use_translation, edit_calls)
+    req = build_request(run, page_num, use_translation, edit_session)
     st = run_settings(run.meta()).rendering
     spec, be = get_backend("rendering", backend or st.backend, backend_options if backend else st.options)
     with (gpu_lock() if spec.needs_gpu else nullcontext()):

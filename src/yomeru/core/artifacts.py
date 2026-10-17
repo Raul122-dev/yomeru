@@ -107,8 +107,9 @@ def save_lossless(img, path: Path) -> None:
 
 class PageEditCache:
     """Image edits of one page by content key (see contracts.EditCache): the
-    aligned crop (RGBA: alpha marks the pixels the model answered) + what it cost. Never cleared by re-rendering, so a dialogue
-    whose crop, prompt, model and seed did not change is never paid twice."""
+    aligned crop (RGBA: alpha marks the pixels the model answered) + its
+    measures and cost. Never cleared by re-rendering, so a dialogue whose crop,
+    prompt, model and seed did not change is never paid twice."""
 
     def __init__(self, run: "Run", page: int):
         self.dir = debug_dir(run) / "edits"
@@ -138,15 +139,6 @@ class PageEditCache:
         tmp = tmp_path(path)
         tmp.write_text(json.dumps(meta, ensure_ascii=False))
         tmp.replace(path)
-
-    def spent_usd(self) -> float:
-        total = 0.0
-        for f in self.dir.glob("p*_*.json") if self.dir.exists() else []:
-            try:
-                total += float(json.loads(f.read_text()).get("cost_usd") or 0)
-            except (OSError, ValueError, json.JSONDecodeError):
-                pass
-        return round(total, 4)
 
 
 # ── Effective inputs (user edits resolved) ────────────────────────────────────

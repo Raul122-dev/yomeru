@@ -6,8 +6,9 @@ path or meta.json. Every phase now has its contract here (vault "Yomeru - Flujo 
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Callable, Protocol
 
 import numpy as np
 from PIL import Image
@@ -129,9 +130,9 @@ class RenderRequest:
     lang_code: str                     # hyphenation language of the DRAWN text (pyphen code)
     drawn_language: str = ""           # name of the drawn language ("Spanish"), for image-edit prompts
     edit_cache: "EditCache | None" = None  # stored image edits of this page (image-edit backends)
-    # image-edit backends may call (and pay) models only in a rendering run; the
-    # preview endpoints re-render stale pages on view and must reuse stored edits
-    edit_calls: bool = False
+    # set only by a rendering execution: without it image-edit backends call no
+    # model (the preview endpoints re-render stale pages on view, reusing stored edits)
+    edit_session: "EditSession | None" = None
 
 
 @dataclass
@@ -185,4 +186,44 @@ class EditCache(Protocol):
 
     def put(self, key: str, image: Image.Image, meta: dict) -> None: ...
 
-    def spent_usd(self) -> float: ...           # whole run, every edit ever paid
+
+class EditSession:
+    """One rendering execution (the phase over its pages, or a re-render of
+    one page), shared by every page it renders. The spend caps count from zero
+    in each execution, so a run never stays stuck on scanline because of what
+    earlier executions paid; local servers are released once, at the end."""
+
+    def __init__(self) -> None:
+        self.spent_usd = 0.0
+        self.edits = 0
+        self._lock = threading.Lock()
+        self._release: dict[str, Callable[[], None]] = {}
+
+    def start_edit(self, max_usd: float, max_edits: int) -> bool:
+        """Book one model call unless a cap is reached (calls run in parallel:
+        booking before the call keeps them from overshooting the edit cap)."""
+        with self._lock:
+            if self.spent_usd >= max_usd or self.edits >= max_edits:
+                return False
+            self.edits += 1
+            return True
+
+    def end_edit(self, cost_usd: float | None, answered: bool) -> None:
+        """A call that brought no image (refused, server down) gives its slot back."""
+        with self._lock:
+            self.spent_usd += cost_usd or 0.0
+            if not answered:
+                self.edits -= 1
+
+    def release_at_end(self, key: str, release: Callable[[], None]) -> None:
+        with self._lock:
+            self._release.setdefault(key, release)
+
+    def close(self) -> None:
+        with self._lock:
+            pending, self._release = list(self._release.values()), {}
+        for release in pending:
+            try:
+                release()
+            except Exception:
+                pass
