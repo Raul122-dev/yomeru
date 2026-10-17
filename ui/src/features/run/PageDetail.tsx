@@ -12,9 +12,11 @@ import {
   Send,
   MapPin,
   Loader2,
+  Undo2,
 } from "lucide-react";
 import {
   pageThumbUrl,
+  revertEdit,
   saveEdit,
 } from "../../lib/api";
 import { Button } from "../../components/ui/button";
@@ -121,6 +123,22 @@ export function PageDetail({
     },
   });
 
+  const revertMut = useMutation({
+    mutationFn: () => revertEdit(runId, orig.page_number),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["analyses", runId] });
+      setEditingIdx(null);
+      setEditTranslation("");
+    },
+  });
+
+  const revertPageEdits = () => {
+    if (!window.confirm(
+      `Revert page ${orig.page_number} edits?\n\nEdited translations and skipped dialogues go back to the model's reading. This can't be undone.`,
+    )) return;
+    revertMut.mutate();
+  };
+
   const handleReanalysis = useCallback(() => {
     if (!onRequestReanalysis || !hasCorrections) return;
     onRequestReanalysis(corrections);
@@ -184,9 +202,25 @@ export function PageDetail({
               Page {orig.page_number}
             </span>
             {orig._edited_at && (
-              <span className="rounded-full bg-[hsl(var(--accent2)/.15)] px-2 py-0.5 text-xs text-[hsl(var(--accent2))]">
-                Edited
-              </span>
+              <>
+                <span className="rounded-full bg-[hsl(var(--accent2)/.15)] px-2 py-0.5 text-xs text-[hsl(var(--accent2))]">
+                  Edited
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={revertPageEdits}
+                  disabled={revertMut.isPending || isPhaseRunning}
+                  className="h-7 text-xs gap-1"
+                  title="Drop this page's edits and go back to the model's reading"
+                >
+                  {revertMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />}
+                  Revert page edits
+                </Button>
+                {revertMut.isError && (
+                  <span className="text-xs text-[hsl(var(--danger))]">Couldn't revert: {String(revertMut.error)}</span>
+                )}
+              </>
             )}
             <span className="text-sm text-[hsl(var(--text-muted))]">
               {activeDialogues} active{skippedDialogues > 0 && (
