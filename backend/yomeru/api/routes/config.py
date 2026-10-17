@@ -6,9 +6,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from yomeru.core import llm
-from yomeru.core.models import COMIC_FORMATS
-from yomeru.core.settings import (
+from yomeru.infra import llm
+from yomeru.stages.analysis.models import COMIC_FORMATS
+from yomeru.config.settings import (
     AppConfig,
     Connection,
     PipelineSettings,
@@ -161,7 +161,7 @@ def delete_preset(pid: str):
 @router.get("/backends/{phase}")
 def get_backends(phase: str):
     """Registered techniques for a phase, with each one's options schema."""
-    from yomeru.plugins import list_backends
+    from yomeru.pipeline.registry import list_backends
     if phase not in ("detection", "analysis", "matching", "inpainting", "rendering"):
         raise HTTPException(404, f"unknown phase {phase!r}")
     return list_backends(phase)  # type: ignore[arg-type]
@@ -176,7 +176,7 @@ _pulls_lock = __import__("threading").Lock()
 @router.get("/local-models")
 def local_models(server: str | None = None):
     """Model server status, installed models, GPU memory and the suggested model."""
-    from yomeru.lib.local_models import CATALOGUE, OLLAMA_URL, gpu_memory, ollama_status, suggest_model
+    from yomeru.stages.analysis.local_models import CATALOGUE, OLLAMA_URL, gpu_memory, ollama_status, suggest_model
     st = ollama_status(server or OLLAMA_URL)
     gpu = gpu_memory()
     sug = suggest_model(gpu and gpu["free_gb"])
@@ -201,7 +201,7 @@ class PullIn(BaseModel):
 def local_models_pull(body: PullIn):
     """Start downloading a model in the background; poll GET /local-models."""
     import threading
-    from yomeru.lib.local_models import OLLAMA_URL, LocalModelError, pull
+    from yomeru.stages.analysis.local_models import OLLAMA_URL, LocalModelError, pull
 
     name = body.model.strip()
     if not name:
@@ -240,7 +240,7 @@ def local_models_pull(body: PullIn):
 @router.get("/languages")
 def list_languages():
     """Every language profile; `has_font` = a shipped font can letter it (target)."""
-    from yomeru.core.languages import language_options
+    from yomeru.config.languages import language_options
     return language_options()
 
 

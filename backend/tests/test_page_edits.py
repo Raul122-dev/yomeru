@@ -16,7 +16,7 @@ def _run(client) -> str:
 
 
 def test_revert_page_edits_restores_the_model_reading(client):
-    from yomeru.core.runs import Run
+    from yomeru.runs.run import Run
     rid = _run(client)
     model = [{"page_number": 1, "dialogues": [{"text": "Hi", "text_translated": "Hola"}]},
              {"page_number": 2, "dialogues": [{"text": "Bye", "text_translated": "Adiós"}]}]

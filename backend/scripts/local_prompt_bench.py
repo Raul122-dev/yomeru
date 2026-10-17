@@ -25,14 +25,14 @@ OUT = ROOT / "data" / "prompt_bench"
 def run_variant(variant: str, model: str = "qwen3.5:9b") -> dict:
     import glob
     from PIL import Image
-    from yomeru.core import analyzer
-    from yomeru.core.analyzer import parse_reply, prepare
-    from yomeru.core.contracts import AnalysisRequest
-    from yomeru.core.labels import is_text
-    from yomeru.lib.local_models import chat_vision
-    from yomeru.lib.matching.cascade import _text_containment_score
-    from yomeru.lib.matching.ocr import ocr_region
-    from yomeru.plugins.analysis import _reply_schema
+    from yomeru.stages.analysis import analyzer
+    from yomeru.stages.analysis.analyzer import parse_reply, prepare
+    from yomeru.pipeline.contracts import AnalysisRequest
+    from yomeru.config.labels import is_text
+    from yomeru.stages.analysis.local_models import chat_vision
+    from yomeru.stages.matching.cascade import _text_containment_score
+    from yomeru.stages.matching.ocr import ocr_region
+    from yomeru.stages.analysis.plugins import _reply_schema
 
     res = {}
     if True:

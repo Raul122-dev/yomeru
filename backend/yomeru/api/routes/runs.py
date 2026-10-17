@@ -7,14 +7,14 @@ from typing import Annotated
 from pydantic import BaseModel
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
-from yomeru.core.images import serve_image
+from yomeru.infra.images import serve_image
 
 import re
 
-from yomeru.core.settings import resolve_settings
-from yomeru.core.paths import IMAGE_EXTS, list_page_files, safe_child
-from yomeru.core.runs import Run
-from yomeru.phases.runner import run_all
+from yomeru.config.settings import resolve_settings
+from yomeru.config.paths import IMAGE_EXTS, list_page_files, safe_child
+from yomeru.runs.run import Run
+from yomeru.pipeline.runner import run_all
 from yomeru.api.ws import make_emitter
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -46,7 +46,7 @@ def get_cover(run_id: str, request: Request, w: int = 320):
 
 @router.get("/{run_id}/pages/{filename}")
 def get_page_image(run_id: str, filename: str, request: Request, w: int | None = None):
-    """Source page. ?w= returns a resized WebP (see core/images.py)."""
+    """Source page. ?w= returns a resized WebP (see infra/images.py)."""
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
     try:
@@ -160,7 +160,7 @@ async def create_run(
 
     if auto_start:
         from yomeru.api.routes.phases import _build_all_options
-        from yomeru.phases.runner import start_job
+        from yomeru.pipeline.runner import start_job
         options = _build_all_options(run, {})
         start_job(run, "all", lambda emit, _c: run_all(run, options=options, on_progress=emit),
                   on_progress=make_emitter(run.id))
@@ -179,7 +179,7 @@ def delete_run(run_id: str):
 
 @router.put("/{run_id}/edits/{page_number}")
 def save_edit(run_id: str, page_number: int, body: dict):
-    from yomeru.core.edits import PageEdits
+    from yomeru.runs.edits import PageEdits
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
     PageEdits(run.output_dir()).save_edit(page_number, body)
@@ -189,7 +189,7 @@ def save_edit(run_id: str, page_number: int, body: dict):
 @router.delete("/{run_id}/edits/{page_number}", status_code=204)
 def revert_edit(run_id: str, page_number: int):
     """Drop the user's edits of a page: it goes back to the model's reading."""
-    from yomeru.core.edits import PageEdits
+    from yomeru.runs.edits import PageEdits
     run = Run.load(run_id)
     if not run: raise HTTPException(404, "run not found")
     PageEdits(run.output_dir()).revert([page_number])

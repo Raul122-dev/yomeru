@@ -1,7 +1,7 @@
 """Separate translation (Read & translate in two steps)."""
 import json
 
-from yomeru.lib.translation import ChapterInput, collect_lines, translate_chapter
+from yomeru.stages.analysis.translation import ChapterInput, collect_lines, translate_chapter
 
 PAGES = [
     {"page_number": 1, "scene": {"location": "street", "mood": "tense", "narrative_beat": "debt"},
@@ -54,8 +54,8 @@ def test_two_passes_with_style_guide_context_and_retry_of_dropped_keys():
 
 def test_final_text_priority(tmp_path, monkeypatch):
     """user edit > separate translation > reading's text_translated."""
-    from yomeru.core import artifacts
-    from yomeru.core.edits import PageEdits
+    from yomeru.runs import artifacts
+    from yomeru.runs.edits import PageEdits
 
     class R:
         def output_dir(self):
@@ -78,7 +78,7 @@ def test_final_text_priority(tmp_path, monkeypatch):
 
 def test_reading_drops_entries_without_text():
     from types import SimpleNamespace
-    from yomeru.core.analyzer import parse_reply
+    from yomeru.stages.analysis.analyzer import parse_reply
     raw = json.dumps({"panel_count": 1, "dialogues": [
         {"region_id": 1, "text": "HI", "bubble_type": "speech"},
         {"region_id": 2, "text": "  ", "bubble_type": "speech"}],
@@ -89,9 +89,9 @@ def test_reading_drops_entries_without_text():
 
 def test_read_only_request_uses_reading_prompt_without_translation():
     from PIL import Image
-    from yomeru.core.analyzer import prepare
-    from yomeru.core.contracts import AnalysisRequest
-    from yomeru.plugins.analysis import _reply_schema
+    from yomeru.stages.analysis.analyzer import prepare
+    from yomeru.pipeline.contracts import AnalysisRequest
+    from yomeru.stages.analysis.plugins import _reply_schema
     p = prepare(AnalysisRequest(image=Image.new("RGB", (64, 64)), page_number=1, regions=[],
                                 target_language="Spanish", read_only=True))
     assert "Do not translate" in p.system and "Do not translate" in p.user_text
@@ -120,7 +120,7 @@ def test_already_readable_skip_is_undone_when_the_model_translated_it():
     """An English chapter title skipped as already_readable
     in an EN→ES run, although the model translated it ('CAPÍTULO 1')."""
     from types import SimpleNamespace
-    from yomeru.core.analyzer import parse_reply
+    from yomeru.stages.analysis.analyzer import parse_reply
     raw = json.dumps({"panel_count": 1, "dialogues": [
         {"region_id": 1, "text": "CHAPTER 1", "text_translated": "CAPÍTULO 1", "bubble_type": "narration",
          "skip": True, "skip_reason": "already_readable"},
@@ -133,7 +133,7 @@ def test_already_readable_skip_is_undone_when_the_model_translated_it():
 
 def test_capital_lettering_stays_capital():
     """One page came out in sentence case among all-caps pages."""
-    from yomeru.lib.rendering.scanline_engine import _all_caps
+    from yomeru.stages.rendering.scanline_engine import _all_caps
     assert _all_caps("YOU KNOW THE DRILL!") and not _all_caps("Le explicó lo que pasó")
     assert not _all_caps("ワン！") and not _all_caps("A")
 
@@ -144,7 +144,7 @@ def test_glossary_is_carried_to_the_next_pages():
     (one place name translated two ways, tú/usted). Each
     page reports its new choices; the context hands them to the next pages,
     first choice wins."""
-    from yomeru.core.models import ContextObject, PageAnalysis
+    from yomeru.stages.analysis.models import ContextObject, PageAnalysis
     ctx = ContextObject()
     ctx.update(PageAnalysis.model_validate({"page_number": 1, "glossary": [
         {"source": "North Camp", "target": "Campamento Norte"}, {"source": "Mia → Old Tom", "target": "usted"}]}))

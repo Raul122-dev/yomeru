@@ -12,18 +12,18 @@ from __future__ import annotations
 import json
 import threading
 
-from yomeru.core.labels import is_text
+from yomeru.config.labels import is_text
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 
-from yomeru.core import artifacts
-from yomeru.core.images import serve_image
+from yomeru.runs import artifacts
+from yomeru.infra.images import serve_image
 from pydantic import BaseModel
 
-from yomeru.core.runs import Run
-from yomeru.phases import PHASE_ORDER, PHASE_DEPS
-from yomeru.phases.runner import (
+from yomeru.runs.run import Run
+from yomeru.pipeline.phases import PHASE_ORDER, PHASE_DEPS
+from yomeru.pipeline.runner import (
     PhaseError, active_job, check_dependencies, request_cancel, run_all, run_phase, start_job,
 )
 from yomeru.api.ws import ws_handler, make_emitter
@@ -108,9 +108,9 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
     Returns detailed scoring breakdown for comparison purposes.
     """
     from PIL import Image
-    from yomeru.lib.matching import build_matcher
-    from yomeru.core import artifacts
-    from yomeru.phases.matching import _region_from_det, _to_pixel_bbox
+    from yomeru.stages.matching import build_matcher
+    from yomeru.runs import artifacts
+    from yomeru.stages.matching.phase import _region_from_det, _to_pixel_bbox
 
     run = _get_run(run_id)
     detections = artifacts.load_detections(run)
@@ -163,7 +163,7 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
     source_lang = page_data.get("source_language", meta.get("source_language", "auto"))
 
     # Run Hungarian matcher with the run's own weights
-    from yomeru.core.settings import run_settings
+    from yomeru.config.settings import run_settings
     mo = run_settings(run.meta()).matching.options
     matcher = build_matcher()
     results = matcher.match(
@@ -213,7 +213,7 @@ def run_algorithm_only_matching(run_id: str, page_num: int):
 
     # Generate debug image
     from PIL import ImageDraw
-    from yomeru.core.images import overlay_font
+    from yomeru.infra.images import overlay_font
     debug_img = img.copy().convert("RGBA")
     draw = ImageDraw.Draw(debug_img, "RGBA")
     font, font_sm = overlay_font(14), overlay_font(11, bold=False)
@@ -279,7 +279,7 @@ def get_mask_debug(run_id: str, page_num: int, request: Request, w: int | None =
     ignoring refined matches, skips and mask edits — so it could disagree with
     what was actually inpainted. Now it is the phase's own artifact.
     """
-    from yomeru.core import artifacts
+    from yomeru.runs import artifacts
     run = _get_run(run_id)
     path = artifacts.page_artifact(run, page_num, artifacts.S4_MASK_DEBUG)
     if not path.exists():
@@ -296,7 +296,7 @@ def _ensure_rendered(run: Run, page_num: int, force: bool) -> None:
     preview and production requests for the same page arrive together; the
     first renders, the rest wait and reuse it (they used to render in
     parallel, thrash the CPU and race on the temp file → 500s)."""
-    from yomeru.lib.rendering.scanline_engine import RenderInputMissing, is_cached, render_page
+    from yomeru.stages.rendering.scanline_engine import RenderInputMissing, is_cached, render_page
     if not force and is_cached(run, page_num):
         return
     with _render_locks_guard:
@@ -319,7 +319,7 @@ def rerender_with_image_edit(run_id: str, page_num: int, body: RerenderRequest |
     """Ask the image-edit model again (new seed, so the cache is bypassed) for
     some dialogues of a page — listed ones are also marked to be drawn by it —
     then re-render that page."""
-    from yomeru.core.settings import run_settings
+    from yomeru.config.settings import run_settings
     run = _get_run(run_id)
     if page_num not in dict(artifacts.page_files(run)):
         raise HTTPException(404, detail=f"Page {page_num} not found")
@@ -357,7 +357,7 @@ def rerender_with_image_edit(run_id: str, page_num: int, body: RerenderRequest |
 @router.get("/{run_id}/rendering/scanline-preview/{page_num}")
 def get_scanline_preview(run_id: str, page_num: int, request: Request, force: int = 0, w: int | None = None):
     """Debug render (green bubble contours). Regenerated when inputs change."""
-    from yomeru.lib.rendering.scanline_engine import output_paths
+    from yomeru.stages.rendering.scanline_engine import output_paths
     run = _get_run(run_id)
     _ensure_rendered(run, page_num, bool(force))
     return serve_image(request, output_paths(run, page_num)[0], w)
@@ -366,7 +366,7 @@ def get_scanline_preview(run_id: str, page_num: int, request: Request, force: in
 @router.get("/{run_id}/rendering/scanline-production/{page_num}")
 def get_scanline_production(run_id: str, page_num: int, request: Request, force: int = 0, w: int | None = None):
     """Final render (no contour lines). Regenerated when inputs change."""
-    from yomeru.lib.rendering.scanline_engine import output_paths
+    from yomeru.stages.rendering.scanline_engine import output_paths
     run = _get_run(run_id)
     _ensure_rendered(run, page_num, bool(force))
     return serve_image(request, output_paths(run, page_num)[1], w)
@@ -432,7 +432,7 @@ def _validate_phase(phase: str) -> None:
 def _translation_settings(run: Run) -> dict:
     """The model that translates for this run: the separate translator when
     the switch is on, else the reading model used as a text model."""
-    from yomeru.core.settings import run_settings
+    from yomeru.config.settings import run_settings
     st = run_settings(run.meta())
     sep = st.analysis.separate_translation
     if sep.enabled:
@@ -478,8 +478,8 @@ def retranslate(run_id: str, body: TranslateRequest | None = None):
     """Re-translate without reading again. scope=all: the whole chapter
     (new style guide). scope=affected + glossary: save the glossary and
     re-translate only the lines it touches, with it as context."""
-    from yomeru.lib.translation import affected_keys, collect_lines, glossary_of
-    from yomeru.phases.analysis import translate_run
+    from yomeru.stages.analysis.translation import affected_keys, collect_lines, glossary_of
+    from yomeru.stages.analysis.phase import translate_run
     run = _get_run(run_id)
     if not run.analyses_file().exists():
         raise HTTPException(400, "read the pages first")
@@ -526,7 +526,7 @@ def _save_glossary(run: Run, style: dict) -> None:
 
 def _phase_options(run: Run, phase: str) -> dict:
     """Options for one phase, from the run's settings snapshot."""
-    from yomeru.core.settings import run_settings
+    from yomeru.config.settings import run_settings
     meta = run.meta()
     st = run_settings(meta)
     lang = st.language

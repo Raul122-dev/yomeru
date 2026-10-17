@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from yomeru.core.contracts import PageDetections
+from yomeru.pipeline.contracts import PageDetections
 
 GOLDENS = Path(__file__).resolve().parents[2] / "data" / "goldens"
 RUNS = Path(__file__).resolve().parents[2] / "data" / "runs"

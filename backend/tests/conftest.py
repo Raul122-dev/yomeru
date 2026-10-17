@@ -6,9 +6,9 @@ from fastapi.testclient import TestClient
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     """App with every data path in a temp dir and one dummy connection + model."""
-    import yomeru.core.paths as paths
-    import yomeru.core.runs as runs
-    import yomeru.core.settings as settings
+    import yomeru.config.paths as paths
+    import yomeru.runs.run as runs
+    import yomeru.config.settings as settings
 
     monkeypatch.setattr(paths, "DATA_DIR", tmp_path)
     monkeypatch.setattr(runs, "RUNS_DIR", tmp_path / "runs")

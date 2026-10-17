@@ -25,10 +25,10 @@ OUT = ROOT / "data" / "goldens" / "_analysis.json"
 
 def _exec(run_id: str, work: Path) -> dict:
     import golden
-    import yomeru.core.llm as llm
-    import yomeru.core.runs as runs
+    import yomeru.infra.llm as llm
+    import yomeru.runs.run as runs
     from yomeru.api.routes.phases import _phase_options
-    from yomeru.phases.analysis import run as analysis
+    from yomeru.stages.analysis.phase import run as analysis
 
     src = golden.golden_dir() / run_id / "input"
     golden._copy_inputs(src, work / "runs" / run_id)

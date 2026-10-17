@@ -44,7 +44,7 @@ def test_upload_rejects_non_images(client):
 
 
 def test_natural_sort_for_legacy_runs(tmp_path):
-    from yomeru.core.paths import list_page_files
+    from yomeru.config.paths import list_page_files
     for n in ["10.jpg", "2.jpg", "1.jpg"]:
         (tmp_path / n).write_bytes(b"x")
     assert [p.name for p in list_page_files(tmp_path)] == ["1.jpg", "2.jpg", "10.jpg"]
@@ -71,7 +71,7 @@ def test_api_keys_are_masked_and_preserved(client):
     # UI echoes the mask back, or omits the key → stored key must survive
     client.put(f"/api/config/connections/{cid}", json={"name": "OpenAI", "api_key": masked})
     client.put(f"/api/config/connections/{cid}", json={"name": "OpenAI 2", "base_url": "http://x"})
-    from yomeru.core.settings import store
+    from yomeru.config.settings import store
     assert store.load().connection(cid).api_key == secret
 
 
@@ -99,8 +99,8 @@ def test_editing_one_page_keeps_other_pages(client, tmp_path):
 # ── analysis re-run ──────────────────────────────────────────────────────────
 
 def test_scoped_reanalysis_only_touches_its_pages(tmp_path):
-    from yomeru.phases.analysis import _save_analyses
-    from yomeru.core.models import PageAnalysis
+    from yomeru.stages.analysis.phase import _save_analyses
+    from yomeru.stages.analysis.models import PageAnalysis
     out = tmp_path
     (out / "page_analyses.json").write_text(json.dumps([{"page_number": p, "dialogues": []} for p in (1, 2, 3)]))
     (out / "edits.json").write_text(json.dumps({"1": {"x": 1}, "2": {"x": 2}, "3": {"x": 3}}))
@@ -115,7 +115,7 @@ def test_scoped_reanalysis_only_touches_its_pages(tmp_path):
 # ── manual matches ───────────────────────────────────────────────────────────
 
 def test_override_to_orphan_region_is_used():
-    from yomeru.core.matches import build_matches_from_refined
+    from yomeru.runs.matches import build_matches_from_refined
     log = {
         "s2_detection": {"regions": [
             {"id": 1, "label": "text_bubble", "score": 0.9, "bbox": [0, 0, 10, 10]},
@@ -134,7 +134,7 @@ def test_override_to_orphan_region_is_used():
 # ── mask edits ───────────────────────────────────────────────────────────────
 
 def test_mask_edit_is_a_delta(tmp_path):
-    from yomeru.plugins.inpainting import apply_mask_delta, load_mask_edit
+    from yomeru.stages.inpainting.plugins import apply_mask_delta, load_mask_edit
     auto = np.zeros((20, 20), np.uint8); auto[0:10, :] = 255
     bubble = auto.copy(); free = np.zeros_like(auto)
     edit = np.zeros((20, 20, 4), np.uint8)
@@ -150,7 +150,7 @@ def test_mask_edit_is_a_delta(tmp_path):
 # ── weights / CTD ────────────────────────────────────────────────────────────
 
 def test_weights_live_in_data_models():
-    from yomeru.core.paths import MODELS_DIR
-    from yomeru.core.weights import WEIGHTS
+    from yomeru.config.paths import MODELS_DIR
+    from yomeru.infra.weights import WEIGHTS
     assert set(WEIGHTS) == {"lama"}
     assert all(w.path.is_relative_to(MODELS_DIR) for w in WEIGHTS.values())

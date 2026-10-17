@@ -24,8 +24,8 @@ def _run(client) -> str:
 @pytest.fixture()
 def slow_detection(monkeypatch):
     """Replace detection with a phase that waits on an event, page by page."""
-    import yomeru.phases.runner as runner
-    from yomeru.phases import PhaseResult
+    import yomeru.pipeline.runner as runner
+    from yomeru.pipeline.phases import PhaseResult
     gate = threading.Event()
 
     def fake(run, options, on_progress, page_scope):
@@ -78,9 +78,9 @@ def test_cancel_stops_after_current_page(client, slow_detection):
 
 
 def test_rerun_marks_downstream_stale(tmp_path, monkeypatch):
-    import yomeru.core.runs as runs
+    import yomeru.runs.run as runs
     monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
-    from yomeru.core.runs import Run
+    from yomeru.runs.run import Run
     run = Run("r1"); run.dir.mkdir()
     run._write_meta({"id": "r1", "phase_status": {
         "detection": "done", "analysis": "done", "matching": "done", "inpainting": "partial", "rendering": "pending"}})
@@ -91,12 +91,12 @@ def test_rerun_marks_downstream_stale(tmp_path, monkeypatch):
 
 
 def test_startup_recovers_hung_runs(tmp_path, monkeypatch):
-    import yomeru.core.paths as paths
-    import yomeru.core.runs as runs
+    import yomeru.config.paths as paths
+    import yomeru.runs.run as runs
     monkeypatch.setattr(paths, "RUNS_DIR", tmp_path)
     monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
-    from yomeru.core.runs import Run
-    from yomeru.phases.runner import recover_interrupted_runs
+    from yomeru.runs.run import Run
+    from yomeru.pipeline.runner import recover_interrupted_runs
     run = Run("r2"); run.dir.mkdir()
     run._write_meta({"id": "r2", "status": "running", "phase_status": {"detection": "done", "analysis": "running"}})
     assert recover_interrupted_runs() == 1
@@ -106,9 +106,9 @@ def test_startup_recovers_hung_runs(tmp_path, monkeypatch):
 
 
 def test_run_all_stamps_finished_at(tmp_path, monkeypatch):
-    import yomeru.core.runs as runs
-    import yomeru.phases.runner as runner
-    from yomeru.phases import PhaseResult
+    import yomeru.runs.run as runs
+    import yomeru.pipeline.runner as runner
+    from yomeru.pipeline.phases import PhaseResult
     monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
     outcome = {"analysis": "done"}
     monkeypatch.setattr(runner, "run_phase", lambda run, phase, **kw: PhaseResult(
@@ -124,9 +124,9 @@ def test_run_all_stamps_finished_at(tmp_path, monkeypatch):
 
 
 def test_concurrent_meta_writes_lose_nothing(tmp_path, monkeypatch):
-    import yomeru.core.runs as runs
+    import yomeru.runs.run as runs
     monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
-    from yomeru.core.runs import Run
+    from yomeru.runs.run import Run
     run = Run("r3"); run.dir.mkdir(); run._write_meta({"id": "r3"})
     def w(i):
         for j in range(20):

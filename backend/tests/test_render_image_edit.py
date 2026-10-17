@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw, ImageFilter
 
-from yomeru.core.contracts import EditRefused, EditResult, EditUnavailable
-from yomeru.lib.rendering.edit_prompt import build_prompt, rewrap
-from yomeru.plugins.rendering import ImageEditOptions
+from yomeru.pipeline.contracts import EditRefused, EditResult, EditUnavailable
+from yomeru.stages.rendering.edit_prompt import build_prompt, rewrap
+from yomeru.stages.rendering.plugins import ImageEditOptions
 
 GOLDEN = Path(__file__).resolve().parents[2] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
 RED = (255, 0, 0)
@@ -19,12 +19,12 @@ RED = (255, 0, 0)
 def run(tmp_path, monkeypatch):
     if not GOLDEN.exists():
         pytest.skip("golden run not captured (scripts/golden.py capture d4c17c9bf8f5)")
-    import yomeru.core.runs as runs
+    import yomeru.runs.run as runs
     monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
     shutil.copytree(GOLDEN, tmp_path / "d4c17c9bf8f5")
     r = runs.Run.load("d4c17c9bf8f5")
     from yomeru.api.routes.phases import _phase_options
-    from yomeru.phases.runner import _get_phase_fn
+    from yomeru.pipeline.runner import _get_phase_fn
     for phase in ("matching", "inpainting"):
         assert _get_phase_fn(phase)(r, _phase_options(r, phase)).status == "done"
     return r
@@ -59,21 +59,21 @@ class Fake:
 
 
 def providers(*fakes, tag="fake"):
-    from yomeru.lib.rendering.image_edit import Provider
+    from yomeru.stages.rendering.image_edit import Provider
     return [Provider(label=f"{tag}{i}", key=f"{tag}{i}", impl=f) for i, f in enumerate(fakes)]
 
 
 def render(run, opts, provs, calls=True, session=None, page=1):
     """One page; `calls=False` renders like the preview endpoints (no session)."""
-    from yomeru.core.contracts import EditSession
-    from yomeru.lib.rendering.image_edit import render_page
-    from yomeru.lib.rendering.scanline_engine import build_request
+    from yomeru.pipeline.contracts import EditSession
+    from yomeru.stages.rendering.image_edit import render_page
+    from yomeru.stages.rendering.scanline_engine import build_request
     req = build_request(run, page, edit_session=session or (EditSession() if calls else None))
     return render_page(req, ImageEditOptions(**opts), provs)
 
 
 def scanline(run):
-    from yomeru.lib.rendering.scanline_engine import build_request, layout_and_draw
+    from yomeru.stages.rendering.scanline_engine import build_request, layout_and_draw
     return layout_and_draw(build_request(run, 1))
 
 
@@ -133,7 +133,7 @@ def test_lettering_given_back_unchanged_is_rejected(run):
 def test_an_answer_in_another_aspect_ratio_is_registered_back():
     """Some models answer 4:3 for a 16:9 request and pad or crop instead of
     stretching: keypoints find the crop again, the margin is not pasted."""
-    from yomeru.lib.rendering.image_edit import align
+    from yomeru.stages.rendering.image_edit import align
     rng = np.random.default_rng(0)
     tex = (rng.random((72, 128)) * 255).astype(np.uint8).repeat(8, 0).repeat(8, 1)
     ref = Image.fromarray(tex).convert("RGB").filter(ImageFilter.GaussianBlur(3))
@@ -165,7 +165,7 @@ def test_limits_count_per_rendering_and_edits_count_without_a_cost(run):
     """The caps restart with each rendering (what earlier ones paid never
     leaves the run stuck on scanline); calls are counted too, for models
     that report no cost."""
-    from yomeru.core.contracts import EditSession
+    from yomeru.pipeline.contracts import EditSession
     free = Fake(cost=None)
     session = EditSession()
     out = render(run, {"scope": "all", "max_edits": 2}, providers(free), session=session)
@@ -189,7 +189,7 @@ def test_limits_count_per_rendering_and_edits_count_without_a_cost(run):
 
 
 def test_cached_edits_are_not_paid_twice_and_a_new_seed_calls_again(run):
-    from yomeru.core import artifacts
+    from yomeru.runs import artifacts
     fake = Fake()
     first = render(run, {"scope": "all"}, providers(fake))
     n = len(fake.calls)
@@ -207,8 +207,8 @@ def test_cached_edits_are_not_paid_twice_and_a_new_seed_calls_again(run):
 def test_a_rejected_answer_is_judged_again_with_the_options_in_force(run):
     """Every paid answer is stored with its measures: raising the max drift
     accepts an answer an earlier rendering rejected, without paying again."""
-    from yomeru.lib.rendering.image_edit import _cache_key, _jobs, verdict
-    from yomeru.lib.rendering.scanline_engine import build_request, layout_and_draw
+    from yomeru.stages.rendering.image_edit import _cache_key, _jobs, verdict
+    from yomeru.stages.rendering.scanline_engine import build_request, layout_and_draw
     fake = Fake(tint=-30)
     out = render(run, {"scope": "all"}, providers(fake))
     assert not any(e.get("engine") == "ai" for e in out.events)
@@ -239,7 +239,7 @@ def test_previews_never_call_a_model(run):
 
 
 def test_engine_override_beats_the_scope(run):
-    from yomeru.core import artifacts
+    from yomeru.runs import artifacts
     base = scanline(run)
     i, j = [e["dialogue_index"] for e in base.events if e["status"] == "ok"][:2]
     artifacts.page_artifact(run, 1, artifacts.RENDER_OVERRIDES).write_text(json.dumps(
@@ -253,10 +253,10 @@ def test_engine_override_beats_the_scope(run):
 def test_backend_is_selectable_and_resolves_connections(run, tmp_path, monkeypatch):
     """Through the facade, as the phase calls it: the adapter is found by name
     and gets the connection's url and key."""
-    import yomeru.core.settings as settings
-    from yomeru.core.contracts import EditSession
-    from yomeru.lib.rendering import edit_providers
-    from yomeru.lib.rendering.scanline_engine import render_page
+    import yomeru.config.settings as settings
+    from yomeru.pipeline.contracts import EditSession
+    from yomeru.stages.rendering import edit_providers
+    from yomeru.stages.rendering.scanline_engine import render_page
     monkeypatch.setattr(settings, "CONFIG_FILE", tmp_path / "config.json")
     settings.store.save(settings.AppConfig(connections=[settings.Connection(
         id="or", name="OpenRouter", base_url="https://example.invalid/v1", api_key="k")]))
@@ -280,9 +280,9 @@ def test_backend_is_selectable_and_resolves_connections(run, tmp_path, monkeypat
 def test_rerender_endpoint_bumps_seeds(client, monkeypatch):
     """Re-render asks again with a new seed: listed dialogues are also marked for the model."""
     import yomeru.api.routes.phases as ph
-    from yomeru.core import artifacts
-    from yomeru.core.runs import Run
-    from yomeru.core.settings import PipelineSettings
+    from yomeru.runs import artifacts
+    from yomeru.runs.run import Run
+    from yomeru.config.settings import PipelineSettings
     st = PipelineSettings()
     st.rendering.backend = "image_edit"
     run = Run.create("t", st)
@@ -323,8 +323,8 @@ def test_prompt_rejoins_hyphenated_words_and_spells_vertical_columns():
 
 
 def test_openrouter_classifies_errors(monkeypatch):
-    from yomeru.core.contracts import EditRateLimited, EditRequest
-    from yomeru.lib.rendering.edit_providers import openrouter as orr
+    from yomeru.pipeline.contracts import EditRateLimited, EditRequest
+    from yomeru.stages.rendering.edit_providers import openrouter as orr
     monkeypatch.setattr(orr, "RATE_LIMIT_WAIT", 0)
     p = orr.OpenRouter(base_url="", api_key="k", model="vendor/model")
     req = EditRequest(image=Image.new("RGB", (64, 32)), prompt="x", size=(64, 32))
@@ -368,9 +368,9 @@ def test_comfyui_runs_a_workflow_template(tmp_path, monkeypatch):
     """Placeholders are filled (numbers stay numbers), the crop is uploaded,
     the first saved image is the answer; an execution error is 'unavailable'."""
     import io
-    from yomeru.core.contracts import EditRequest
-    from yomeru.lib.rendering.edit_providers import comfyui
-    import yomeru.core.paths as paths
+    from yomeru.pipeline.contracts import EditRequest
+    from yomeru.stages.rendering.edit_providers import comfyui
+    import yomeru.config.paths as paths
 
     (tmp_path / "workflows").mkdir()
     (tmp_path / "workflows" / "wf.json").write_text(json.dumps({
@@ -421,9 +421,9 @@ def test_comfyui_runs_a_workflow_template(tmp_path, monkeypatch):
 def test_local_providers_are_released_once_per_rendering(run, tmp_path, monkeypatch):
     """A local server keeps its model loaded across the pages of one rendering
     (releasing per page reloaded it cold every page) and frees the GPU at the end."""
-    import yomeru.core.settings as settings
-    from yomeru.lib.rendering import edit_providers
-    from yomeru.phases import rendering
+    import yomeru.config.settings as settings
+    from yomeru.stages.rendering import edit_providers
+    from yomeru.stages.rendering import phase as rendering
 
     class Local(Fake):
         local = True

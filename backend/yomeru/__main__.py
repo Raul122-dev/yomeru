@@ -2,7 +2,7 @@
 import sys
 import uvicorn
 
-from yomeru.core.config import DATA_DIR, HOST, PORT
+from yomeru.config.server import DATA_DIR, HOST, PORT
 
 
 def main():

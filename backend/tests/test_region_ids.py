@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 def test_badge_number_is_region_id_not_list_index(monkeypatch):
     """After deleting box 1 in the editor, ids are [2, 5]: badges must read 2 and 5."""
-    from yomeru.core import annotator
+    from yomeru.stages.analysis import annotator
 
     drawn: list[str] = []
     real_text = ImageDraw.ImageDraw.text
@@ -30,8 +30,8 @@ def test_badge_number_is_region_id_not_list_index(monkeypatch):
 def test_hungarian_never_reuses_a_region_claimed_by_region_id(client, monkeypatch):
     """Dialogue 0 claims region 1 directly; dialogue 1 has no region_id and a
     hint right on top of region 1. The fallback must only consider region 2."""
-    from yomeru.core.runs import Run
-    from yomeru.phases import matching
+    from yomeru.runs.run import Run
+    from yomeru.stages.matching import phase as matching
 
     buf = io.BytesIO()
     Image.new("RGB", (300, 400), "white").save(buf, "PNG")
@@ -58,7 +58,7 @@ def test_hungarian_never_reuses_a_region_claimed_by_region_id(client, monkeypatc
     }]))
 
     seen: list[list[tuple]] = []
-    from yomeru.plugins import get_backend
+    from yomeru.pipeline.registry import get_backend
     _, backend = get_backend("matching", "cascade")
     real_match = backend.matcher.match
 
@@ -68,8 +68,8 @@ def test_hungarian_never_reuses_a_region_claimed_by_region_id(client, monkeypatc
 
     monkeypatch.setattr(backend.matcher, "match", match)
     # No OCR models in tests
-    monkeypatch.setattr("yomeru.lib.matching.hungarian.ocr_region", lambda *a, **k: "")
-    monkeypatch.setattr("yomeru.lib.matching.ocr.ocr_region", lambda *a, **k: "")
+    monkeypatch.setattr("yomeru.stages.matching.hungarian.ocr_region", lambda *a, **k: "")
+    monkeypatch.setattr("yomeru.stages.matching.ocr.ocr_region", lambda *a, **k: "")
 
     matching.run(run, options={})
 
@@ -82,8 +82,8 @@ def test_hungarian_never_reuses_a_region_claimed_by_region_id(client, monkeypatc
 
 
 def test_near_and_reading_direction():
-    from yomeru.lib.detection import TextRegion
-    from yomeru.phases.matching import _near, _right_to_left
+    from yomeru.stages.detection import TextRegion
+    from yomeru.stages.matching.phase import _near, _right_to_left
     r = TextRegion(100, 100, 200, 160, "text_free")
     assert _near(r, (110, 110, 190, 150), 1000, 1400)          # overlap
     assert _near(r, (230, 100, 300, 160), 1000, 1400)          # close by
@@ -98,8 +98,8 @@ def test_reading_order_fallback_does_not_grab_far_regions(client, monkeypatch):
     """A dialogue with no region_id whose bbox is far from every free region
     stays unmatched (and its region is not erased), instead of taking the
     next region in reading order."""
-    from yomeru.core.runs import Run
-    from yomeru.phases import matching
+    from yomeru.runs.run import Run
+    from yomeru.stages.matching import phase as matching
 
     buf = io.BytesIO()
     Image.new("RGB", (1000, 1400), "white").save(buf, "PNG")
@@ -116,8 +116,8 @@ def test_reading_order_fallback_does_not_grab_far_regions(client, monkeypatch):
         "page_number": 1, "analysis_image_w": 1000, "analysis_image_h": 1400, "source_language": "English",
         "dialogues": [{"text": "BOOM", "text_translated": "BUM", "region_id": None, "bbox": [600, 1000, 900, 1300]}],
     }]))
-    monkeypatch.setattr("yomeru.lib.matching.hungarian.ocr_region", lambda *a, **k: "")
-    monkeypatch.setattr("yomeru.lib.matching.ocr.ocr_region", lambda *a, **k: "")
+    monkeypatch.setattr("yomeru.stages.matching.hungarian.ocr_region", lambda *a, **k: "")
+    monkeypatch.setattr("yomeru.stages.matching.ocr.ocr_region", lambda *a, **k: "")
     matching.run(run, options={})
     log = json.loads((out / "typeset" / "debug" / "p01_render_log.json").read_text())
     assert log["s3_matching"]["matches"] == []
@@ -128,7 +128,7 @@ def test_reading_order_fallback_does_not_grab_far_regions(client, monkeypatch):
 def test_region_id_pointing_at_a_bubble_maps_to_its_text_region():
     """The VLM sometimes answers with the container's id. The dialogue must
     land on the text_bubble inside, never on the container (overlapping text)."""
-    from yomeru.phases.matching import _text_region_of
+    from yomeru.stages.matching.phase import _text_region_of
     dets = {
         9: {"id": 9, "label": "bubble", "x1": 612, "y1": 579, "x2": 756, "y2": 760},
         17: {"id": 17, "label": "text_bubble", "x1": 612, "y1": 623, "x2": 742, "y2": 720},
@@ -148,9 +148,9 @@ def test_ocr_corrects_region_ids_shifted_along_a_chain(monkeypatch):
     regions contradicts the ids → dialogues are reassigned by text. When OCR
     agrees, nothing moves."""
     from PIL import Image
-    from yomeru.core.contracts import MatchRequest
-    from yomeru.lib.matching import build_matcher
-    from yomeru.lib.matching.cascade import match_page
+    from yomeru.pipeline.contracts import MatchRequest
+    from yomeru.stages.matching import build_matcher
+    from yomeru.stages.matching.cascade import match_page
 
     regions = {
         1: {"id": 1, "x1": 0, "y1": 0, "x2": 100, "y2": 50, "label": "text_bubble", "score": 1},
@@ -160,8 +160,8 @@ def test_ocr_corrects_region_ids_shifted_along_a_chain(monkeypatch):
     printed = {(0, 0, 100, 50): "I SOLD MY OLD BIKE TOO.",
                (0, 100, 100, 150): "HOW MUCH WAS THAT AGAIN?",
                (0, 200, 100, 250): "WAS IT A HUNDRED?"}
-    monkeypatch.setattr("yomeru.lib.matching.ocr.ocr_region", lambda img, bb, lang="auto": printed[tuple(bb)])
-    monkeypatch.setattr("yomeru.lib.matching.hungarian.ocr_region", lambda img, bb, *a, **k: printed[tuple(bb)])
+    monkeypatch.setattr("yomeru.stages.matching.ocr.ocr_region", lambda img, bb, lang="auto": printed[tuple(bb)])
+    monkeypatch.setattr("yomeru.stages.matching.hungarian.ocr_region", lambda img, bb, *a, **k: printed[tuple(bb)])
 
     def run(ids):
         dlgs = [{"text": t, "region_id": r} for t, r in zip(
@@ -184,8 +184,8 @@ def test_locate_finds_text_the_detector_missed(monkeypatch):
     so they were neither erased nor translated. Page OCR finds the words
     outside every detected text region -> a new text_free region."""
     from PIL import Image
-    import yomeru.lib.matching.ocr as ocr
-    from yomeru.lib.matching.cascade import _locate_undetected
+    import yomeru.stages.matching.ocr as ocr
+    from yomeru.stages.matching.cascade import _locate_undetected
     monkeypatch.setattr(ocr, "ocr_lines", lambda img, *a: [
         ((225, 421, 289, 437), "SFx: GRR"),          # OCR noise: case, prefix
         ((100, 100, 160, 120), "HELLO"),             # inside a detected region -> not free
@@ -205,7 +205,7 @@ def test_free_text_expands_evenly_so_it_stays_in_place():
     side was uniform, so the box grew one way and the text moved off its spot."""
     import numpy as np
     from PIL import Image
-    from yomeru.lib.rendering.scanline_engine import _expand_free_text_bbox
+    from yomeru.stages.rendering.scanline_engine import _expand_free_text_bbox
     arr = np.full((400, 400, 3), 255, np.uint8)
     rng = np.random.default_rng(0)
     arr[:, 200:] = rng.integers(0, 255, (400, 200, 3))     # busy art on the right
@@ -220,8 +220,8 @@ def test_repeated_sfx_merged_by_the_reading_is_split_per_occurrence(monkeypatch)
     stylised lettering loosely) finds the free ones nearby."""
     from types import SimpleNamespace
     from PIL import Image
-    import yomeru.lib.matching.ocr as ocr
-    from yomeru.lib.matching.cascade import split_repeated_sfx
+    import yomeru.stages.matching.ocr as ocr
+    from yomeru.stages.matching.cascade import split_repeated_sfx
     monkeypatch.setattr(ocr, "ocr_lines", lambda img, *a: [
         ((114, 230, 160, 258), "Kn0ck"),       # the first one, inside its own region
         ((96, 315, 145, 346), "Kn0ck"),        # second occurrence, free

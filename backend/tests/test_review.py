@@ -6,7 +6,7 @@ import zipfile
 
 from PIL import Image
 
-from yomeru.lib.translation import Line, affected_keys
+from yomeru.stages.analysis.translation import Line, affected_keys
 
 
 def _png() -> bytes:
@@ -35,7 +35,7 @@ def _run(client, **form):
 
 
 def test_editing_the_chapter_context_marks_reading_outdated(client):
-    from yomeru.core.runs import Run
+    from yomeru.runs.run import Run
     rid = _run(client, global_context="old notes")
     run = Run.load(rid)
     for p in ("detection", "analysis", "matching"):
@@ -48,8 +48,8 @@ def test_editing_the_chapter_context_marks_reading_outdated(client):
 
 
 def test_cbz_carries_comic_info(client):
-    from yomeru.core import artifacts
-    from yomeru.core.runs import Run
+    from yomeru.runs import artifacts
+    from yomeru.runs.run import Run
     rid = _run(client, series="Some Series", chapter="12",
                settings=json.dumps({"language": {"target": "Spanish", "comic_format": "manga"}}))
     run = Run.load(rid)
@@ -72,8 +72,8 @@ def test_cbz_carries_comic_info(client):
 
 
 def test_review_flags_list_overflow_and_regions_not_from_the_detector(client):
-    from yomeru.core import artifacts
-    from yomeru.core.runs import Run
+    from yomeru.runs import artifacts
+    from yomeru.runs.run import Run
     rid = _run(client)
     run = Run.load(rid)
     artifacts.add_region_origins(run, 1, {7: "located"})

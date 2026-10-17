@@ -16,8 +16,8 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from yomeru.core import artifacts
-from yomeru.core.runs import Run
+from yomeru.runs import artifacts
+from yomeru.runs.run import Run
 
 router = APIRouter(prefix="/runs", tags=["editing"])
 
@@ -45,8 +45,8 @@ def get_detections(run_id: str):
 def save_page_detections(run_id: str, page_num: int, body: dict):
     """Save refined detections for a single page."""
     run = _get_run(run_id)
-    from yomeru.core.annotator import save_detections
-    from yomeru.core.labels import ALL_LABELS
+    from yomeru.stages.analysis.annotator import save_detections
+    from yomeru.config.labels import ALL_LABELS
     regions = body.get("regions", [])
     unknown = sorted({str(r.get("label")) for r in regions} - ALL_LABELS)
     if unknown:

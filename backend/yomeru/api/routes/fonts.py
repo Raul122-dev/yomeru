@@ -11,8 +11,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, File as FastAPIFile, HTTPException, UploadFile
 
-from yomeru.core.languages import FONT_STYLES, SCRIPT_FONTS
-from yomeru.core.paths import FONTS_DIR, USER_FONTS_DIR
+from yomeru.config.languages import FONT_STYLES, SCRIPT_FONTS
+from yomeru.config.paths import FONTS_DIR, USER_FONTS_DIR
 
 router = APIRouter(prefix="/fonts", tags=["fonts"])
 
@@ -20,7 +20,7 @@ SUPPORTED_FORMATS = {".ttf", ".otf", ".ttc"}
 
 
 def _clear_font_cache():
-    from yomeru.lib.rendering.pil import _font_cache
+    from yomeru.stages.rendering.pil import _font_cache
     _font_cache.clear()
 
 

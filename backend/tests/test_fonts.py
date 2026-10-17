@@ -5,9 +5,9 @@ import io
 
 from PIL import Image, ImageDraw
 
-import yomeru.lib.rendering.pil as pil
-from yomeru.core.paths import FONTS_DIR
-from yomeru.core.settings import PipelineSettings
+import yomeru.stages.rendering.pil as pil
+from yomeru.config.paths import FONTS_DIR
+from yomeru.config.settings import PipelineSettings
 
 
 def _user_dir(tmp_path, monkeypatch):

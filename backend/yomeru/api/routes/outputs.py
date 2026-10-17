@@ -12,12 +12,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from yomeru.core.images import serve_image
+from yomeru.infra.images import serve_image
 
-from yomeru.core import artifacts
-from yomeru.core.runs import Run
+from yomeru.runs import artifacts
+from yomeru.runs.run import Run
 
-from yomeru.core.paths import safe_child
+from yomeru.config.paths import safe_child
 
 router = APIRouter(prefix="/runs", tags=["outputs"])
 
@@ -56,7 +56,7 @@ def export_run(run_id: str, format: str = "cbz"):
     import re
     import zipfile
     from fastapi.responses import StreamingResponse
-    from yomeru.core.paths import list_page_files
+    from yomeru.config.paths import list_page_files
 
     if format not in ("cbz", "zip"):
         raise HTTPException(400, "format must be cbz or zip")
@@ -94,7 +94,7 @@ def typeset_review(run_id: str):
     run = _get_run(run_id)
     origins = artifacts.load_region_origins(run)
     out: dict[int, list[dict]] = {}
-    from yomeru.core.paths import list_page_files
+    from yomeru.config.paths import list_page_files
     for page in range(1, len(list_page_files(run.pages_dir())) + 1):
         items = []
         log = artifacts.load_render_log(run, page) or {}
@@ -178,8 +178,8 @@ def comic_info(run, page_count: int) -> str:
     series/number, language, reading direction, page list, summary and
     characters from the reading, credits."""
     from xml.sax.saxutils import escape
-    from yomeru.core.languages import profile
-    from yomeru.core.settings import run_settings
+    from yomeru.config.languages import profile
+    from yomeru.config.settings import run_settings
     meta = run.meta()
     st = run_settings(meta)
     names = meta.get("character_names") or {}

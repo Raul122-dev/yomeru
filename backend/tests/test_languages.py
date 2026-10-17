@@ -2,7 +2,7 @@
 pipeline had before they were centralised (scattered `if lang in (...)`)."""
 import pytest
 
-from yomeru.core import languages as L
+from yomeru.config import languages as L
 
 
 def test_layers_general_script_language():

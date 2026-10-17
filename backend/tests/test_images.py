@@ -1,9 +1,9 @@
-"""Optimized image delivery (core/images.py)."""
+"""Optimized image delivery (infra/images.py)."""
 from pathlib import Path
 
 from PIL import Image
 
-from yomeru.core import images
+from yomeru.infra import images
 
 
 def _page(tmp: Path, w=3000, h=4200) -> Path:

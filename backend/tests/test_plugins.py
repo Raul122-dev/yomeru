@@ -1,8 +1,8 @@
 """Backend registry + inpainting as the first registered backend."""
 import pytest
 
-from yomeru.core.settings import InpaintingSettings
-from yomeru.plugins import UnknownBackend, get_backend, list_backends
+from yomeru.config.settings import InpaintingSettings
+from yomeru.pipeline.registry import UnknownBackend, get_backend, list_backends
 
 
 def test_classic_inpainting_is_registered_with_options_schema():
@@ -37,8 +37,8 @@ def test_backend_instances_are_cached_per_options():
 def test_detection_threshold_reaches_the_model(monkeypatch):
     """B-ARQ-1: the setting was applied after ogkalu's own 0.5 cut, so anything
     below 0.5 never had an effect. The threshold must be passed to the model."""
-    from yomeru.lib.detection import TextRegion
-    from yomeru.lib.detection.ogkalu import OgkaluDetector
+    from yomeru.stages.detection import TextRegion
+    from yomeru.stages.detection.ogkalu import OgkaluDetector
 
     seen = {}
 
@@ -63,10 +63,10 @@ def test_rendering_backend_is_swappable(tmp_path, monkeypatch):
     from pathlib import Path
     from PIL import Image
     from pydantic import BaseModel
-    from yomeru.core.contracts import RenderRequest, RenderResult
-    from yomeru.core.settings import RenderingSettings
-    from yomeru.plugins import register
-    import yomeru.core.runs as runs
+    from yomeru.pipeline.contracts import RenderRequest, RenderResult
+    from yomeru.config.settings import RenderingSettings
+    from yomeru.pipeline.registry import register
+    import yomeru.runs.run as runs
 
     assert "scanline" in [b["name"] for b in list_backends("rendering")]
     assert RenderingSettings().backend == "scanline"
@@ -77,7 +77,7 @@ def test_rendering_backend_is_swappable(tmp_path, monkeypatch):
     class NoOpts(BaseModel):
         pass
 
-    from yomeru.plugins import _REGISTRY
+    from yomeru.pipeline.registry import _REGISTRY
     monkeypatch.setitem(_REGISTRY, "rendering", dict(_REGISTRY.get("rendering") or {}))  # undone after the test
 
     @register("rendering", "_test_fill", options=NoOpts)
@@ -96,21 +96,21 @@ def test_rendering_backend_is_swappable(tmp_path, monkeypatch):
     shutil.copytree(src, tmp_path / "r")
     run = runs.Run.load("r")
     # matching + inpainting on the frozen detections/analysis (OCR stubbed: no models)
-    import yomeru.lib.matching.hungarian as hung
-    import yomeru.lib.matching.ocr as ocr
+    import yomeru.stages.matching.hungarian as hung
+    import yomeru.stages.matching.ocr as ocr
     monkeypatch.setattr(hung, "ocr_region", lambda *a, **k: "", raising=False)
     monkeypatch.setattr(ocr, "ocr_region", lambda *a, **k: "", raising=False)
     from yomeru.api.routes.phases import _phase_options
-    from yomeru.phases.matching import run as match
-    from yomeru.phases.inpainting import run as inpaint
+    from yomeru.stages.matching.phase import run as match
+    from yomeru.stages.inpainting.phase import run as inpaint
     match(run, _phase_options(run, "matching"), page_scope=[1])
     inpaint(run, {"backend": "classic", "backend_options": {"free_text": "opencv"}}, page_scope=[1])
-    from yomeru.phases.rendering import run as render
+    from yomeru.stages.rendering.phase import run as render
     res = render(run, {"backend": "_test_fill"}, page_scope=[1])
     assert res.status == "done"
     r = seen["req"]
     assert r.lang_code == "es" and r.matches and r.dialogues and r.containers
-    from yomeru.core import artifacts
+    from yomeru.runs import artifacts
     out = Image.open(artifacts.page_artifact(run, 1, artifacts.SCANLINE_PRODUCTION))
     assert out.getpixel((0, 0)) == (1, 2, 3)
     assert artifacts.load_render_log(run, 1)["s5_rendering"]["renders"] == [{"dialogue_index": 0, "status": "ok"}]
@@ -122,8 +122,8 @@ def test_options_are_versioned_and_migrated(monkeypatch):
     and run snapshots with the old version are upgraded step by step; a newer
     stored version (downgrade) is refused instead of silently mis-read."""
     from pydantic import BaseModel
-    from yomeru.core.settings import MatchingSettings
-    from yomeru.plugins import _REGISTRY, register
+    from yomeru.config.settings import MatchingSettings
+    from yomeru.pipeline.registry import _REGISTRY, register
 
     monkeypatch.setitem(_REGISTRY, "matching", dict(_REGISTRY.get("matching") or {}))
 
@@ -155,7 +155,7 @@ def test_unknown_backend_keeps_old_runs_loadable_but_not_new_defaults(client):
     """A removed third-party plugin: its run snapshots still load (options kept
     untouched, flagged unavailable); defaults/presets cannot select it; running
     the phase says why."""
-    from yomeru.core.settings import PipelineSettings, require_available
+    from yomeru.config.settings import PipelineSettings, require_available
     s = PipelineSettings.model_validate({"matching": {"backend": "gone", "options": {"x": 1}}})
     assert s.matching.available is False and s.matching.options == {"x": 1}
     assert s.model_dump()["matching"]["backend"] == "gone"
@@ -181,9 +181,9 @@ def test_local_backend_uses_the_compact_prompt_and_strict_schema(monkeypatch):
     empty and misplaced dialogues) and a reply schema where skip is optional
     (required, the model copied one skip:true onto every dialogue)."""
     from PIL import Image
-    from yomeru.core.contracts import AnalysisRequest
-    from yomeru.plugins.analysis import _reply_schema
-    import yomeru.lib.local_models as lm
+    from yomeru.pipeline.contracts import AnalysisRequest
+    from yomeru.stages.analysis.plugins import _reply_schema
+    import yomeru.stages.analysis.local_models as lm
     seen = {}
 
     def fake(name, system, text, b64, **kw):

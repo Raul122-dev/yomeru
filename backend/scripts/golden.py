@@ -54,7 +54,7 @@ def _deterministic() -> None:
 
 
 def _paths():
-    import yomeru.core.paths as paths
+    import yomeru.config.paths as paths
     return paths
 
 
@@ -81,7 +81,7 @@ def _px(path: Path) -> np.ndarray:
 
 def _execute(work: Path, run_id: str) -> dict:
     """Run detection→rendering (analysis frozen) inside `work` as data dir."""
-    import yomeru.core.runs as runs
+    import yomeru.runs.run as runs
     runs_dir = work / "runs"
     run_dir = runs_dir / run_id
     original_runs_dir = runs.RUNS_DIR
@@ -91,7 +91,7 @@ def _execute(work: Path, run_id: str) -> dict:
         assert run is not None, f"cannot load {run_id}"
         # Phase functions are called directly (not through the runner): the
         # runner's dependency/stale bookkeeping is not what goldens protect.
-        from yomeru.phases.runner import _get_phase_fn
+        from yomeru.pipeline.runner import _get_phase_fn
         from yomeru.api.routes.phases import _phase_options
 
         def go(phase: str):

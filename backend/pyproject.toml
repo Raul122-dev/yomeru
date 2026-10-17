@@ -54,7 +54,7 @@ include = ["yomeru*"]
 [tool.setuptools.package-data]
 yomeru = [
     "static/**/*",
-    "prompts/**/*",
+    "stages/analysis/prompts/**/*",
     "assets/**/*",
 ]
 

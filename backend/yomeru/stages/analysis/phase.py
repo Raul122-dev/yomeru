@@ -1,0 +1,326 @@
+"""
+Phase 2: Analysis — VLM-based page analysis for dialogue, characters, and narrative context.
+
+Input:  Source images + output/page_detections.json
+Output: output/page_analyses.json + output/context.json
+"""
+from __future__ import annotations
+
+import json
+import sys
+import time
+from pathlib import Path
+
+from yomeru.runs import artifacts
+from yomeru.runs.run import Run
+from yomeru.pipeline.phases import PageResult, PhaseResult, ProgressCallback, null_progress
+
+SUPPORTED = {".jpg", ".jpeg", ".png", ".webp"}
+CHUNK_SIZE = 5
+RECENT_PAGES = 2
+
+
+def run(
+    run: Run,
+    options: dict,
+    on_progress: ProgressCallback = null_progress,
+    page_scope: list[int] | None = None,
+) -> PhaseResult:
+    """
+    Run VLM analysis on pages.
+
+    Options (from the run's settings snapshot, see config/settings.py):
+        backend: analysis backend name (stages/analysis/plugins.py)
+        backend_options: dict validated by that backend's options model
+        model: ModelRef dict    (connection_id + model)
+    """
+    from yomeru.pipeline.contracts import AnalysisRequest
+    from yomeru.stages.analysis.models import ContextObject, PageAnalysis
+    from contextlib import nullcontext
+    from yomeru.pipeline.gpu import gpu_lock
+    from yomeru.pipeline.registry import get_backend
+    from PIL import Image
+    from yomeru.infra.logger import PipelineLogger
+
+    meta = run.meta()
+    spec, backend = get_backend("analysis", options.get("backend", "vlm"), options.get("backend_options"))
+    from yomeru.config.settings import ModelRef
+    model = ModelRef.model_validate(options.get("model") or {})
+    comic_format = options.get("comic_format", meta.get("comic_format", "auto"))
+    source_language = options.get("source_language", meta.get("source_language", "auto"))
+    target_language = options.get("target_language", meta.get("target_language", "Spanish"))
+    # scene/character descriptions are written in the language the user reads
+    descriptions_language = target_language
+    global_context = options.get("global_context", meta.get("global_context", ""))
+    page_context = options.get("page_context", "")
+    translation = options.get("translation") or {}
+    separate = bool(translation.get("enabled"))
+
+    output_dir = run.output_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    detections = artifacts.load_detections(run)  # active (refined if edited)
+    all_pages = artifacts.page_files(run)
+    pages = all_pages if not page_scope else [(i, p) for i, p in all_pages if i in page_scope]
+
+    total = len(pages)
+    log = PipelineLogger(total=total, model=model.model, comic_format=comic_format)
+    log.run_start()
+    on_progress({"type": "phase_progress", "phase": "analysis", "total": total, "processed": 0})
+    print(f"\n[analysis] {total} pages, backend={spec.name}, model={model.connection_id}/{model.model}", file=sys.stderr)
+
+    ctx = ContextObject()
+    analyses: list[PageAnalysis] = []
+    current_chunk: list[PageAnalysis] = []
+    results: list[PageResult] = []
+
+    # If retrying, load existing analyses to rebuild context
+    if page_scope:
+        existing = _load_existing_analyses(output_dir)
+        for a in existing:
+            if a.page_number not in page_scope:
+                ctx.update(a)
+                analyses.append(a)
+
+    for idx, (page_num, page_path) in enumerate(pages):
+        prev_context = ctx.build_context(RECENT_PAGES) if analyses else None
+        on_progress({
+            "type": "page_start", "phase": "analysis",
+            "page": page_num, "filename": page_path.name,
+        })
+        log.page_start(page_num, page_path.name)
+        t0 = time.time()
+
+        try:
+            def on_token(t: str) -> None:
+                log.token(t)
+                on_progress({"type": "token", "page": page_num, "token": t})
+
+            # A local model shares the GPU with detection/OCR/LaMa
+            with (gpu_lock() if spec.needs_gpu else nullcontext()):
+                a = backend.analyze_page(AnalysisRequest(
+                    image=Image.open(page_path).convert("RGB"),
+                    page_number=page_num,
+                    regions=list(detections.get(page_num, {}).values()),
+                    previous_context=prev_context,
+                    comic_format=comic_format,
+                    source_language=source_language,
+                    target_language=target_language,
+                    descriptions_language=descriptions_language,
+                    global_context=global_context,
+                    page_context=page_context,
+                    read_only=separate,
+                ), model=model, on_token=on_token)
+
+            elapsed = time.time() - t0
+            ctx.update(a)
+            analyses.append(a)
+            current_chunk.append(a)
+
+            log.page_done(page_num, len(a.dialogues), len(a.characters_seen), a.scene.mood, elapsed)
+            on_progress({
+                "type": "page_done", "phase": "analysis",
+                "page": page_num,
+                "dialogues": len(a.dialogues),
+                "characters": len(a.characters_seen),
+                "mood": a.scene.mood,
+                "summary": a.page_summary[:120],
+            })
+            results.append(PageResult(page_num=page_num, filename=page_path.name, success=True))
+
+            if len(current_chunk) >= CHUNK_SIZE:
+                ctx.chunk_summaries.append(ctx.compress_chunk(current_chunk))
+                current_chunk = []
+
+        except Exception as e:
+            elapsed = time.time() - t0
+            log.page_error(page_num, str(e), elapsed)
+            on_progress({"type": "page_error", "phase": "analysis", "page": page_num, "error": str(e)})
+            results.append(PageResult(page_num=page_num, filename=page_path.name, success=False, error=str(e)))
+
+    if current_chunk:
+        ctx.chunk_summaries.append(ctx.compress_chunk(current_chunk))
+    if hasattr(backend, "release"):
+        backend.release()  # a local model frees the GPU for the next phases
+
+    # Save results (merge with existing when using page_scope)
+    # Only the pages analysed in THIS run are new; `analyses` also carries the
+    # untouched pages loaded above to rebuild context.
+    fresh = [a for a in analyses if not page_scope or a.page_number in page_scope]
+    _save_analyses(fresh, output_dir, all_pages, source_language, is_scoped=bool(page_scope))
+    _save_context(ctx, output_dir)
+
+    if separate and any(r.success for r in results):
+        try:
+            translate_run(run, translation, source_language, target_language, global_context, on_progress)
+        except Exception as e:
+            print(f"[analysis] translation failed: {e}", file=sys.stderr)
+            return PhaseResult(phase="analysis", status="failed", total_pages=total,
+                               processed_pages=sum(r.success for r in results), failed_pages=[],
+                               page_results=results, error=f"Reading done, translation failed: {e}")
+
+    done = sum(1 for r in results if r.success)
+    failed = [r.page_num for r in results if not r.success]
+    status = "done" if not failed else ("partial" if done > 0 else "failed")
+
+    log.run_done(done, len(failed))
+    print(f"[analysis] done — {done}/{total} pages", file=sys.stderr)
+
+    if done == 0 and total > 0:
+        return PhaseResult(
+            phase="analysis", status="failed", total_pages=total,
+            processed_pages=0, failed_pages=failed, page_results=results,
+            error="All pages failed — check model and provider config",
+        )
+
+    return PhaseResult(
+        phase="analysis", status=status, total_pages=total,
+        processed_pages=done, failed_pages=failed, page_results=results,
+    )
+
+
+def _load_existing_analyses(output_dir: Path):
+    """Load existing analyses for context rebuilding during retry."""
+    from yomeru.stages.analysis.models import PageAnalysis
+    analyses_file = output_dir / "page_analyses.json"
+    if not analyses_file.exists():
+        return []
+    try:
+        data = json.loads(analyses_file.read_text())
+        return [PageAnalysis(**entry) for entry in data]
+    except Exception:
+        return []
+
+
+def _save_analyses(
+    analyses: list,
+    output_dir: Path,
+    all_pages: list[tuple[int, Path]],
+    source_language: str,
+    is_scoped: bool = False,
+) -> None:
+    """Save analyses to page_analyses.json with image dimensions.
+    
+    When is_scoped=True (re-analysis of specific pages), merges new results
+    into the existing file instead of overwriting.
+    """
+    from yomeru.stages.analysis.analyzer import MAX_ANALYSIS_SIDE
+    from PIL import Image
+
+    page_map = {i: p for i, p in all_pages}
+
+    def _model_dims(path: Path) -> tuple[int, int]:
+        try:
+            with Image.open(path) as im:
+                orig_w, orig_h = im.size
+            max_dim = max(orig_w, orig_h)
+            if max_dim > MAX_ANALYSIS_SIDE:
+                scale = MAX_ANALYSIS_SIDE / max_dim
+                return max(1, int(orig_w * scale)), max(1, int(orig_h * scale))
+            return orig_w, orig_h
+        except Exception:
+            return 0, 0
+
+    new_entries = []
+    for a in sorted(analyses, key=lambda x: x.page_number):
+        d = a.model_dump()
+        if a.page_number in page_map:
+            mw, mh = _model_dims(page_map[a.page_number])
+            if mw and mh:
+                d["analysis_image_w"] = mw
+                d["analysis_image_h"] = mh
+        d["source_language"] = source_language
+        new_entries.append(d)
+
+    target = output_dir / "page_analyses.json"
+
+    if is_scoped and target.exists():
+        # Merge: replace only the re-analyzed pages, keep everything else
+        existing = json.loads(target.read_text())
+        new_page_nums = {e["page_number"] for e in new_entries}
+        merged = [e for e in existing if e.get("page_number") not in new_page_nums]
+        merged.extend(new_entries)
+        merged.sort(key=lambda x: x.get("page_number", 0))
+        entries = merged
+    else:
+        entries = new_entries
+
+    target.write_text(json.dumps(entries, indent=2, ensure_ascii=False))
+
+    # Also clear any user edits for re-analyzed pages (fresh data replaces old edits)
+    if is_scoped:
+        from yomeru.runs.edits import PageEdits
+        PageEdits(output_dir).revert(e["page_number"] for e in new_entries)
+
+
+def _save_context(ctx, output_dir: Path) -> None:
+    """Save context object for downstream use."""
+    (output_dir / "context.json").write_text(
+        json.dumps(ctx.model_dump(), indent=2, ensure_ascii=False)
+    )
+
+
+def translator_for(translation: dict):
+    """(ask, label, release) for the translation model of a run."""
+    if translation.get("local"):
+        from yomeru.pipeline.gpu import gpu_lock
+        from yomeru.stages.analysis import local_models as lm
+        name = translation.get("local_model") or "auto"
+        server = translation.get("local_server") or lm.OLLAMA_URL
+        if name == "auto":   # the suggested tag if installed, else any installed chat model
+            g = lm.gpu_memory()
+            want = lm.suggest_model(g and g["free_gb"]).tag
+            have = [m["name"] for m in lm.ollama_status(server)["models"]
+                    if not any(k in m["name"] for k in ("embed", "bge"))]
+            name = want if want in have or not have else have[0]
+
+        def ask(system: str, user: str, schema: dict) -> str:
+            with gpu_lock():
+                return lm.chat_text(name, system, user, schema=schema, num_ctx=16384, base_url=server)
+        return ask, f"local/{name}", lambda: lm.unload(name, server)
+    from yomeru.infra.llm import complete_text, resolve_model
+    from yomeru.config.settings import ModelRef
+    rm = resolve_model(ModelRef.model_validate(translation.get("model") or {}))
+
+    def ask(system: str, user: str, schema: dict) -> str:
+        return complete_text(rm, system, user, json_schema=schema)
+    return ask, rm.label, lambda: None
+
+
+def translate_run(run: Run, translation: dict, source_language: str, target_language: str,
+                  global_context: str, on_progress: ProgressCallback = null_progress,
+                  keys: list[str] | None = None, style: dict | None = None) -> dict:
+    """Translation step of Read & translate into output/translations.json.
+    Whole chapter (style guide + all lines), or only `keys` with a given
+    style (a glossary edit re-translates just the lines it affects).
+    Can be re-run alone without reading again."""
+    from yomeru.stages.analysis.translation import ChapterInput, retranslate_lines, translate_chapter
+
+    pages = [a for a in artifacts.load_analyses(run)]
+    ask, label, release = translator_for(translation)
+    print(f"[translate] {label}  {source_language} → {target_language}"
+          f"{f'  ({len(keys)} lines)' if keys is not None else ''}", file=sys.stderr)
+    on_progress({"type": "phase_progress", "phase": "analysis", "step": "translate", "label": label})
+    ch = ChapterInput(source_language=source_language, target_language=target_language,
+                      pages=pages, global_context=global_context)
+    step = lambda m: on_progress({"type": "step", "phase": "analysis", "step": "translate", "message": m})  # noqa: E731
+    prev = artifacts.load_translations(run)
+    try:
+        if keys is None:
+            res = translate_chapter(ch, ask, on_progress=step)
+            lines, review = res.lines, res.review
+        else:
+            current = {f"p{a['page_number']}.d{i}": d.get("text_translated") or ""
+                       for a in pages for i, d in enumerate(a.get("dialogues", []))}
+            res = retranslate_lines(ch, ask, style or {}, keys, current, on_progress=step)
+            lines = {**(prev.get("lines") or {}), **res.lines}
+            review = {k: v for k, v in (prev.get("review") or {}).items() if k not in keys} | res.review
+    finally:
+        release()
+    out = {"model": label, "target_language": target_language, "style": res.style,
+           "review": review, "lines": lines}
+    tmp = artifacts.tmp_path(run.output_dir() / artifacts.TRANSLATIONS)
+    tmp.write_text(json.dumps(out, indent=2, ensure_ascii=False))
+    tmp.replace(run.output_dir() / artifacts.TRANSLATIONS)
+    print(f"[translate] {len(res.lines)} lines, {len(res.review)} to review", file=sys.stderr)
+    return out
