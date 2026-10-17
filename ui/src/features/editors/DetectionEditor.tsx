@@ -101,26 +101,22 @@ const LABEL_COLORS: Record<string, string> = {
   bubble: "#1e8cff",
   text_bubble: "#1e8cff",
   text_free: "#ff8c1e",
-  sfx: "#dc3c3c",
-  caption: "#3cb43c",
 };
 const DEFAULT_COLOR = "#6464c8";
-const LABELS = ["bubble", "text_bubble", "text_free", "sfx", "caption"];
+// The region vocabulary every phase is keyed on (backend core/labels.py);
+// the save route rejects anything else.
+const LABELS = ["bubble", "text_bubble", "text_free"];
 
 const LABEL_DESCRIPTIONS: Record<string, string> = {
   bubble: "Speech or thought bubble outline",
   text_bubble: "Text inside a bubble",
-  text_free: "Text outside bubbles",
-  sfx: "Drawn sound effect",
-  caption: "Narration or caption box",
+  text_free: "Text outside bubbles: narration, signs, sound effects",
 };
 
 const LABEL_NAMES: Record<string, string> = {
   bubble: "Bubble",
   text_bubble: "Text in bubble",
   text_free: "Free text",
-  sfx: "Sound effect",
-  caption: "Caption",
 };
 const labelName = (l: string) => LABEL_NAMES[l] ?? l.replace(/_/g, " ");
 

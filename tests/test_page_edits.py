@@ -1,4 +1,4 @@
-"""Page edits (edits.json): saving one shadows the model's analysis of that
+"""Edit routes. Page edits (edits.json): saving one shadows the model's analysis of that
 page, reverting it brings the model's reading back."""
 import io
 import json
@@ -32,3 +32,13 @@ def test_revert_page_edits_restores_the_model_reading(client):
     assert got[0]["dialogues"][0]["text_translated"] == "Hola" and "_edited_at" not in got[0]
     assert got[1]["dialogues"][0]["text_translated"] == "Adiós"
     assert client.delete(f"/api/runs/{rid}/edits/1").status_code == 204    # nothing left: no-op
+
+
+def test_detections_save_rejects_labels_the_pipeline_ignores(client):
+    rid = _run(client)
+    box = {"id": 0, "score": 1.0, "x1": 1, "y1": 1, "x2": 9, "y2": 9}
+    body = {"original_w": 40, "original_h": 60, "regions": [{**box, "label": "sfx"}]}
+    r = client.put(f"/api/runs/{rid}/detections/1", json=body)
+    assert r.status_code == 400 and "sfx" in r.text
+    body["regions"] = [{**box, "label": "text_free"}]
+    assert client.put(f"/api/runs/{rid}/detections/1", json=body).status_code == 200

@@ -46,7 +46,12 @@ def save_page_detections(run_id: str, page_num: int, body: dict):
     """Save refined detections for a single page."""
     run = _get_run(run_id)
     from yomeru.core.annotator import save_detections
+    from yomeru.core.labels import ALL_LABELS
     regions = body.get("regions", [])
+    unknown = sorted({str(r.get("label")) for r in regions} - ALL_LABELS)
+    if unknown:
+        raise HTTPException(400, f"unknown region label(s): {', '.join(unknown)} "
+                                 f"(expected one of: {', '.join(sorted(ALL_LABELS))})")
     original_w = body.get("original_w", 0)
     original_h = body.get("original_h", 0)
     save_detections(regions, run.output_dir(), page_num, (original_w, original_h), refined=True)

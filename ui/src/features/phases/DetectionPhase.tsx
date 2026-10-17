@@ -25,7 +25,6 @@ const LABEL_NAMES: Record<string, string> = {
   bubble: "bubble",
   text_bubble: "text in bubble",
   text_free: "free text",
-  sfx: "sound effect",
 };
 
 export function DetectionPhase({ runId, pages }: DetectionPhaseProps) {
