@@ -15,7 +15,8 @@ CLAUDE.md                  imports AGENTS.md for Claude Code
     architecture.md        current map of the code (phases, plugins, contracts, files)
     conventions.md         code, tests, goldens, commits, UI
   skills/<name>/SKILL.md   step-by-step procedures for recurring kinds of work
-  tasks/                   one file per delegated task (brief → status → report)
+  tasks/                   one file per delegated task (brief → status → report);
+                           NOT versioned (gitignored, only _template.md is): working notes
     _template.md
 .claude/skills/<name>/     stubs pointing at .agents/skills/<name>/
 ```
@@ -30,6 +31,9 @@ CLAUDE.md                  imports AGENTS.md for Claude Code
 ## Parallel-work protocol
 1. **Task file first.** The orchestrator writes `.agents/tasks/NNN-short-name.md` from
    `_template.md`: goal, context, scope, files owned, branch, acceptance checks.
+   Task files are working notes: gitignored, they live only in the main checkout
+   (`git worktree list | head -1`). A worker in another worktree reads and updates
+   the file there by its full path — never a copy in its own worktree.
 2. **Isolation.** One branch per task (`agent/NNN-short-name`), ideally in its own
    worktree: `git worktree add ../yomeru-NNN -b agent/NNN-short-name`.
    Two tasks never own the same file; if a task needs a file owned by another,

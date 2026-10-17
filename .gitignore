@@ -12,3 +12,7 @@ ui/node_modules/
 # data — runs, config (API keys) and downloaded model weights
 .env
 /data/
+
+# task files are working notes, not project history (only the template is versioned)
+.agents/tasks/*
+!.agents/tasks/_template.md
