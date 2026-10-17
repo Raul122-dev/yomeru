@@ -15,9 +15,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT / "scripts"))
+ROOT = Path(__file__).resolve().parents[2]          # repo root (data/ lives here)
+sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT / "backend" / "scripts"))
 
 RUNS = ("d4c17c9bf8f5", "496bb1f8a2aa", "zz_e2e_test")
 OUT = ROOT / "data" / "goldens" / "_analysis.json"

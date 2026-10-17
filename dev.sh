@@ -9,7 +9,7 @@ if ! command -v node &>/dev/null; then
   exit 1
 fi
 
-[ ! -d ui/node_modules ] && (cd ui && npm install --silent)
+[ ! -d frontend/node_modules ] && (cd frontend && npm install --silent)
 
 cleanup() { kill 0; }
 trap cleanup SIGINT SIGTERM
@@ -23,7 +23,7 @@ echo "  api     →  http://localhost:7788/api/docs"
 echo "  ctrl+c to stop"
 echo ""
 
-uv run --no-sync uvicorn yomeru.app:app --app-dir src --host "$HOST" --port 7788 \
-  --reload --reload-dir src/yomeru &
-(cd ui && npm run dev -- --host "$HOST") &
+(cd backend && uv run --no-sync uvicorn yomeru.app:app --host "$HOST" --port 7788 \
+  --reload --reload-dir yomeru) &
+(cd frontend && npm run dev -- --host "$HOST") &
 wait

@@ -11,7 +11,7 @@ from yomeru.core.contracts import EditRefused, EditResult, EditUnavailable
 from yomeru.lib.rendering.edit_prompt import build_prompt, rewrap
 from yomeru.plugins.rendering import ImageEditOptions
 
-GOLDEN = Path(__file__).resolve().parents[1] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
+GOLDEN = Path(__file__).resolve().parents[2] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
 RED = (255, 0, 0)
 
 

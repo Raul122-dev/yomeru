@@ -6,8 +6,8 @@ import pytest
 
 from yomeru.core.contracts import PageDetections
 
-GOLDENS = Path(__file__).resolve().parents[1] / "data" / "goldens"
-RUNS = Path(__file__).resolve().parents[1] / "data" / "runs"
+GOLDENS = Path(__file__).resolve().parents[2] / "data" / "goldens"
+RUNS = Path(__file__).resolve().parents[2] / "data" / "runs"
 
 
 def _detection_files():

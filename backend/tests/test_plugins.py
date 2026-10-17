@@ -89,7 +89,7 @@ def test_rendering_backend_is_swappable(tmp_path, monkeypatch):
             return RenderResult(image=Image.new("RGB", req.inpainted.size, (1, 2, 3)),
                                 events=[{"dialogue_index": 0, "status": "ok"}])
 
-    src = Path(__file__).resolve().parents[1] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
+    src = Path(__file__).resolve().parents[2] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
     if not src.exists():
         pytest.skip("golden d4c17c9bf8f5 not captured")
     monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)

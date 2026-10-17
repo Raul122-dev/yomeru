@@ -18,7 +18,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent.parent
 
 def _find_repo_root() -> Path | None:
     for parent in PACKAGE_DIR.parents:
-        if (parent / "pyproject.toml").is_file() and (parent / "src" / "yomeru").is_dir():
+        if (parent / "backend" / "pyproject.toml").is_file() and (parent / "backend" / "yomeru").is_dir():
             return parent
     return None
 

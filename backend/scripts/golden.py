@@ -28,8 +28,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[2]          # repo root (data/ lives here)
+sys.path.insert(0, str(ROOT / "backend"))
 
 EDIT_FILES = ["page_detections_refined.json", "edits.json"]
 DEBUG_EDIT_GLOBS = ["p*_matches_refined.json", "p*_mask_refined.png", "p*_render_overrides.json"]

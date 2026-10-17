@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-GOLDEN = Path(__file__).resolve().parents[1] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
+GOLDEN = Path(__file__).resolve().parents[2] / "data" / "goldens" / "d4c17c9bf8f5" / "input"
 
 
 @pytest.fixture()
@@ -435,7 +435,7 @@ def test_hyphenated_words_break_at_their_hyphen_without_doubling_it():
 
 def test_prompts_ask_to_rejoin_line_break_hyphens():
     from pathlib import Path
-    p = Path(__file__).resolve().parents[1] / "src/yomeru/prompts"
+    p = Path(__file__).resolve().parents[1] / "yomeru/prompts"
     for name in ("system.md", "system_compact.md", "system_read.md"):
         txt = (p / name).read_text()
         assert "INTERESTING" in txt and "preserve hyphenation" not in txt

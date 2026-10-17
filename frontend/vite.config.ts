@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: "/ui/",
   build: {
-    outDir: "../src/yomeru/static",
+    outDir: "../backend/yomeru/static",
     emptyOutDir: true,
   },
   server: {

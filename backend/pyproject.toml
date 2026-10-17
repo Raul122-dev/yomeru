@@ -48,7 +48,8 @@ torchvision = { index = "pytorch-cu128" }
 yomeru = "yomeru.__main__:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["yomeru*"]
 
 [tool.setuptools.package-data]
 yomeru = [

@@ -14,8 +14,8 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+ROOT = Path(__file__).resolve().parents[2]          # repo root (data/ lives here)
+sys.path.insert(0, str(ROOT / "backend"))
 
 CASES = [("data/goldens/d4c17c9bf8f5/input", (1, 2, 3), "manga"),
          ("data/goldens/zz_e2e_test/input", (2, 3), "manga")]
