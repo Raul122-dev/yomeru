@@ -38,7 +38,8 @@
 - Workers: branch `agent/NNN-short-name`, no pushes to `main`.
 
 ## UI
-- React + Vite + shadcn/ui + Tailwind; `npx tsc --noEmit -p . && npm run build` before committing;
-  the build output `src/yomeru/static/` is committed.
+- React + Vite + shadcn/ui + Tailwind; `npx tsc --noEmit -p . && npm test && npm run build` before
+  committing; the build output `src/yomeru/static/` is generated and never committed. Pure logic in
+  `ui/src/lib` gets vitest tests next to it (`*.test.ts`).
 - Images only through `components/ui/Img` (never a raw full-size `<img>`, never `no-store`).
 - Phase views compose `usePhaseView` + `PhaseShell`.

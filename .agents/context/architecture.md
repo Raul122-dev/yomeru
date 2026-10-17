@@ -42,7 +42,7 @@ progress. The internal id of "Read & translate" is `analysis`.
 `features/editors/` (Detection, Mask, Matching, Render editors) · `features/run/PageDetail` (page edits:
 translations, skips, "Revert page edits") · `features/settings/` (BackendPicker renders plugin
 options from JSON schema, LocalModelPanel) · `components/ui/Img` (blur placeholder + srcset).
-The built UI is committed in `src/yomeru/static/`.
+The built UI goes to `src/yomeru/static/` (gitignored: built by setup.sh, CI and Docker).
 
 ## Run layout (`data/runs/<id>/`)
 `meta.json` (status, `created_at`/`finished_at`, settings snapshot) · `pages/` · `output/` (phase outputs, `edits.json`,

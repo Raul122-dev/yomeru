@@ -42,10 +42,10 @@ uv run uvicorn yomeru.app:app --app-dir src --port 7788 --reload
 uv run pytest -q
 uv run ruff check --select F src/
 
-# Type check (Frontend)
-cd ui && npx tsc --noEmit
+# Type check + unit tests (Frontend)
+cd ui && npx tsc --noEmit -p . && npm test
 
-# Build frontend
+# Build frontend (generated into src/yomeru/static, not committed)
 cd ui && npm run build
 ```
 

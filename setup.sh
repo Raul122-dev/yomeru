@@ -22,6 +22,14 @@ else
   uv sync
 fi
 
+if command -v npm &>/dev/null; then
+  echo -e "${CYAN}building the web UI${RESET}"
+  (cd ui && npm ci --silent && npm run build --silent)
+else
+  echo -e "${RED}warning${RESET}: node/npm not found — the web UI was not built"
+  echo "  install node 20+ and run: cd ui && npm ci && npm run build"
+fi
+
 [ ! -f .env ] && cp .env.example .env && echo -e "${CYAN}created${RESET} .env"
 
 echo -e "\n${GREEN}done!${RESET} run ${BOLD}bash start.sh${RESET}"

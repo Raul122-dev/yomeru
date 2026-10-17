@@ -6,8 +6,9 @@
 dist/
 build/
 
-# ui (pre-built static IS committed — see src/yomeru/static/)
+# ui — the build is generated (setup.sh / CI / Docker), never committed
 ui/node_modules/
+src/yomeru/static/
 
 # data — runs, config (API keys) and downloaded model weights
 .env

@@ -18,7 +18,7 @@ yomeru translates and typesets manga/manhwa/comics: **detection → read & trans
 - Never touch `data/` (runs, config with API keys, goldens, model weights) — it is local and git-ignored.
 - No new dependency, setting, phase or UI screen without it being in the task.
 - Every bug fix has a test that fails on the old code. Refactors keep the goldens identical.
-- `uv run pytest -q` and `uv run ruff check --select F src tests` must pass; UI changes: `cd ui && npx tsc --noEmit -p . && npm run build`.
+- `uv run pytest -q` and `uv run ruff check --select F src tests` must pass; UI changes: `cd ui && npx tsc --noEmit -p . && npm test && npm run build`. CI (`.github/workflows/ci.yml`) runs all of this on every push/PR.
 - Report what you verified and what you could not (no claims without output).
 
 ## Commands
@@ -29,5 +29,5 @@ uv run ruff check --select F src tests    # lint
 uv run python scripts/golden.py check     # render/inpaint/matching goldens (only if data/goldens exists)
 uv run python scripts/analysis_golden.py check   # prompt/analysis goldens (idem)
 bash dev.sh                               # backend :7788 + UI :3000 with hot reload
-cd ui && npm run build                    # UI build → src/yomeru/static (committed)
+cd ui && npm run build                    # UI build → src/yomeru/static (generated, never committed)
 ```
