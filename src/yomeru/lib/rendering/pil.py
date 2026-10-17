@@ -1,102 +1,83 @@
 """
 Fonts and low-level text drawing for the scanline engine.
 
-- Font lookup by style (bubble/bold/thought/narration) with custom fonts from
-  assets/fonts/ first, then system Noto/IPA fallbacks
+- One font file per lettering style (regular, bold, thought, narration, sfx):
+  the run's choice (settings → rendering.fonts) or the default of the drawn
+  language's script (core.languages.SCRIPT_FONTS). Files are looked up among
+  the user's fonts (data/fonts) first, then the shipped ones (assets/fonts).
 - Per-character fallback to a symbol font for glyphs the main font lacks
 - Outline (stroke) drawing for free text
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from PIL import ImageDraw, ImageFont
 
-from yomeru.core.paths import FONTS_DIR
+from yomeru.core.languages import FONT_STYLES, SCRIPT_FONTS
+from yomeru.core.paths import FONTS_DIR, USER_FONTS_DIR
 
 _FONTS_DIR = FONTS_DIR
+FONT_EXTS = (".ttf", ".otf", ".ttc")
 
-_IPA_FONT = Path("/usr/share/fonts/truetype/fonts-japanese-gothic.ttf")
-_IPA_ALT = Path("/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf")
-_NOTO_SANS = Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf")
-_NOTO_BOLD = Path("/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf")
-_NOTO_CJK = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
 
-_FONT_STYLES: dict[str, list[Path]] = {
-    "bold": [
-        _FONTS_DIR / "ComicNeue-Bold.ttf",
-        _FONTS_DIR / "Bangers-Regular.ttf",
-        _FONTS_DIR / "AnimeAce-Bold.ttf",
-        _FONTS_DIR / "BadaBoom BB.ttf",
-        _NOTO_BOLD, _IPA_FONT, _IPA_ALT,
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-        Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
-    ],
-    "regular": [
-        _FONTS_DIR / "ComicNeue-Bold.ttf",
-        _FONTS_DIR / "AnimeAce.ttf",
-        _FONTS_DIR / "CC Wild Words Roman.ttf",
-        _NOTO_SANS, _NOTO_CJK, _IPA_FONT, _IPA_ALT,
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-        Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
-    ],
-    "thought": [
-        _FONTS_DIR / "ComicNeue-Regular.ttf",
-        _FONTS_DIR / "AnimeAce.ttf",
-        _FONTS_DIR / "CC Wild Words Italic.ttf",
-        _NOTO_SANS, _NOTO_CJK, _IPA_FONT, _IPA_ALT,
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-        Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
-    ],
-    "narration": [
-        _FONTS_DIR / "ComicNeue-Regular.ttf",
-        _FONTS_DIR / "AnimeAce.ttf",
-        _NOTO_SANS, _NOTO_CJK, _IPA_FONT, _IPA_ALT,
-        Path("/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf"),
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-    ],
-}
+def find_font(name: str) -> Path | None:
+    """A font file by name: the user's fonts first, then the shipped ones."""
+    for d in (USER_FONTS_DIR, FONTS_DIR):
+        p = d / Path(name).name
+        if p.is_file():
+            return p
+    return None
+
+
+def resolve_fonts(choices: dict[str, str] | None, script: str = "latin") -> dict[str, str]:
+    """Font file per style for one render: the chosen file when it exists,
+    else the script's default, else the Latin default."""
+    defaults = SCRIPT_FONTS.get(script) or SCRIPT_FONTS["latin"]
+    out = {}
+    for style in FONT_STYLES:
+        for name in ((choices or {}).get(style), defaults.get(style), SCRIPT_FONTS["latin"][style]):
+            p = find_font(name) if name else None
+            if p is not None:
+                out[style] = str(p)
+                break
+    return out
+
+
+_active: ContextVar[dict[str, str] | None] = ContextVar("yomeru_fonts", default=None)
+
+
+@contextmanager
+def use_fonts(fonts: dict[str, str] | None):
+    """Fonts for everything drawn inside the block (one render)."""
+    token = _active.set(fonts or None)
+    try:
+        yield
+    finally:
+        _active.reset(token)
+
 
 _font_cache: dict[tuple[str, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
 
 
-def _discover_custom_fonts() -> list[Path]:
-    """Discover all custom font files in assets/fonts/."""
-    if not _FONTS_DIR.exists():
-        return []
-    return sorted(
-        p for p in _FONTS_DIR.iterdir()
-        if p.suffix.lower() in (".ttf", ".otf", ".ttc")
-    )
-
-
 def _get_font(style: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    key = (style, size)
+    fonts = _active.get() or resolve_fonts(None)
+    path = fonts.get(style) or fonts.get("regular")
+    key = (path or "", size)
     if key in _font_cache:
         return _font_cache[key]
-    candidates = list(_FONT_STYLES.get(style, _FONT_STYLES["regular"]))
-    for p in _discover_custom_fonts():
-        if p not in candidates:
-            candidates.append(p)
-    candidates += [
-        Path("/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf"),
-        Path("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"),
-    ]
-    for p in candidates:
-        if p.exists():
-            try:
-                f = ImageFont.truetype(str(p), size)
-                _font_cache[key] = f
-                return f
-            except Exception:
-                continue
-    f = ImageFont.load_default()
+    try:
+        f = ImageFont.truetype(path, size) if path else ImageFont.load_default(size)
+    except OSError:
+        f = ImageFont.load_default(size)
     _font_cache[key] = f
     return f
 
 
 def _tone_to_style(tone: str, bubble_type: str, font_style: str | None = None) -> str:
-    if font_style and font_style.lower() in _FONT_STYLES:
+    if font_style and font_style.lower() in FONT_STYLES:
         return font_style.lower()
     bt = (bubble_type or "").lower()
     if bt in ("thought", "internal"):
@@ -110,12 +91,7 @@ def _tone_to_style(tone: str, bubble_type: str, font_style: str | None = None) -
 
 # ── symbol fallback ───────────────────────────────────────────────────────────
 
-_SYMBOL_FONT_PATHS = [
-    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-    Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"),
-    _FONTS_DIR / "NotoSansCJK-Regular.ttc",
-]
+_SYMBOL_FONT_PATHS = [_FONTS_DIR / "NotoSansCJK-Regular.ttc"]   # shipped: same glyphs on every host
 
 _symbol_font_cache: dict[int, ImageFont.FreeTypeFont | None] = {}
 

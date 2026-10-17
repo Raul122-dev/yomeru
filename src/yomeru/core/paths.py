@@ -40,7 +40,8 @@ RUNS_DIR = DATA_DIR / "runs"
 CONFIG_FILE = DATA_DIR / "config.json"
 MODELS_DIR = DATA_DIR / "models"
 STATIC_DIR = PACKAGE_DIR / "static"
-FONTS_DIR = PACKAGE_DIR / "assets" / "fonts"
+FONTS_DIR = PACKAGE_DIR / "assets" / "fonts"          # shipped (read-only)
+USER_FONTS_DIR = DATA_DIR / "fonts"                    # added by the user in Settings
 
 # Third-party model caches (HuggingFace, torch hub, EasyOCR) go into MODELS_DIR
 # instead of scattering across ~/.cache. Explicit env vars from the user win.

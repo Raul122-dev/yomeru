@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw
 
 from yomeru.core import artifacts
 from yomeru.core.languages import profile, text_rules
-from yomeru.core.paths import FONTS_DIR
+from yomeru.core.paths import FONTS_DIR, USER_FONTS_DIR
 from yomeru.core.labels import CONTAINER_LABELS, TEXT_BUBBLE, is_free as is_free_label
 from yomeru.core.paths import list_page_files
 from yomeru.core.runs import Run
@@ -27,7 +27,7 @@ from yomeru.lib.rendering.color_detect import (
     detect_background_color,
 )
 from yomeru.lib.rendering.pil import (
-    _get_font, _tone_to_style,
+    _get_font, _tone_to_style, resolve_fonts,
 )
 from yomeru.lib.rendering.scanline import (
     extract_bubble_contour, scanline_layout,
@@ -66,7 +66,7 @@ def input_paths(run: Run, page_num: int) -> list[Path]:
         run.output_dir() / "edits.json",       # merged into the dialogues
         run.output_dir() / a.TRANSLATIONS,     # separate translation step
         run.active_detections_file(),          # bubble containers
-        FONTS_DIR,                             # a font added/removed changes the drawing
+        FONTS_DIR, USER_FONTS_DIR,             # a font added/removed changes the drawing
     ]
 
 
@@ -243,6 +243,7 @@ def build_request(run: Run, page_num: int, use_translation: bool | None = None, 
         use_translation=use_translation,
         lang_code=profile(drawn_lang).hyphenation,
         drawn_language=drawn_lang if drawn_lang != "auto" else "",
+        fonts=resolve_fonts(st.rendering.fonts, profile(drawn_lang).script),
         edit_cache=artifacts.PageEditCache(run, page_num),
         edit_session=edit_session,
     )
@@ -280,6 +281,12 @@ def render_page(run: Run, page_num: int, use_translation: bool | None = None,
 
 def layout_and_draw(req):
     """The scanline technique: pure function of the request (no run, no files)."""
+    from yomeru.lib.rendering.pil import use_fonts
+    with use_fonts(req.fonts):
+        return _layout_and_draw(req)
+
+
+def _layout_and_draw(req):
     from yomeru.core.contracts import RenderResult
 
     img = req.inpainted
@@ -435,6 +442,8 @@ def layout_and_draw(req):
         # grow with its bubble, and keep it out of the page-median cap, which
         # shrank it to body-text size in bubbles the original fills.
         words_ = clean_text.split()
+        # which font draws it: sound effects have their own (same layout rules)
+        font_role = "sfx" if bubble_type == "sfx" else style
         is_shout = (not is_free and style == "bold" and tone in ("shouting", "screaming", "yelling", "angry", "excited")
                     and len(words_) <= 2 and len(clean_text.replace(" ", "")) <= 12)
         if is_shout:
@@ -494,7 +503,7 @@ def layout_and_draw(req):
         )
         rot90 = False
         if rotated_free:
-            best_layout = _rotated_free_layout(clean_text, style, text_bbox, MIN_FONT, lang_code_for_this_match)
+            best_layout = _rotated_free_layout(clean_text, font_role, text_bbox, MIN_FONT, lang_code_for_this_match)
             if best_layout is not None:
                 use_vertical, rot90 = False, True
 
@@ -517,7 +526,7 @@ def layout_and_draw(req):
             word_extra = vert_size // 3  # extra gap between words
 
             # Measure actual per-char heights using getbbox
-            vert_font = _get_font(style, vert_size)
+            vert_font = _get_font(font_role, vert_size)
             char_heights = []
             for ch in flat:
                 bb = vert_font.getbbox(ch)
@@ -529,7 +538,7 @@ def layout_and_draw(req):
             max_fill = int(usable_h * 0.80)
             while total_h > max_fill and vert_size > 10:
                 vert_size -= 1
-                vert_font = _get_font(style, vert_size)
+                vert_font = _get_font(font_role, vert_size)
                 line_spacing = max(3, vert_size // 6)
                 word_extra = vert_size // 3
                 char_heights = []
@@ -571,7 +580,7 @@ def layout_and_draw(req):
             protected = proper_names(dlg.get("text") or "", clean_text)
 
             # Bound by value: `relayout` is called after the loop (harmonisation)
-            def _try_with(hyphenate: bool | str, _style=style, _bb=bubble_bbox, _text=clean_text,
+            def _try_with(hyphenate: bool | str, _style=font_role, _bb=bubble_bbox, _text=clean_text,
                           _lang=lang_code_for_this_match, _pad=scan_padding, _prot=protected):
                 def _try(size: int, wf: float):
                     font = _get_font(_style, size)
@@ -599,7 +608,7 @@ def layout_and_draw(req):
         overflow = False
         if best_layout is None:
             for try_size in range(max(max_size, floor), floor - 1, -1):
-                font = _get_font(style, try_size)
+                font = _get_font(font_role, try_size)
                 lh = measure_line_height(font, try_size)
                 pad = max(4, scan_padding)
                 bw = bubble_w - pad * 2
@@ -629,7 +638,7 @@ def layout_and_draw(req):
         # size, wrapped to the box width (or the longest word), centred on the
         # box and kept on the page; reported as `overflow` for review.
         if best_layout is None and erased:
-            best_layout = _overflow_layout(clean_text, _get_font(style, MIN_FONT), MIN_FONT, bubble_bbox,
+            best_layout = _overflow_layout(clean_text, _get_font(font_role, MIN_FONT), MIN_FONT, bubble_bbox,
                                            img.size, lang_code_for_this_match)
             overflow = best_layout is not None
 

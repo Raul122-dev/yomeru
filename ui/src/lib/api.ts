@@ -3,6 +3,7 @@ import type {
   CreateRunOpts,
   DetectionRegion,
   FontInfo,
+  FontsResponse,
   MatchEvent,
   Connection,
   ModelInfo,
@@ -271,7 +272,7 @@ export const maskDebugUrl = (id: string, pageNum: number) =>
 
 // ── fonts ─────────────────────────────────────────────────────────────────────
 export const listFonts = () =>
-  req<{ fonts: FontInfo[] }>("/fonts");
+  req<FontsResponse>("/fonts");
 export const deleteFont = (name: string) =>
   fetch(B + `/fonts/${encodeURIComponent(name)}`, {
     method: "DELETE",

@@ -162,6 +162,15 @@ class RenderingSettings(PhaseBackend):
     _phase: ClassVar[str] = "rendering"
     _default: ClassVar[str] = "scanline"
     use_translation: bool = True
+    # font file per lettering style (regular, bold, thought, narration, sfx);
+    # a missing style uses the default of the drawn language's script
+    fonts: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("fonts")
+    @classmethod
+    def _known_styles(cls, v: dict[str, str]) -> dict[str, str]:
+        from yomeru.core.languages import FONT_STYLES
+        return {k: n for k, n in v.items() if k in FONT_STYLES and n}
 
 
 class SeparateTranslation(BaseModel):

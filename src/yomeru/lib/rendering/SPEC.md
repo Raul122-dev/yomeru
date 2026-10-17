@@ -24,12 +24,16 @@ Draw the translation into the inpainted page.
   Hangul) in tall narrow bubbles when that gives a clearly larger size; vertical
   CJK free text translated to Latin is turned 90°.
 - Drawing (`pil.py`): style from tone/bubble type (`regular`, `bold`,
-  `thought`, `narration`); free text gets an outline. Fonts come from
-  `assets/fonts`: ComicNeue-Bold for regular/bold, ComicNeue-Regular for
-  thought/narration (other candidates in the chain are only reached if those
-  are missing). Symbols (♥ ★ ♪ arrows…) fall back per character to a symbol
-  font. There is no script-based font pick yet, so only Latin targets are
-  offered (`GET /config/languages`, `has_font`).
+  `thought`, `narration`); sound effects (`bubble_type` sfx) use the `sfx`
+  font with the same layout rules; free text gets an outline. One font file
+  per style: the run's choice (`rendering.fonts`) or the default of the drawn
+  language's script (`core/languages.SCRIPT_FONTS`), looked up in
+  `<data>/fonts` (user) then `assets/fonts` (shipped, licences in
+  `assets/fonts/licenses/`). `build_request` resolves them into
+  `RenderRequest.fonts`; `layout_and_draw` activates them for the render.
+  Symbols (♥ ★ ♪ arrows…) fall back per character to the shipped Noto CJK.
+  Only scripts with default fonts are offered as targets (Latin for now:
+  `GET /config/languages`, `has_font`).
 
 ## `image_edit` (`lib/rendering/image_edit.py`)
 Scanline lays out every dialogue; the chosen ones are cropped from the original

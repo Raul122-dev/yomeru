@@ -6,6 +6,7 @@ import { Input, Select } from "../../components/ui/input";
 import { Switch } from "../../components/ui/Switch";
 import { Slider } from "../../components/ui/Slider";
 import { ModelPicker } from "./ModelPicker";
+import { FontStylesField } from "./FontStylesField";
 import { BackendPicker } from "./BackendPicker";
 import { LocalModelPanel } from "./LocalModelPanel";
 
@@ -178,6 +179,7 @@ export function PipelineSettingsForm({
           checked={value.rendering.use_translation}
           onCheckedChange={(v) => set("rendering", { use_translation: v })}
         />
+        <FontStylesField value={value.rendering.fonts} onChange={(fonts) => set("rendering", { fonts })} />
       </section>
     </div>
   );

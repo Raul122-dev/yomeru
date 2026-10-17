@@ -1,69 +1,72 @@
 """
-Fonts routes — Custom font management for rendering.
+Fonts routes — the lettering fonts the renderer can use.
 
-Manages fonts stored in assets/fonts/ that are used by the PIL renderer.
+Shipped fonts live in the package (assets/fonts, read-only); fonts the user
+adds go to <data>/fonts and can be removed again. Which font draws each
+lettering style is chosen in the pipeline settings (rendering.fonts).
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile, File as FastAPIFile
+from fastapi import APIRouter, File as FastAPIFile, HTTPException, UploadFile
+
+from yomeru.core.languages import FONT_STYLES, SCRIPT_FONTS
+from yomeru.core.paths import FONTS_DIR, USER_FONTS_DIR
 
 router = APIRouter(prefix="/fonts", tags=["fonts"])
 
-from yomeru.core.paths import FONTS_DIR
 SUPPORTED_FORMATS = {".ttf", ".otf", ".ttc"}
 
 
-def _ensure_fonts_dir():
-    FONTS_DIR.mkdir(parents=True, exist_ok=True)
-
-
 def _clear_font_cache():
-    """Clear the renderer font cache so new fonts are picked up."""
-    try:
-        from yomeru.lib.rendering.pil import _font_cache
-        _font_cache.clear()
-    except Exception:
-        pass
+    from yomeru.lib.rendering.pil import _font_cache
+    _font_cache.clear()
+
+
+def _fonts(folder: Path, source: str) -> list[dict]:
+    if not folder.is_dir():
+        return []
+    return [{"name": f.name, "size_kb": round(f.stat().st_size / 1024, 1), "source": source}
+            for f in sorted(folder.iterdir()) if f.suffix.lower() in SUPPORTED_FORMATS]
 
 
 @router.get("")
 def list_fonts():
-    """List all custom fonts installed."""
-    _ensure_fonts_dir()
-    fonts = [
-        {"name": f.name, "size_kb": round(f.stat().st_size / 1024, 1)}
-        for f in sorted(FONTS_DIR.iterdir())
-        if f.suffix.lower() in SUPPORTED_FORMATS
-    ]
-    return {"fonts": fonts}
+    """Every usable font (the user's and the shipped ones), the lettering
+    styles and the default font of each style per script."""
+    return {"fonts": _fonts(USER_FONTS_DIR, "user") + _fonts(FONTS_DIR, "shipped"),
+            "styles": list(FONT_STYLES), "defaults": SCRIPT_FONTS}
 
 
 @router.post("/upload")
 async def upload_font(file: UploadFile = FastAPIFile(...)):
-    """Upload a font file."""
     if not file.filename:
         raise HTTPException(400, "no filename")
-    suffix = Path(file.filename).suffix.lower()
-    if suffix not in SUPPORTED_FORMATS:
-        raise HTTPException(400, f"unsupported font format '{suffix}' — use .ttf, .otf or .ttc")
-
-    _ensure_fonts_dir()
-    dest = FONTS_DIR / Path(file.filename).name
+    name = Path(file.filename).name
+    if Path(name).suffix.lower() not in SUPPORTED_FORMATS:
+        raise HTTPException(400, f"unsupported font format '{Path(name).suffix}' — use .ttf, .otf or .ttc")
+    if (FONTS_DIR / name).exists():
+        raise HTTPException(409, f"'{name}' is a shipped font — rename your file")
     content = await file.read()
-    dest.write_bytes(content)
+    from PIL import ImageFont
+    import io
+    try:
+        ImageFont.truetype(io.BytesIO(content), 20)
+    except OSError:
+        raise HTTPException(400, f"'{name}' is not a readable font") from None
+    USER_FONTS_DIR.mkdir(parents=True, exist_ok=True)
+    (USER_FONTS_DIR / name).write_bytes(content)
     _clear_font_cache()
-    return {"name": dest.name, "size_kb": round(len(content) / 1024, 1)}
+    return {"name": name, "size_kb": round(len(content) / 1024, 1), "source": "user"}
 
 
 @router.delete("/{filename}")
 def delete_font(filename: str):
-    """Delete a font."""
-    _ensure_fonts_dir()
-    dest = FONTS_DIR / filename
-    if not dest.exists() or dest.parent != FONTS_DIR:
-        raise HTTPException(404, "font not found")
+    """Remove a font the user added (shipped fonts cannot be removed)."""
+    dest = USER_FONTS_DIR / Path(filename).name
+    if not dest.is_file():
+        raise HTTPException(404, "font not found among your fonts")
     dest.unlink()
     _clear_font_cache()
-    return {"deleted": filename}
+    return {"deleted": dest.name}

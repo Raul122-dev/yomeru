@@ -13,6 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from yomeru.core.paths import FONTS_DIR
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -227,10 +228,9 @@ def _draw_numbered_boxes(image: Image.Image, regions: list) -> Image.Image:
         font_size = max(11, badge_size - 8)
         # This image is what the analysis model sees: the badge font is part of
         # the model input (and of the analysis golden), so it stays DejaVu Sans
-        # Bold. By file name, PIL looks it up in the system font directories
-        # (no distro-specific path); PIL's default font if it is not installed.
+        # Bold, shipped with yomeru so every host sends the model the same image.
         try:
-            font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
+            font = ImageFont.truetype(str(FONTS_DIR / "DejaVuSans-Bold.ttf"), font_size)
         except OSError:
             font = ImageFont.load_default()
         cx, cy = (bx1 + bx2) // 2, (by1 + by2) // 2

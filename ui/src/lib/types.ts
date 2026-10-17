@@ -89,7 +89,13 @@ export interface PipelineSettings {
   detection: { backend: string; options: Record<string, unknown>; threshold: number };
   matching: { backend: string; options: { ocr_weight?: number; spatial_weight?: number; min_score?: number } & Record<string, unknown> };
   inpainting: { backend: string; options: Record<string, unknown> };
-  rendering: { use_translation: boolean; backend: string; options: Record<string, unknown> };
+  rendering: {
+    use_translation: boolean;
+    backend: string;
+    options: Record<string, unknown>;
+    /** font file per lettering style; a missing style = the language's default */
+    fonts?: Record<string, string>;
+  };
 }
 
 export interface Preset {
@@ -257,6 +263,14 @@ export interface StageLog {
 export interface FontInfo {
   name: string;
   size_kb: number;
+  source: "user" | "shipped";
+}
+
+export interface FontsResponse {
+  fonts: FontInfo[];
+  styles: string[];
+  /** default font per style, by script ("latin" → {regular: "ComicNeue-Bold.ttf", …}) */
+  defaults: Record<string, Record<string, string>>;
 }
 
 export interface SeparateTranslation {

@@ -6,17 +6,6 @@ import type { FontInfo } from "../lib/types";
 import { Card } from "./ui/card";
 import { cn } from "../lib/utils";
 
-// Mirrors lib/rendering/pil.py _FONT_STYLES: for each style the FIRST
-// installed file in the list is used.
-const FONT_SLOTS = [
-  { name: "ComicNeue-Bold.ttf", style: "Regular · bold", note: "1st choice for speech and shouting" },
-  { name: "ComicNeue-Regular.ttf", style: "Thought · narration", note: "1st choice" },
-  { name: "AnimeAce.ttf", style: "Regular · thought · narration", note: "used if ComicNeue is missing" },
-  { name: "Bangers-Regular.ttf", style: "Bold", note: "used if ComicNeue-Bold is missing" },
-  { name: "CC Wild Words Roman.ttf", style: "Regular", note: "after AnimeAce" },
-  { name: "NotoSansCJK-Regular.ttc", style: "CJK", note: "Japanese, Korean, Chinese text" },
-];
-
 export function FontsCard() {
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,76 +46,43 @@ export function FontsCard() {
         Fonts
       </h2>
       <p className="mb-4 text-xs text-[hsl(var(--text-muted))] leading-relaxed">
-        Drop font files below to use your own lettering. For each text style yomeru
-        uses the first installed font in the order below; other fonts you add are
-        only a last resort. Run rendering again to see a font change.
+        Fonts yomeru can letter with. Choose which one draws speech, shouting,
+        thought, narration and sound effects in the pipeline settings (Rendering → Fonts);
+        by default each style uses the font made for the target language.
       </p>
 
-      {/* recommended slots */}
-      <div className="mb-4 rounded-md border border-[hsl(var(--border))] divide-y divide-[hsl(var(--border))]">
-        {FONT_SLOTS.map((slot) => {
-          const installed = fonts.some((f) => f.name === slot.name);
-          return (
-            <div key={slot.name} className="flex items-center gap-3 px-3 py-2">
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full shrink-0",
-                  installed
-                    ? "bg-[hsl(var(--success))]"
-                    : "bg-[hsl(var(--border-strong))]",
+      {(["user", "shipped"] as const).map((source) => {
+        const list = fonts.filter((f) => f.source === source);
+        if (!list.length) return null;
+        return (
+          <div key={source} className="mb-4 space-y-1">
+            <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))] mb-2">
+              {source === "user" ? `Your fonts (${list.length})` : `Included (${list.length})`}
+            </p>
+            {list.map((f) => (
+              <div key={f.name}
+                className="flex items-center gap-2 rounded px-2 py-1 hover:bg-[hsl(var(--bg-subtle))] group">
+                <Type size={11} className="text-[hsl(var(--text-muted))]" />
+                <span className="font-mono text-xs flex-1 truncate">{f.name}</span>
+                <span className="text-xs text-[hsl(var(--text-muted)/.6)]">
+                  {f.size_kb >= 1024 ? `${(f.size_kb / 1024).toFixed(1)} MB` : `${Math.round(f.size_kb)} KB`}
+                </span>
+                {source === "user" && (
+                  <button onClick={() => remove.mutate(f.name)} aria-label={`Remove ${f.name}`} title="Remove"
+                    className="opacity-0 group-hover:opacity-100 text-[hsl(var(--text-muted))] hover:text-[hsl(var(--danger))] transition-all">
+                    <Trash2 size={12} />
+                  </button>
                 )}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="font-mono text-xs text-[hsl(var(--text))] truncate">
-                  {slot.name}
-                </p>
-                <p className="text-xs text-[hsl(var(--text-muted))]">
-                  {slot.style} — {slot.note}
-                </p>
               </div>
-              <span
-                className={cn(
-                  "text-xs shrink-0",
-                  installed
-                    ? "text-[hsl(var(--success))]"
-                    : "text-[hsl(var(--text-muted)/.5)]",
-                )}
-              >
-                {installed ? "Installed" : "Not installed"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* installed fonts (including any extra ones) */}
-      {fonts.length > 0 && (
-        <div className="mb-4 space-y-1">
-          <p className="text-xs uppercase tracking-widest text-[hsl(var(--text-muted))] mb-2">
-            Installed ({fonts.length})
-          </p>
-          {fonts.map((f) => (
-            <div
-              key={f.name}
-              className="flex items-center gap-2 rounded px-2 py-1 hover:bg-[hsl(var(--bg-subtle))] group"
-            >
-              <Type size={11} className="text-[hsl(var(--text-muted))]" />
-              <span className="font-mono text-xs flex-1 truncate">
-                {f.name}
-              </span>
-              <span className="text-xs text-[hsl(var(--text-muted)/.6)]">
-                {f.size_kb >= 1024 ? `${(f.size_kb / 1024).toFixed(1)} MB` : `${Math.round(f.size_kb)} KB`}
-              </span>
-              <button
-                onClick={() => remove.mutate(f.name)}
-                className="opacity-0 group-hover:opacity-100 text-[hsl(var(--text-muted))] hover:text-[hsl(var(--danger))] transition-all"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+            {source === "shipped" && (
+              <p className="px-2 pt-1 text-xs text-[hsl(var(--text-muted)/.8)]">
+                Free fonts (SIL Open Font License, DejaVu license) — they can't be removed.
+              </p>
+            )}
+          </div>
+        );
+      })}
 
       {isLoading && (
         <p className="text-xs text-[hsl(var(--text-muted))]">
@@ -152,7 +108,7 @@ export function FontsCard() {
         <Upload size={16} className="text-[hsl(var(--text-muted))]" />
         <p className="text-xs text-[hsl(var(--text-muted))] text-center">
           {upload.isPending
-            ? "uploading…"
+            ? "Uploading…"
             : "Drop .ttf / .otf / .ttc here, or click to browse"}
         </p>
         <input

@@ -29,12 +29,12 @@ progress. The internal id of "Read & translate" is `analysis`.
 | `core/artifacts.py` | The only place that knows file names and resolves user edits (edits.json, refined detections/matches, render overrides, separate translation). `load_analyses` = `page_analyses.json` + `translations.json` + `edits.json`. |
 | `core/edits.py` | `PageEdits`: the user's edited page analyses (`edits.json`): save, revert, merge. |
 | `core/labels.py` | Region labels and their roles (`bubble`, `text_bubble`, `text_free`). The detection editor offers only these and the save route rejects others. |
-| `core/languages.py` | Language profiles: `profile(setting)` (OCR, reading direction, hyphenation) and `text_rules(text)` (vertical, stacking, turning, caps). `language_options()` feeds `GET /config/languages` — the UI's only language list; targets need `has_font` (Latin only for now). |
+| `core/languages.py` | Language profiles: `profile(setting)` (OCR, reading direction, hyphenation) and `text_rules(text)` (vertical, stacking, turning, caps). `language_options()` feeds `GET /config/languages` — the UI's only language list; targets need `has_font` (Latin only for now). `SCRIPT_FONTS`: default font per script and lettering style (regular, bold, thought, narration, sfx). |
 | `core/llm.py` | All remote model calls (OpenAI- and Anthropic-compatible). |
 | `core/gpu.py` | `gpu_lock` — GPU work is serialized. |
 | `core/images.py` | Image delivery: `?w=` WebP variants, ETag/304; `overlay_font` for debug overlays (shipped font). |
 | `phases/runner.py` | One job per run, cancel, 409 when busy, recovery after restart. |
-| `api/routes/` | `runs` (+ page edits PUT/DELETE `/runs/{id}/edits/{page}`), `phases` (start/start-all/cancel/status, previews), `editing`, `outputs`, `config` (+ `/languages`), `fonts`. |
+| `api/routes/` | `runs` (+ page edits PUT/DELETE `/runs/{id}/edits/{page}`), `phases` (start/start-all/cancel/status, previews), `editing`, `outputs`, `config` (+ `/languages`), `fonts` (user fonts in `<data>/fonts`; shipped ones read-only). |
 | `prompts/` | `system.md` (API models), `system_compact.md` (local), `system_read.md` (reading only), `format_*.md`. |
 
 ## UI (`ui/src/`)

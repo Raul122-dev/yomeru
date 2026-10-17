@@ -107,7 +107,15 @@ _SCRIPT_RULES = {s: _build(s, s, {}) for s in SCRIPTS}
 # Scripts the shipped fonts can letter (ComicNeue covers Latin, including
 # Turkish İ/ğ through the raqm layout; Vietnamese is "other"). A target outside
 # them renders as tofu, so the UI does not offer it.
-SHIPPED_FONT_SCRIPTS = frozenset({"latin"})
+# Default lettering fonts per script and style (shipped in assets/fonts). A
+# script without an entry has no shipped font yet: not offered as a target.
+FONT_STYLES = ("regular", "bold", "thought", "narration", "sfx")
+SCRIPT_FONTS: dict[str, dict[str, str]] = {
+    "latin": {"regular": "ComicNeue-Bold.ttf", "bold": "ComicNeue-Bold.ttf",
+              "thought": "ComicNeue-Regular.ttf", "narration": "ComicNeue-Regular.ttf",
+              "sfx": "ComicNeue-Bold.ttf"},
+}
+SHIPPED_FONT_SCRIPTS = frozenset(SCRIPT_FONTS)
 
 
 def language_options() -> list[dict]:

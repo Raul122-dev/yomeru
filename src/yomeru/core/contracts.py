@@ -129,6 +129,7 @@ class RenderRequest:
     use_translation: bool              # False = draw the original text (layout check)
     lang_code: str                     # hyphenation language of the DRAWN text (pyphen code)
     drawn_language: str = ""           # name of the drawn language ("Spanish"), for image-edit prompts
+    fonts: dict = field(default_factory=dict)  # font file per lettering style (lib/rendering/pil.resolve_fonts)
     edit_cache: "EditCache | None" = None  # stored image edits of this page (image-edit backends)
     # set only by a rendering execution: without it image-edit backends call no
     # model (the preview endpoints re-render stale pages on view, reusing stored edits)
