@@ -198,19 +198,24 @@ def run_all(
     results: dict[PhaseName, PhaseResult] = {}
     phases = PHASE_ORDER[PHASE_ORDER.index(start_from):] if start_from else PHASE_ORDER
 
-    run.update(status="running")
+    run.update(status="running", finished_at=None)
     try:
         for phase in phases:
             result = run_phase(run, phase, options=dict(opts.get(phase, {})), on_progress=on_progress)
             results[phase] = result
             if result.status == "failed":
-                run.update(status="failed")
+                run.update(status="failed", finished_at=_now())
                 return results
     except Cancelled:
-        run.update(status="cancelled")
+        run.update(status="cancelled", finished_at=_now())
         return results
-    run.update(status="done")
+    run.update(status="done", finished_at=_now())
     return results
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 def recover_interrupted_runs() -> int:
@@ -227,7 +232,8 @@ def recover_interrupted_runs() -> int:
         for p in hung:
             run.set_phase_status(p, "failed")
         if hung or meta.get("status") == "running":
-            run.update(status="failed", error="Interrupted: the server stopped while this was running")
+            run.update(status="failed", finished_at=_now(),
+                       error="Interrupted: the server stopped while this was running")
             fixed += 1
     return fixed
 

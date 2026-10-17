@@ -165,7 +165,6 @@ def run(
 
     log.run_done(done, len(failed))
     print(f"[analysis] done — {done}/{total} pages", file=sys.stderr)
-    run.update(processed_pages=done)
 
     if done == 0 and total > 0:
         return PhaseResult(

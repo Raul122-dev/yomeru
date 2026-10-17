@@ -29,7 +29,6 @@ export interface Run {
   connection_name?: string;
   settings?: PipelineSettings;
   total_pages: number;
-  processed_pages: number;
   created_at: string;
   finished_at: string | null;
   error: string | null;

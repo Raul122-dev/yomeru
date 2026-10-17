@@ -102,6 +102,25 @@ def test_startup_recovers_hung_runs(tmp_path, monkeypatch):
     assert recover_interrupted_runs() == 1
     m = run.meta()
     assert m["phase_status"]["analysis"] == "failed" and m["status"] == "failed" and "Interrupted" in m["error"]
+    assert m["finished_at"]
+
+
+def test_run_all_stamps_finished_at(tmp_path, monkeypatch):
+    import yomeru.core.runs as runs
+    import yomeru.phases.runner as runner
+    from yomeru.phases import PhaseResult
+    monkeypatch.setattr(runs, "RUNS_DIR", tmp_path)
+    outcome = {"analysis": "done"}
+    monkeypatch.setattr(runner, "run_phase", lambda run, phase, **kw: PhaseResult(
+        phase=phase, status=outcome.get(phase, "done")))
+    run = runs.Run("r4"); run.dir.mkdir(); run._write_meta({"id": "r4", "finished_at": None})
+    runner.run_all(run)
+    m = run.meta()
+    assert m["status"] == "done" and m["finished_at"]
+    outcome["analysis"] = "failed"
+    runner.run_all(run, start_from="analysis")
+    m2 = run.meta()
+    assert m2["status"] == "failed" and m2["finished_at"] and m2["finished_at"] >= m["finished_at"]
 
 
 def test_concurrent_meta_writes_lose_nothing(tmp_path, monkeypatch):
