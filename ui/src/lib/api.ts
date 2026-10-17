@@ -125,6 +125,16 @@ export const createRun = (form: FormData, opts: CreateRunOpts = {}) => {
 
 // ── config ────────────────────────────────────────────────────────────────────
 export const getConfig = () => req<AppConfig>("/config");
+export interface LanguageOption {
+  name: string;
+  label: string;
+  code: string;
+  script: string;
+  /** a shipped font can letter it: only these are offered as targets */
+  has_font: boolean;
+}
+export const getLanguages = () => req<LanguageOption[]>("/config/languages");
+
 export const getFormats = () =>
   req<{ key: string; name: string; reading_order: string; origin: string }[]>(
     "/config/formats",

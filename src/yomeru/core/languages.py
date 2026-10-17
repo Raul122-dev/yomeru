@@ -102,3 +102,18 @@ def text_rules(text: str) -> LanguageProfile:
 
 
 _SCRIPT_RULES = {s: _build(s, s, {}) for s in SCRIPTS}
+
+
+# Scripts the shipped fonts can letter (ComicNeue covers Latin, including
+# Turkish İ/ğ through the raqm layout; Vietnamese is "other"). A target outside
+# them renders as tofu, so the UI does not offer it.
+SHIPPED_FONT_SCRIPTS = frozenset({"latin"})
+
+
+def language_options() -> list[dict]:
+    """The languages the UI offers, from the profiles (GET /config/languages)."""
+    return [
+        {"name": name, "label": "Auto-detect" if name == "auto" else name,
+         "code": p.iso, "script": p.script, "has_font": p.script in SHIPPED_FONT_SCRIPTS}
+        for name, p in _PROFILES.items()
+    ]

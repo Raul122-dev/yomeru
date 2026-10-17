@@ -158,3 +158,31 @@ def test_descriptions_follow_the_target_language():
     p = prepare(AnalysisRequest(image=Image.new("RGB", (64, 64)), page_number=1, regions=[],
                                 target_language="French", descriptions_language="French"))
     assert "Descriptions language: French" in p.user_text
+
+
+def test_languages_endpoint_offers_targets_only_with_a_shipped_font(client):
+    langs = {lang["name"]: lang for lang in client.get("/api/config/languages").json()}
+    assert langs["auto"]["label"] == "Auto-detect"
+    assert langs["Spanish"] == {"name": "Spanish", "label": "Spanish", "code": "es",
+                                "script": "latin", "has_font": True}
+    assert langs["Turkish"]["has_font"]
+    assert not langs["Japanese"]["has_font"] and not langs["Vietnamese"]["has_font"]
+    assert not langs["Russian"]["has_font"]
+
+
+def test_shipped_font_letters_every_latin_target():
+    """has_font for Latin rests on this: the shipped ComicNeue (with the default
+    raqm layout, which composes İ) draws their letters, not .notdef boxes."""
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFont
+    from yomeru.core.paths import FONTS_DIR
+    for name in ("ComicNeue-Bold.ttf", "ComicNeue-Regular.ttf"):
+        font = ImageFont.truetype(str(FONTS_DIR / name), 48)
+
+        def draw(ch):
+            im = Image.new("L", (90, 90))
+            ImageDraw.Draw(im).text((10, 5), ch, font=font, fill=255)
+            return np.asarray(im)
+        tofu = draw("\u0e01")                      # Thai: not in the font
+        for ch in "ñ¿¡çãõàèéêëîïœßäöüąćęłńśźżİığşÇĞŞ":
+            assert not (draw(ch) == tofu).all(), f"{name} has no glyph for {ch!r}"

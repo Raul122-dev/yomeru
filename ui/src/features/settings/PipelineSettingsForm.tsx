@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
-import { getFormats } from "../../lib/api";
+import { getFormats, getLanguages, type LanguageOption } from "../../lib/api";
 import type { PipelineSettings, SeparateTranslation } from "../../lib/types";
-import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from "../../lib/languages";
 import { Input, Select } from "../../components/ui/input";
 import { Switch } from "../../components/ui/Switch";
 import { Slider } from "../../components/ui/Slider";
@@ -19,6 +18,11 @@ export function PipelineSettingsForm({
   onChange: (v: PipelineSettings) => void;
 }) {
   const { data: formats = [] } = useQuery({ queryKey: ["formats"], queryFn: getFormats });
+  const { data: languages = [] } = useQuery({ queryKey: ["languages"], queryFn: getLanguages, staleTime: Infinity });
+  const sources = withCurrent(languages, value.language.source, "unknown");
+  const targets = withCurrent(
+    languages.filter((l) => l.name !== "auto" && l.has_font), value.language.target, "no font",
+  );
   const set = <K extends keyof PipelineSettings>(k: K, patch: Partial<PipelineSettings[K]>) =>
     onChange({ ...value, [k]: { ...value[k], ...patch } });
   const analysis = value.analysis ?? { backend: "vlm", options: {} };
@@ -104,14 +108,14 @@ export function PipelineSettingsForm({
         <h3 className="font-mono text-xs uppercase tracking-wide text-[hsl(var(--text-muted))]">Language</h3>
         <div className="flex items-center gap-2">
           <Select label="Source" value={value.language.source} onChange={(e) => set("language", { source: e.target.value })}>
-            {SOURCE_LANGUAGES.map((l) => (
-              <option key={l.value} value={l.value}>{l.label}</option>
+            {sources.map((l) => (
+              <option key={l.name} value={l.name}>{l.label}</option>
             ))}
           </Select>
           <ArrowRight size={16} className="mt-5 shrink-0 text-[hsl(var(--text-muted))]" />
           <Select label="Target" value={value.language.target} onChange={(e) => set("language", { target: e.target.value })}>
-            {TARGET_LANGUAGES.map((l) => (
-              <option key={l.value} value={l.value}>{l.label}</option>
+            {targets.map((l) => (
+              <option key={l.name} value={l.name}>{l.label}</option>
             ))}
           </Select>
         </div>
@@ -177,4 +181,10 @@ export function PipelineSettingsForm({
       </section>
     </div>
   );
+}
+
+/** Keep a saved value the list no longer offers visible instead of blank. */
+function withCurrent(list: LanguageOption[], current: string, why: string) {
+  if (!current || list.length === 0 || list.some((l) => l.name === current)) return list;
+  return [...list, { name: current, label: `${current} (${why})`, code: "", script: "", has_font: false }];
 }

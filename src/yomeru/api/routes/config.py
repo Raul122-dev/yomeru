@@ -237,6 +237,13 @@ def local_models_pull(body: PullIn):
     return {"started": True, "model": name}
 
 
+@router.get("/languages")
+def list_languages():
+    """Every language profile; `has_font` = a shipped font can letter it (target)."""
+    from yomeru.core.languages import language_options
+    return language_options()
+
+
 @router.get("/formats")
 def list_formats():
     return [
