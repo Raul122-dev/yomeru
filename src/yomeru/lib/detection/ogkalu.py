@@ -4,7 +4,7 @@ ogkalu RT-DETR detection backend.
 Model: ogkalu/comic-text-and-bubble-detector (HuggingFace)
 - RT-DETR-v2 fine-tuned on manga/comic panels
 - No local model download required (loaded from HuggingFace on first use)
-- Detects: bubble, text_bubble, text_free, sfx
+- Emits the core/labels vocabulary: bubble, text_bubble, text_free
 
 See SPEC.md for the full input/output contract.
 """

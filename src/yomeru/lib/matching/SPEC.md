@@ -1,46 +1,26 @@
-# Stage 2 — Matching
+# Matching
 
-Assign each dialogue entry to its corresponding detected text region.
+Decide which detected region each dialogue of the reading goes into.
 
-## Input
+## Contract
+- Phase: `phases/matching.py` → backend `cascade` (`plugins/matching.py`) →
+  `lib/matching/cascade.match_page`, a pure function of
+  `core/contracts.MatchRequest` (page image, active detections, dialogues with
+  user edits merged, source language, comic format) returning a `PageMatch`
+  (`{dialogue_index: MatchResult}`, orphaned regions, rescued count, regions
+  located by OCR). The phase writes the render log the editors read
+  (`s3_matching`); the matching editor saves `pNN_matches_refined.json`.
 
-| Field              | Type               | Description                                                                   |
-| ------------------ | ------------------ | ----------------------------------------------------------------------------- |
-| `image`            | `PIL.Image.Image`  | Full page image (used for OCR on regions)                                     |
-| `dialogues`        | `list[dict]`       | VLM-parsed dialogue dicts (with `region_id`, `bbox`, `text`) |
-| `regions`          | `list[TextRegion]` | Detected regions from the detection stage                                     |
-| `saved_detections` | `dict[int, dict]`  | `{region_id: region_dict}` from `page_detections.json`                        |
-| `source_language`  | `str`              | Source language for OCR (e.g. `"Japanese"`, `"English"`)                      |
-| `ocr_weight`       | `float`            | Weight for OCR text similarity score (0–1)                                    |
-| `spatial_weight`   | `float`            | Weight for bbox spatial overlap score (0–1)                                   |
-| `min_score`        | `float`            | Reject matches below this combined score                                      |
-
-## Output
-
-`dict[int, MatchResult]` — maps dialogue index → matched region:
-
-| Field            | Type         | Description                        |
-| ---------------- | ------------ | ---------------------------------- |
-| `dialogue_index` | `int`        | Index into the `dialogues` list    |
-| `region`         | `TextRegion` | The matched region                 |
-| `spatial_score`  | `float`      | Overlap-based score component      |
-| `text_score`     | `float`      | OCR trigram similarity component   |
-| `total_score`    | `float`      | Weighted sum of the above          |
-| `ocr_text`       | `str`        | OCR text extracted from the region |
-
-## Match priority
-
-1. **Direct** — `region_id` from VLM is present and maps to a saved detection → `total_score = 1.0`, no OCR needed.
-2. **Fallback Hungarian** — for dialogues without `region_id`, builds a score matrix and uses scipy's `linear_sum_assignment` for optimal one-to-one assignment.
-
-## Backends
-
-| Key           | Class              | Notes                                                                               |
-| ------------- | ------------------ | ----------------------------------------------------------------------------------- |
-| `"hungarian"` | `HungarianMatcher` | Default. Optimal one-to-one assignment via scipy. Greedy fallback if scipy missing. |
-
-## Adding a new backend
-
-1. Implement `BaseMatcher` protocol (see `__init__.py`)
-2. Register in `build_matcher()`
-3. Add to the backends table above
+## Cascade
+1. **direct** — the model's `region_id` (a `bubble` resolves to the text region
+   inside it); each region is claimed once.
+2. **hungarian** — unresolved dialogues vs unclaimed text regions, score =
+   spatial overlap with the dialogue bbox × `spatial_weight` + OCR trigram
+   similarity × `ocr_weight` (`hungarian.py`, scipy `linear_sum_assignment`).
+3. **reading order** — still unresolved: the next free region in manga reading
+   order (`reading_order._sort_reading_order`), only near the dialogue's bbox.
+4. **orphans** — text regions no dialogue landed in.
+5. **rescue** — OCR of the orphans (`ocr.py`: manga-ocr for Japanese, EasyOCR
+   otherwise): merged into a dialogue or matched to an unmatched one by text.
+Repeated sound effects read as one line are split per occurrence
+(`split_repeated_sfx`, saved as a page edit and flagged for review).

@@ -11,7 +11,9 @@ All language behaviour lives in `src/yomeru/core/languages.py`:
 New language:
 1. Add `"<Name as in settings>": ("<script>", {overrides})` to `LANGUAGES`
    (hyphenation = a pyphen dictionary code or None; OCR codes for EasyOCR; reading direction).
-2. Add it to `ui/src/lib/languages.ts` if it must be selectable.
+2. Nothing to do in the UI: it reads `GET /api/config/languages`. It is offered as a
+   source at once; as a target only if `SHIPPED_FONT_SCRIPTS` covers its script
+   (a shipped font must letter it — check the glyphs, see `tests/test_settings.py`).
 3. Test in `tests/test_languages.py` (resolved fields).
 
 New tuning (e.g. opening marks ¡¿, French space before ! ?):

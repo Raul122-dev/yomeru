@@ -1,77 +1,39 @@
-# Stage 4 — Rendering
+# Rendering
 
-Draw translated text into the clean (inpainted) bubble regions.
+Draw the translation into the inpainted page.
 
-## Input
+## Contract
+- Phase: `phases/rendering.py` → backend `scanline` (default) or `image_edit`
+  (experimental) in `plugins/rendering.py`.
+- Request/result: `core/contracts.RenderRequest` (inpainted + original page,
+  effective matches, dialogues with edits merged, render editor overrides,
+  skipped dialogues, hyphenation language) → `RenderResult` (page, one event per
+  match for the render log). Output `typeset/debug/pNN_scanline_production.png`
+  and the typeset pages.
 
-| Field             | Type                     | Description                                                      |
-| ----------------- | ------------------------ | ---------------------------------------------------------------- |
-| `image`           | `PIL.Image.Image`        | Inpainted page image                                             |
-| `bbox`            | `tuple[int,int,int,int]` | `(x1, y1, x2, y2)` of the bubble in image pixel coords           |
-| `text`            | `str`                    | Text to render. May contain `\n` as semantic break hints.        |
-| `tone`            | `str`                    | Dialogue tone: `"neutral"`, `"shouting"`, `"whispering"`, etc.   |
-| `bubble_type`     | `str`                    | `"speech"`, `"thought"`, `"narration"`, `"sfx"`, `"internal"`    |
-| `font_style`      | `str \| None`            | Override: `"bold"`, `"regular"`, `"thought"`, `"narration"`      |
-| `source_language` | `str`                    | Language for pyphen hyphenation (e.g. `"Spanish"`, `"Japanese"`) |
-| `padding`         | `int`                    | Minimum padding inside bubble (px). Adapts for small bubbles.    |
-| `min_font_size`   | `int`                    | Smallest font size to try (default 8).                           |
-| `max_font_size`   | `int`                    | Largest font size to try first (default 30).                     |
+## `scanline` (`lib/rendering/scanline_engine.py`)
+- Bubble contour from the page (`scanline.py`), eroded for padding; the
+  available width per line is the scanline intersection, so text follows round
+  and irregular bubbles. Box fallback when no contour is found.
+- Wrapping (`text_layout.py`): centre-first balanced wrap, embedded `\n` hints
+  from the translation, pyphen syllable splits for the target language
+  (`core/languages`), character breaks for CJK; the largest size that fits wins,
+  clean breaks preferred over hyphenated ones.
+- Page pass: sizes harmonised across bubbles, colliding lines nudged apart.
+- Vertical columns only for scripts whose profile is `vertical_native` (CJK,
+  Hangul) in tall narrow bubbles when that gives a clearly larger size; vertical
+  CJK free text translated to Latin is turned 90°.
+- Drawing (`pil.py`): style from tone/bubble type (`regular`, `bold`,
+  `thought`, `narration`); free text gets an outline. Fonts come from
+  `assets/fonts`: ComicNeue-Bold for regular/bold, ComicNeue-Regular for
+  thought/narration (other candidates in the chain are only reached if those
+  are missing). Symbols (♥ ★ ♪ arrows…) fall back per character to a symbol
+  font. There is no script-based font pick yet, so only Latin targets are
+  offered (`GET /config/languages`, `has_font`).
 
-## Output
-
-`tuple[PIL.Image.Image, RenderResult]`
-
-| Field                | Type              | Description                                     |
-| -------------------- | ----------------- | ----------------------------------------------- |
-| `image`              | `PIL.Image.Image` | Image with text drawn (or unchanged if skipped) |
-| `result.status`      | `str`             | `"ok"` or `"skip"`                              |
-| `result.skip_reason` | `str`             | Why it was skipped (if `status == "skip"`)      |
-| `result.lines`       | `list[str]`       | Lines actually drawn                            |
-| `result.font_size`   | `int`             | Font size used (px)                             |
-| `result.font_style`  | `str`             | Style selected                                  |
-| `result.line_source` | `str`             | How lines were chosen: `"embedded"`, `"hyphen"` |
-| `result.bbox`        | `tuple`           | Clamped bbox used                               |
-| `result.box_size`    | `tuple`           | `(box_w, box_h)` after padding                  |
-
-## Font resolution
-
-Font candidates are tried in order:
-
-1. `backend/assets/fonts/{name}.ttf` — custom/user-uploaded fonts (see font slot names)
-2. Noto Sans — multilingual coverage (Latin, Greek, Cyrillic, Arabic partial)
-3. IPA Gothic — Japanese (hiragana, katakana, kanji)
-4. System fallbacks (DejaVu, Liberation, Carlito)
-
-Recommended custom fonts (place in `backend/assets/fonts/`):
-
-- `AnimeAce.ttf` — regular/thought/narration styles
-- `Bangers-Regular.ttf` — bold style (action, SFX)
-
-## Line-break algorithm
-
-1. **Embedded `\n`** — if `text_translated` has `\n`, use as semantic break points.
-   Each segment is treated as a preferred visual unit; segments may be further wrapped
-   with hyphenation if they are too wide.
-2. **pyphen hyphenation** — wraps at word boundaries first; splits long words at
-   syllable boundaries with a trailing hyphen if needed. Punctuation (¿, ¡, ?, !)
-   is stripped before pyphen to prevent wrong split positions.
-3. **Clean-first preference** — among valid fits, the largest font size with zero
-   hyphens is preferred over a larger size with hyphens.
-
-## Vertical text (Japanese)
-
-When `bubble_h > bubble_w * 2.0`, the renderer switches to vertical mode:
-characters are drawn individually, stacked top-to-bottom in right-to-left columns.
-
-## Backends
-
-| Key                 | Class         | Notes                                                        |
-| ------------------- | ------------- | ------------------------------------------------------------ |
-| `"pil"`             | `PILRenderer` | PIL + pyphen (current default). Pure Python, no GPU.         |
-| `"stablediffusion"` | _(future)_    | SD + ControlNet for style-matched text. Not yet implemented. |
-
-## Adding a new backend
-
-1. Implement `BaseRenderer` protocol (see `__init__.py`)
-2. Register in `build_renderer()`
-3. Add to the backends table above
+## `image_edit` (`lib/rendering/image_edit.py`)
+Scanline lays out every dialogue; the chosen ones are cropped from the original
+page and re-lettered by an image-edit model through a provider chain
+(`edit_providers/`: ComfyUI, OpenRouter). Answers are aligned, checked and
+pasted inside the bubble only; scanline draws everything else and is the
+fallback for any rejected answer.

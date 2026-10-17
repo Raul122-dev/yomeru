@@ -8,7 +8,7 @@ yomeru translates and typesets manga/manhwa/comics: **detection → read & trans
 ## Read before working
 1. `.agents/README.md` — how work is split between agents and the two orchestrators.
 2. `.agents/context/project.md` — goals, product rules (what NOT to change).
-3. `.agents/context/architecture.md` — phases, plugins, contracts, files. (`ARCHITECTURE.md` at the root is outdated; this one is the current map.)
+3. `.agents/context/architecture.md` — phases, plugins, contracts, files. (Root `ARCHITECTURE.md` is only a short overview pointing here.)
 4. `.agents/context/conventions.md` — code, tests, goldens, commits.
 5. Your task file in `.agents/tasks/` if you were given one (task files are not versioned and live only in the MAIN checkout — from another worktree open it at `$(git worktree list | head -1 | cut -d' ' -f1)/.agents/tasks/`), and any skill in `.agents/skills/` that matches the work.
 
