@@ -11,7 +11,7 @@ AI-assisted manga/manhwa translation and typesetting. One workflow from raw page
 Requires [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you). Node is only needed for UI development.
 
 ```bash
-git clone https://github.com/Raul122-dev/yomeru
+git clone https://github.com/rauldev-yoru/yomeru
 cd yomeru
 bash setup.sh          # full install (torch, detection, OCR, LaMa) — runs `uv sync` in `backend/` and builds the UI
 # bash setup.sh --core # analysis only, no torch

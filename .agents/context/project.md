@@ -2,7 +2,7 @@
 
 AI-assisted translation and typesetting of manga, manhwa, manhua and western comics.
 Upload raw pages → get translated pages, with an editor for every step.
-Repo: https://github.com/Raul122-dev/yomeru · Owner: Raul.
+Repo: https://github.com/rauldev-yoru/yomeru · Owner: Raul 夜 (rauldev-yoru).
 
 ## Goal: v1.0
 Anyone can clone the repo and run it locally (`uv sync`, `bash start.sh`), with
